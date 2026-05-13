@@ -1,4 +1,19 @@
+import pytest
+
 from conftest import create_tenant_and_login
+
+
+def valid_cost_item_payload(**overrides):
+    payload = {
+        "category": "equipment",
+        "name": "Equipo base",
+        "unit": "unit",
+        "unit_cost": "100.00",
+        "tax_rate": None,
+    }
+    payload.update(overrides)
+
+    return payload
 
 
 def test_cost_item_crud_uses_effective_tax_rate_and_logical_delete(api_context) -> None:
@@ -264,6 +279,70 @@ def test_cost_item_category_must_be_allowed(api_context) -> None:
             "unit": "day",
             "unit_cost": "1000.00",
         },
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("unit_cost", "-0.01"),
+        ("tax_rate", "-0.01"),
+        ("tax_rate", "100.01"),
+        ("unit_cost", "12.345"),
+    ],
+)
+def test_create_cost_item_rejects_invalid_money_fields(
+    api_context,
+    field,
+    value,
+) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin@acme.test",
+    )
+
+    response = client.post(
+        "/cost-items",
+        headers=headers,
+        json=valid_cost_item_payload(**{field: value}),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("unit_cost", "-0.01"),
+        ("tax_rate", "10.555"),
+    ],
+)
+def test_update_cost_item_rejects_invalid_money_fields(
+    api_context,
+    field,
+    value,
+) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin@acme.test",
+    )
+    create_response = client.post(
+        "/cost-items",
+        headers=headers,
+        json=valid_cost_item_payload(),
+    )
+    assert create_response.status_code == 201
+
+    response = client.patch(
+        f"/cost-items/{create_response.json()['id']}",
+        headers=headers,
+        json={field: value},
     )
 
     assert response.status_code == 422

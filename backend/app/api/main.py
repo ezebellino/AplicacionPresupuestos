@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api.routes import auth, clients, cost_items, tenants
+from app.api.routes import auth, clients, cost_items, quotes, tenants
 
 
 app = FastAPI(title="Presupuestos SaaS API")
@@ -8,6 +8,7 @@ app = FastAPI(title="Presupuestos SaaS API")
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(cost_items.router, prefix="/cost-items", tags=["cost-items"])
+app.include_router(quotes.router, prefix="/quotes", tags=["quotes"])
 app.include_router(tenants.router, prefix="/admin/tenants", tags=["admin"])
 
 

@@ -291,6 +291,7 @@ def test_cost_item_category_must_be_allowed(api_context) -> None:
         ("tax_rate", "-0.01"),
         ("tax_rate", "100.01"),
         ("unit_cost", "12.345"),
+        ("unit_cost", "10000000000.00"),
     ],
 )
 def test_create_cost_item_rejects_invalid_money_fields(
@@ -318,6 +319,8 @@ def test_create_cost_item_rejects_invalid_money_fields(
     ("field", "value"),
     [
         ("unit_cost", "-0.01"),
+        ("unit_cost", "10000000000.00"),
+        ("tax_rate", "100.01"),
         ("tax_rate", "10.555"),
     ],
 )

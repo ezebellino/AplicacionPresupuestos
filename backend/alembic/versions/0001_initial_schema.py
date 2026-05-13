@@ -124,6 +124,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("id", "tenant_id", name="uq_quotes_id_tenant_id"),
+        sa.UniqueConstraint("tenant_id", "number", name="uq_quotes_tenant_id_number"),
     )
     op.create_index("ix_quotes_tenant_id", "quotes", ["tenant_id"])
     op.create_table(

@@ -17,6 +17,7 @@ from app.schemas.quotes import (
 )
 from app.services.quotes_service import (
     QuoteConflictError,
+    QuoteValidationError,
     accept_quote,
     add_quote_item,
     create_quote,
@@ -54,7 +55,13 @@ def create_current_tenant_quote(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    quote = create_quote(db, current_user.tenant_id, payload)
+    try:
+        quote = create_quote(db, current_user.tenant_id, payload)
+    except QuoteConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
     if quote is None:
         raise HTTPException(
@@ -96,6 +103,11 @@ def update_current_tenant_quote(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+    except QuoteValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
     if quote is None:
         raise HTTPException(
@@ -122,6 +134,11 @@ def add_current_tenant_quote_item(
     except QuoteConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except QuoteValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 
@@ -153,6 +170,11 @@ def update_current_tenant_quote_item(
     except QuoteConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except QuoteValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
 

@@ -271,6 +271,154 @@ def test_only_draft_quote_items_are_mutable_and_inactive_cost_items_are_rejected
     )
 
 
+def test_quote_item_discount_cannot_exceed_line_subtotal(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-discount@acme.test",
+    )
+    tenant_client = create_client(client, headers)
+    cost_item = create_cost_item(client, headers, unit_cost="100.00")
+    quote = create_quote(client, headers, tenant_client["id"])
+
+    add_response = client.post(
+        f"/quotes/{quote['id']}/items",
+        headers=headers,
+        json={
+            "source_cost_item_id": cost_item["id"],
+            "quantity": "1.00",
+            "discount_amount": "100.01",
+        },
+    )
+    assert add_response.status_code == 422
+
+    item = add_quote_item(
+        client,
+        headers,
+        quote["id"],
+        cost_item["id"],
+        quantity="1.00",
+        discount_amount="0.00",
+    )
+    update_response = client.patch(
+        f"/quotes/{quote['id']}/items/{item['id']}",
+        headers=headers,
+        json={"discount_amount": "100.01"},
+    )
+    assert update_response.status_code == 422
+
+
+def test_quote_patch_rejects_explicit_null_client_id(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-null-quote@acme.test",
+    )
+    tenant_client = create_client(client, headers)
+    quote = create_quote(client, headers, tenant_client["id"])
+
+    response = client.patch(
+        f"/quotes/{quote['id']}",
+        headers=headers,
+        json={"client_id": None},
+    )
+
+    assert response.status_code == 422
+
+
+def test_quote_item_patch_rejects_explicit_null_required_fields(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-null-item@acme.test",
+    )
+    tenant_client = create_client(client, headers)
+    cost_item = create_cost_item(client, headers)
+    quote = create_quote(client, headers, tenant_client["id"])
+    item = add_quote_item(client, headers, quote["id"], cost_item["id"])
+
+    for field in [
+        "category",
+        "name",
+        "unit",
+        "quantity",
+        "unit_price",
+        "tax_rate",
+        "discount_amount",
+        "position",
+    ]:
+        response = client.patch(
+            f"/quotes/{quote['id']}/items/{item['id']}",
+            headers=headers,
+            json={field: None},
+        )
+        assert response.status_code == 422
+
+
+def test_deleting_quote_item_recalculates_quote_totals(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-delete-recalc@acme.test",
+    )
+    tenant_client = create_client(client, headers)
+    first_cost_item = create_cost_item(client, headers, name="Primer item")
+    second_cost_item = create_cost_item(
+        client,
+        headers,
+        name="Segundo item",
+        unit_cost="50.00",
+        tax_rate="21.00",
+    )
+    quote = create_quote(client, headers, tenant_client["id"])
+    first_item = add_quote_item(
+        client,
+        headers,
+        quote["id"],
+        first_cost_item["id"],
+        quantity="1.00",
+        discount_amount="0.00",
+    )
+    second_item = add_quote_item(
+        client,
+        headers,
+        quote["id"],
+        second_cost_item["id"],
+        quantity="2.00",
+        discount_amount="0.00",
+    )
+
+    delete_first = client.delete(
+        f"/quotes/{quote['id']}/items/{first_item['id']}",
+        headers=headers,
+    )
+    assert delete_first.status_code == 204
+    quote_with_remaining_item = client.get(f"/quotes/{quote['id']}", headers=headers).json()
+    assert [item["id"] for item in quote_with_remaining_item["items"]] == [
+        second_item["id"]
+    ]
+    assert quote_with_remaining_item["subtotal"] == "100.00"
+    assert quote_with_remaining_item["discount_total"] == "0.00"
+    assert quote_with_remaining_item["tax_total"] == "21.00"
+    assert quote_with_remaining_item["total"] == "121.00"
+
+    delete_second = client.delete(
+        f"/quotes/{quote['id']}/items/{second_item['id']}",
+        headers=headers,
+    )
+    assert delete_second.status_code == 204
+    empty_quote = client.get(f"/quotes/{quote['id']}", headers=headers).json()
+    assert empty_quote["items"] == []
+    assert empty_quote["subtotal"] == "0.00"
+    assert empty_quote["discount_total"] == "0.00"
+    assert empty_quote["tax_total"] == "0.00"
+    assert empty_quote["total"] == "0.00"
+
+
 def test_quotes_are_scoped_to_authenticated_tenant(api_context) -> None:
     client, _ = api_context
     tenant_a_headers = create_tenant_and_login(

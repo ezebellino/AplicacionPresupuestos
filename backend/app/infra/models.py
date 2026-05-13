@@ -140,6 +140,7 @@ class Quote(TimestampMixin, Base):
             name="fk_quotes_client_tenant",
         ),
         UniqueConstraint("id", "tenant_id", name="uq_quotes_id_tenant_id"),
+        UniqueConstraint("tenant_id", "number", name="uq_quotes_tenant_id_number"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)

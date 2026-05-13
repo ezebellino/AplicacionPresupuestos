@@ -80,5 +80,7 @@ def _validate_line(line: QuoteLineInput) -> None:
         raise ValueError("unit_price cannot be negative")
     if line.tax_rate < 0:
         raise ValueError("tax_rate cannot be negative")
+    if line.tax_rate > 100:
+        raise ValueError("tax_rate cannot exceed 100")
     if line.discount_amount < 0:
         raise ValueError("discount_amount cannot be negative")

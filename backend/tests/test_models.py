@@ -69,6 +69,17 @@ def test_tenant_owned_tables_have_composite_identity_constraints():
         assert ("id", "tenant_id") in unique_columns
 
 
+def test_quote_numbers_are_unique_per_tenant():
+    table = Base.metadata.tables["quotes"]
+    unique_columns = {
+        tuple(constraint.columns.keys())
+        for constraint in table.constraints
+        if isinstance(constraint, UniqueConstraint)
+    }
+
+    assert ("tenant_id", "number") in unique_columns
+
+
 def test_cross_tenant_relationships_use_composite_foreign_keys():
     expected_foreign_keys = {
         "quotes": {

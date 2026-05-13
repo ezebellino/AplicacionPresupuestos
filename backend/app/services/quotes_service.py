@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.enums import QuoteStatus
@@ -22,6 +23,10 @@ ZERO = Decimal("0.00")
 
 
 class QuoteConflictError(ValueError):
+    pass
+
+
+class QuoteValidationError(ValueError):
     pass
 
 
@@ -75,25 +80,36 @@ def create_quote(db: Session, tenant_id: UUID, payload: QuoteCreate) -> Quote | 
     if _get_client(db, tenant_id, payload.client_id) is None:
         return None
 
-    quote = Quote(
-        tenant_id=tenant_id,
-        client_id=payload.client_id,
-        number=_next_quote_number(db, tenant_id),
-        status=QuoteStatus.DRAFT,
-        title=payload.title,
-        notes=payload.notes,
-        valid_until=payload.valid_until,
-        subtotal=ZERO,
-        tax_total=ZERO,
-        discount_total=ZERO,
-        total=ZERO,
-    )
+    for attempt in range(2):
+        quote = Quote(
+            tenant_id=tenant_id,
+            client_id=payload.client_id,
+            number=_next_quote_number(db, tenant_id),
+            status=QuoteStatus.DRAFT,
+            title=payload.title,
+            notes=payload.notes,
+            valid_until=payload.valid_until,
+            subtotal=ZERO,
+            tax_total=ZERO,
+            discount_total=ZERO,
+            total=ZERO,
+        )
 
-    db.add(quote)
-    db.commit()
-    db.refresh(quote)
+        db.add(quote)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            if attempt == 0:
+                continue
 
-    return quote
+            raise QuoteConflictError("Quote number already exists") from None
+
+        db.refresh(quote)
+
+        return quote
+
+    raise QuoteConflictError("Quote number already exists")
 
 
 def update_quote(
@@ -274,17 +290,20 @@ def _ensure_draft(quote: Quote) -> None:
 
 def _recalculate_quote(quote: Quote, items: list[QuoteItem]) -> None:
     ordered_items = sorted(items, key=lambda item: (item.position, item.id))
-    totals = calculate_quote(
-        [
-            QuoteLineInput(
-                quantity=item.quantity,
-                unit_price=item.unit_price,
-                tax_rate=item.tax_rate,
-                discount_amount=item.discount_amount,
-            )
-            for item in ordered_items
-        ]
-    )
+    try:
+        totals = calculate_quote(
+            [
+                QuoteLineInput(
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    tax_rate=item.tax_rate,
+                    discount_amount=item.discount_amount,
+                )
+                for item in ordered_items
+            ]
+        )
+    except ValueError as exc:
+        raise QuoteValidationError(str(exc)) from exc
 
     for item, line in zip(ordered_items, totals.lines, strict=True):
         item.line_subtotal = line.line_subtotal

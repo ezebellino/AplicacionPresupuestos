@@ -250,6 +250,22 @@ def test_duplicate_admin_email_on_tenant_creation_returns_409(auth_context) -> N
     assert duplicate_response.status_code == 409
 
 
+def test_tenant_default_tax_rate_cannot_exceed_one_hundred(auth_context) -> None:
+    client, _ = auth_context
+
+    response = client.post(
+        "/admin/tenants",
+        json={
+            "name": "Acme Clima",
+            "admin_email": "admin-tax@acme.test",
+            "admin_password": ADMIN_PASSWORD,
+            "default_tax_rate": "100.01",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_password_hash_is_not_returned_from_auth_responses(auth_context) -> None:
     client, _ = auth_context
 

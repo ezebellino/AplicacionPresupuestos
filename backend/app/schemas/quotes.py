@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.enums import CostCategory, QuoteStatus
 
@@ -26,6 +26,14 @@ class QuoteUpdate(BaseModel):
     notes: str | None = None
     valid_until: datetime | None = None
 
+    @field_validator("client_id", mode="before")
+    @classmethod
+    def client_id_cannot_be_null(cls, value):
+        if value is None:
+            raise ValueError("client_id cannot be null")
+
+        return value
+
 
 class QuoteItemCreate(BaseModel):
     source_cost_item_id: UUID
@@ -43,6 +51,24 @@ class QuoteItemUpdate(BaseModel):
     tax_rate: TaxRate | None = None
     discount_amount: Money | None = None
     position: int | None = Field(default=None, ge=1)
+
+    @field_validator(
+        "category",
+        "name",
+        "unit",
+        "quantity",
+        "unit_price",
+        "tax_rate",
+        "discount_amount",
+        "position",
+        mode="before",
+    )
+    @classmethod
+    def required_fields_cannot_be_null(cls, value):
+        if value is None:
+            raise ValueError("field cannot be null")
+
+        return value
 
 
 class QuoteItemRead(BaseModel):

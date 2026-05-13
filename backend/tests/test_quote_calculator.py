@@ -84,3 +84,20 @@ def test_rejects_negative_quantity():
         assert "quantity" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_rejects_tax_rate_above_one_hundred():
+    try:
+        calculate_quote(
+            [
+                QuoteLineInput(
+                    quantity=Decimal("1"),
+                    unit_price=Decimal("100.00"),
+                    tax_rate=Decimal("100.01"),
+                )
+            ]
+        )
+    except ValueError as exc:
+        assert "tax_rate" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")

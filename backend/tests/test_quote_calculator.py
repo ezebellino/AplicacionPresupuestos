@@ -29,7 +29,7 @@ def test_quote_line_result_uses_plan_field_names():
     ]
 
 
-def test_does_not_quantize_taxable_amount_before_tax_calculation():
+def test_normalizes_discount_before_tax_calculation():
     result = calculate_quote(
         [
             QuoteLineInput(
@@ -41,8 +41,40 @@ def test_does_not_quantize_taxable_amount_before_tax_calculation():
         ]
     )
 
-    assert result.lines[0].line_tax == Decimal("2.09")
-    assert result.lines[0].line_total == Decimal("12.07")
+    assert result.discount_total == Decimal("0.02")
+    assert result.lines[0].line_tax == Decimal("2.10")
+    assert result.lines[0].line_total == Decimal("12.08")
+
+
+def test_normalizes_sub_cent_discounts_for_consistent_totals():
+    result = calculate_quote(
+        [
+            QuoteLineInput(quantity=Decimal("1"), unit_price=Decimal("1.00"), tax_rate=Decimal("0.00"), discount_amount=Decimal("0.005")),
+            QuoteLineInput(quantity=Decimal("1"), unit_price=Decimal("1.00"), tax_rate=Decimal("0.00"), discount_amount=Decimal("0.005")),
+        ]
+    )
+
+    assert result.lines[0].line_total == Decimal("0.99")
+    assert result.lines[1].line_total == Decimal("0.99")
+    assert result.discount_total == Decimal("0.02")
+    assert result.total == Decimal("1.98")
+    assert result.subtotal - result.discount_total + result.tax_total == result.total
+
+
+def test_quote_totals_lines_are_immutable_tuple():
+    result = calculate_quote(
+        [
+            QuoteLineInput(quantity=Decimal("1"), unit_price=Decimal("1.00"), tax_rate=Decimal("0.00")),
+        ]
+    )
+
+    assert isinstance(result.lines, tuple)
+    try:
+        result.lines.append(QuoteLineResult(line_subtotal=Decimal("1.00"), line_tax=Decimal("0.00"), line_total=Decimal("1.00")))
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("expected immutable tuple")
 
 
 def test_rejects_negative_quantity():

@@ -28,7 +28,7 @@ class QuoteTotals:
     discount_total: Decimal
     tax_total: Decimal
     total: Decimal
-    lines: list[QuoteLineResult]
+    lines: tuple[QuoteLineResult, ...]
 
 
 def calculate_quote(lines: list[QuoteLineInput]) -> QuoteTotals:
@@ -43,10 +43,11 @@ def calculate_quote(lines: list[QuoteLineInput]) -> QuoteTotals:
         _validate_line(line)
 
         line_subtotal = quantize_money(line.quantity * line.unit_price)
-        if line.discount_amount > line_subtotal:
+        discount_amount = quantize_money(line.discount_amount)
+        if discount_amount > line_subtotal:
             raise ValueError("discount_amount cannot exceed line subtotal")
 
-        taxable_amount = line_subtotal - line.discount_amount
+        taxable_amount = line_subtotal - discount_amount
         line_tax = quantize_money(taxable_amount * line.tax_rate / Decimal("100"))
         line_total = quantize_money(taxable_amount + line_tax)
 
@@ -59,7 +60,7 @@ def calculate_quote(lines: list[QuoteLineInput]) -> QuoteTotals:
         )
 
         subtotal = quantize_money(subtotal + line_subtotal)
-        discount_total = quantize_money(discount_total + line.discount_amount)
+        discount_total = quantize_money(discount_total + discount_amount)
         tax_total = quantize_money(tax_total + line_tax)
         total = quantize_money(total + line_total)
 
@@ -68,7 +69,7 @@ def calculate_quote(lines: list[QuoteLineInput]) -> QuoteTotals:
         discount_total=discount_total,
         tax_total=tax_total,
         total=total,
-        lines=line_results,
+        lines=tuple(line_results),
     )
 
 

@@ -27,3 +27,9 @@ def test_enums_match_mvp_states_and_categories():
         "accepted",
         "rejected",
     ]
+
+
+def test_quote_items_include_timestamps():
+    columns = set(Base.metadata.tables["quote_items"].columns.keys())
+
+    assert {"created_at", "updated_at"}.issubset(columns)

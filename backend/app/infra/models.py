@@ -139,7 +139,7 @@ class Quote(TimestampMixin, Base):
     items: Mapped[list["QuoteItem"]] = relationship(back_populates="quote")
 
 
-class QuoteItem(Base):
+class QuoteItem(TimestampMixin, Base):
     __tablename__ = "quote_items"
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)

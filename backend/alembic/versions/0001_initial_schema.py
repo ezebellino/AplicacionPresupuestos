@@ -136,6 +136,8 @@ def upgrade() -> None:
         sa.Column("line_tax", sa.Numeric(12, 2), nullable=False),
         sa.Column("line_total", sa.Numeric(12, 2), nullable=False),
         sa.Column("position", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["quote_id"], ["quotes.id"]),
         sa.ForeignKeyConstraint(["source_cost_item_id"], ["cost_items.id"]),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),

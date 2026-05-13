@@ -17,10 +17,9 @@ class QuoteLineInput:
 
 @dataclass(frozen=True)
 class QuoteLineResult:
-    subtotal: Decimal
-    discount_amount: Decimal
-    tax_total: Decimal
-    total: Decimal
+    line_subtotal: Decimal
+    line_tax: Decimal
+    line_total: Decimal
 
 
 @dataclass(frozen=True)
@@ -47,16 +46,15 @@ def calculate_quote(lines: list[QuoteLineInput]) -> QuoteTotals:
         if line.discount_amount > line_subtotal:
             raise ValueError("discount_amount cannot exceed line subtotal")
 
-        taxable_amount = quantize_money(line_subtotal - line.discount_amount)
+        taxable_amount = line_subtotal - line.discount_amount
         line_tax = quantize_money(taxable_amount * line.tax_rate / Decimal("100"))
         line_total = quantize_money(taxable_amount + line_tax)
 
         line_results.append(
             QuoteLineResult(
-                subtotal=line_subtotal,
-                discount_amount=quantize_money(line.discount_amount),
-                tax_total=line_tax,
-                total=line_total,
+                line_subtotal=line_subtotal,
+                line_tax=line_tax,
+                line_total=line_total,
             )
         )
 

@@ -2,7 +2,18 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Numeric, String, Text, Uuid
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.enums import CostCategory, QuoteStatus
@@ -56,7 +67,7 @@ class User(TimestampMixin, Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -68,6 +79,7 @@ class User(TimestampMixin, Base):
 
 class Client(TimestampMixin, Base):
     __tablename__ = "clients"
+    __table_args__ = (UniqueConstraint("id", "tenant_id", name="uq_clients_id_tenant_id"),)
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(
@@ -86,6 +98,9 @@ class Client(TimestampMixin, Base):
 
 class CostItem(TimestampMixin, Base):
     __tablename__ = "cost_items"
+    __table_args__ = (
+        UniqueConstraint("id", "tenant_id", name="uq_cost_items_id_tenant_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(
@@ -105,14 +120,20 @@ class CostItem(TimestampMixin, Base):
 
 class Quote(TimestampMixin, Base):
     __tablename__ = "quotes"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["client_id", "tenant_id"],
+            ["clients.id", "clients.tenant_id"],
+            name="fk_quotes_client_tenant",
+        ),
+        UniqueConstraint("id", "tenant_id", name="uq_quotes_id_tenant_id"),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
     )
-    client_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("clients.id"), nullable=False
-    )
+    client_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     number: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[QuoteStatus] = mapped_column(
         quote_status_enum, nullable=False, default=QuoteStatus.DRAFT
@@ -141,17 +162,25 @@ class Quote(TimestampMixin, Base):
 
 class QuoteItem(TimestampMixin, Base):
     __tablename__ = "quote_items"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["quote_id", "tenant_id"],
+            ["quotes.id", "quotes.tenant_id"],
+            name="fk_quote_items_quote_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["source_cost_item_id", "tenant_id"],
+            ["cost_items.id", "cost_items.tenant_id"],
+            name="fk_quote_items_source_cost_item_tenant",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     tenant_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
     )
-    quote_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("quotes.id"), nullable=False
-    )
-    source_cost_item_id: Mapped[UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("cost_items.id")
-    )
+    quote_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    source_cost_item_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
     category: Mapped[CostCategory] = mapped_column(cost_category_enum, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)

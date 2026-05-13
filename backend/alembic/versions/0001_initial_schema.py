@@ -63,6 +63,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("email"),
     )
+    op.create_index("ix_users_tenant_id", "users", ["tenant_id"])
     op.create_table(
         "clients",
         sa.Column("id", sa.Uuid(), nullable=False),
@@ -77,6 +78,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id", "tenant_id", name="uq_clients_id_tenant_id"),
     )
     op.create_index("ix_clients_tenant_id", "clients", ["tenant_id"])
     op.create_table(
@@ -94,6 +96,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id", "tenant_id", name="uq_cost_items_id_tenant_id"),
     )
     op.create_index("ix_cost_items_tenant_id", "cost_items", ["tenant_id"])
     op.create_table(
@@ -113,9 +116,14 @@ def upgrade() -> None:
         sa.Column("issued_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["client_id"], ["clients.id"]),
+        sa.ForeignKeyConstraint(
+            ["client_id", "tenant_id"],
+            ["clients.id", "clients.tenant_id"],
+            name="fk_quotes_client_tenant",
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("id", "tenant_id", name="uq_quotes_id_tenant_id"),
     )
     op.create_index("ix_quotes_tenant_id", "quotes", ["tenant_id"])
     op.create_table(
@@ -138,8 +146,16 @@ def upgrade() -> None:
         sa.Column("position", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["quote_id"], ["quotes.id"]),
-        sa.ForeignKeyConstraint(["source_cost_item_id"], ["cost_items.id"]),
+        sa.ForeignKeyConstraint(
+            ["quote_id", "tenant_id"],
+            ["quotes.id", "quotes.tenant_id"],
+            name="fk_quote_items_quote_tenant",
+        ),
+        sa.ForeignKeyConstraint(
+            ["source_cost_item_id", "tenant_id"],
+            ["cost_items.id", "cost_items.tenant_id"],
+            name="fk_quote_items_source_cost_item_tenant",
+        ),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -155,5 +171,6 @@ def downgrade() -> None:
     op.drop_table("cost_items")
     op.drop_index("ix_clients_tenant_id", table_name="clients")
     op.drop_table("clients")
+    op.drop_index("ix_users_tenant_id", table_name="users")
     op.drop_table("users")
     op.drop_table("tenants")

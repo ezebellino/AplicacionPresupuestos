@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    and_,
     Boolean,
     DateTime,
     Enum,
@@ -14,7 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
 
 from app.domain.enums import CostCategory, QuoteStatus
 from app.infra.db import Base
@@ -93,7 +94,13 @@ class Client(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     tenant: Mapped[Tenant] = relationship(back_populates="clients")
-    quotes: Mapped[list["Quote"]] = relationship(back_populates="client")
+    quotes: Mapped[list["Quote"]] = relationship(
+        back_populates="client",
+        primaryjoin=lambda: and_(
+            Client.id == foreign(Quote.client_id),
+            Client.tenant_id == Quote.tenant_id,
+        ),
+    )
 
 
 class CostItem(TimestampMixin, Base):
@@ -115,7 +122,13 @@ class CostItem(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="cost_items")
-    quote_items: Mapped[list["QuoteItem"]] = relationship(back_populates="source_cost_item")
+    quote_items: Mapped[list["QuoteItem"]] = relationship(
+        back_populates="source_cost_item",
+        primaryjoin=lambda: and_(
+            CostItem.id == foreign(QuoteItem.source_cost_item_id),
+            CostItem.tenant_id == QuoteItem.tenant_id,
+        ),
+    )
 
 
 class Quote(TimestampMixin, Base):
@@ -156,8 +169,20 @@ class Quote(TimestampMixin, Base):
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     tenant: Mapped[Tenant] = relationship(back_populates="quotes")
-    client: Mapped[Client] = relationship(back_populates="quotes")
-    items: Mapped[list["QuoteItem"]] = relationship(back_populates="quote")
+    client: Mapped[Client] = relationship(
+        back_populates="quotes",
+        primaryjoin=lambda: and_(
+            foreign(Quote.client_id) == Client.id,
+            Quote.tenant_id == Client.tenant_id,
+        ),
+    )
+    items: Mapped[list["QuoteItem"]] = relationship(
+        back_populates="quote",
+        primaryjoin=lambda: and_(
+            Quote.id == foreign(QuoteItem.quote_id),
+            Quote.tenant_id == QuoteItem.tenant_id,
+        ),
+    )
 
 
 class QuoteItem(TimestampMixin, Base):
@@ -196,5 +221,17 @@ class QuoteItem(TimestampMixin, Base):
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     position: Mapped[int] = mapped_column(nullable=False)
 
-    quote: Mapped[Quote] = relationship(back_populates="items")
-    source_cost_item: Mapped[CostItem | None] = relationship(back_populates="quote_items")
+    quote: Mapped[Quote] = relationship(
+        back_populates="items",
+        primaryjoin=lambda: and_(
+            foreign(QuoteItem.quote_id) == Quote.id,
+            QuoteItem.tenant_id == Quote.tenant_id,
+        ),
+    )
+    source_cost_item: Mapped[CostItem | None] = relationship(
+        back_populates="quote_items",
+        primaryjoin=lambda: and_(
+            foreign(QuoteItem.source_cost_item_id) == CostItem.id,
+            QuoteItem.tenant_id == CostItem.tenant_id,
+        ),
+    )

@@ -1,4 +1,8 @@
+import warnings
+
 from sqlalchemy import ForeignKeyConstraint, UniqueConstraint, create_engine, inspect
+from sqlalchemy.exc import SAWarning
+from sqlalchemy.orm import configure_mappers
 
 from app.infra.models import Base, CostCategory, QuoteStatus
 
@@ -108,3 +112,10 @@ def test_metadata_creates_sqlite_schema():
         }.issubset(table_names)
     finally:
         Base.metadata.drop_all(engine)
+
+
+def test_sqlalchemy_mappers_configure_without_ambiguity():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", SAWarning)
+
+        configure_mappers()

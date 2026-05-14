@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.infra.models import User
+from app.infra.pdf import build_quote_pdf
 from app.schemas.quotes import (
     QuoteCreate,
     QuoteItemCreate,
@@ -87,6 +88,36 @@ def get_current_tenant_quote(
         )
 
     return serialize_quote(quote)
+
+
+@router.get("/{quote_id}/pdf")
+def get_current_tenant_quote_pdf(
+    quote_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    quote = get_quote(db, current_user.tenant_id, quote_id)
+
+    if quote is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quote not found",
+        )
+
+    pdf_bytes = build_quote_pdf(
+        current_user.tenant,
+        quote.client,
+        quote,
+        quote.items,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="presupuesto-{quote.number}.pdf"'
+        },
+    )
 
 
 @router.patch("/{quote_id}", response_model=QuoteRead)

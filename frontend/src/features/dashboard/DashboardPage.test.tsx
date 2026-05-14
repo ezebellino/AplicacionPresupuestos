@@ -156,4 +156,19 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Historial de Acme Clima')).toBeInTheDocument();
     expect(screen.getByText('Mantenimiento preventivo')).toBeInTheDocument();
   });
+
+  it('keeps the new quote form hidden until requested', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await waitFor(() => expect(screen.getAllByText('Q-000001').length).toBeGreaterThan(0));
+
+    expect(screen.queryByRole('button', { name: 'Crear borrador' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Nuevo presupuesto' }));
+
+    expect(screen.getByRole('button', { name: 'Crear borrador' })).toBeInTheDocument();
+  });
 });

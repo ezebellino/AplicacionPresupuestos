@@ -372,6 +372,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       setQuoteForm(emptyQuoteForm);
       setSelectedQuoteId(quote.id);
       await loadWorkspace();
+      return true;
     } catch {
       await Swal.fire({
         title: 'No se pudo crear el presupuesto',
@@ -379,6 +380,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -1040,11 +1042,12 @@ function QuotesView({
   onItemFormChange: (form: QuoteItemForm) => void;
   onItemSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSelectQuote: (quoteId: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => boolean | Promise<boolean>;
   onTransition: (quote: Quote, action: 'issue' | 'accept' | 'reject') => void;
   quotes: Quote[];
   selectedQuoteId: string | null;
 }) {
+  const [isQuoteFormOpen, setIsQuoteFormOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
   const filteredQuotes = quotes.filter((quote) => {
@@ -1066,54 +1069,71 @@ function QuotesView({
   });
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
   const canEditSelected = selectedQuote?.status === 'draft';
+  const handleCreateQuote = async (event: FormEvent<HTMLFormElement>) => {
+    const wasCreated = await onSubmit(event);
+
+    if (wasCreated) {
+      setIsQuoteFormOpen(false);
+    }
+  };
 
   return (
     <section style={styles.workspaceGrid}>
       <div style={styles.sideStack}>
-        <form onSubmit={onSubmit} style={styles.formPanel}>
-          <h2 style={styles.panelTitle}>Nuevo presupuesto</h2>
-          <label style={styles.label}>
-            Cliente
-            <select
-              onChange={(event) => onFormChange({ ...form, client_id: event.target.value })}
-              required
-              style={styles.input}
-              value={form.client_id}
-            >
-              <option value="">Seleccionar cliente</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Field label="Titulo" value={form.title} onChange={(title) => onFormChange({ ...form, title })} />
-          <Field
-            label="Valido hasta"
-            type="date"
-            value={form.valid_until}
-            onChange={(validUntil) => onFormChange({ ...form, valid_until: validUntil })}
-          />
-          <label style={styles.label}>
-            Notas
-            <textarea
-              onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
-              rows={3}
-              style={styles.textarea}
-              value={form.notes}
+        {isQuoteFormOpen ? (
+          <form onSubmit={handleCreateQuote} style={styles.formPanel}>
+            <div style={styles.panelHeaderCompact}>
+              <h2 style={styles.panelTitle}>Nuevo presupuesto</h2>
+              <button onClick={() => setIsQuoteFormOpen(false)} style={styles.linkButton} type="button">
+                Cerrar
+              </button>
+            </div>
+            <label style={styles.label}>
+              Cliente
+              <select
+                onChange={(event) => onFormChange({ ...form, client_id: event.target.value })}
+                required
+                style={styles.input}
+                value={form.client_id}
+              >
+                <option value="">Seleccionar cliente</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Field label="Titulo" value={form.title} onChange={(title) => onFormChange({ ...form, title })} />
+            <Field
+              label="Valido hasta"
+              type="date"
+              value={form.valid_until}
+              onChange={(validUntil) => onFormChange({ ...form, valid_until: validUntil })}
             />
-          </label>
-          <button disabled={isSaving || clients.length === 0} style={styles.primaryButton} type="submit">
-            Crear borrador
-          </button>
-        </form>
+            <label style={styles.label}>
+              Notas
+              <textarea
+                onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
+                rows={3}
+                style={styles.textarea}
+                value={form.notes}
+              />
+            </label>
+            <button disabled={isSaving || clients.length === 0} style={styles.primaryButton} type="submit">
+              Crear borrador
+            </button>
+          </form>
+        ) : null}
 
         <section style={styles.tablePanel} aria-labelledby="quotes-title">
           <div style={styles.panelHeader}>
             <h2 id="quotes-title" style={styles.panelTitle}>
               Presupuestos
             </h2>
+            <button onClick={() => setIsQuoteFormOpen(true)} style={styles.primaryButton} type="button">
+              Nuevo presupuesto
+            </button>
           </div>
           <div style={styles.quoteFilterBar}>
             <label style={styles.compactLabel}>
@@ -1618,6 +1638,11 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     padding: '18px 20px',
+  },
+  panelHeaderCompact: {
+    alignItems: 'center',
+    display: 'flex',
+    justifyContent: 'space-between',
   },
   panelTitle: {
     fontSize: '18px',

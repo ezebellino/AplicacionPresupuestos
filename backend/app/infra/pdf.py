@@ -69,9 +69,10 @@ def build_quote_pdf(
             ]
         )
 
+    item_table_widths = _item_table_widths(document.width)
     table = Table(
         table_data,
-        colWidths=[58 * mm, 24 * mm, 27 * mm, 22 * mm, 22 * mm, 27 * mm],
+        colWidths=item_table_widths,
         repeatRows=1,
     )
     table.setStyle(
@@ -143,6 +144,17 @@ def _format_date(value: datetime) -> str:
 
 def _money(value: Decimal) -> str:
     return f"{value:.2f}"
+
+
+def _item_table_widths(frame_width: float) -> list[float]:
+    return [
+        frame_width * 0.32,
+        frame_width * 0.13,
+        frame_width * 0.15,
+        frame_width * 0.12,
+        frame_width * 0.12,
+        frame_width * 0.16,
+    ]
 
 
 def _clean_text(value: str) -> str:

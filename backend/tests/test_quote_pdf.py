@@ -1,3 +1,9 @@
+from io import BytesIO
+
+from pypdf import PdfReader
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+
 from conftest import create_tenant_and_login
 
 
@@ -72,6 +78,12 @@ def create_issued_quote_with_item(client, headers):
     return issue_response.json()
 
 
+def extract_pdf_text(content: bytes) -> str:
+    reader = PdfReader(BytesIO(content))
+
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
 def test_issued_quote_pdf_returns_pdf_bytes(api_context) -> None:
     client, _ = api_context
     headers = create_tenant_and_login(
@@ -89,6 +101,94 @@ def test_issued_quote_pdf_returns_pdf_bytes(api_context) -> None:
         f'attachment; filename="presupuesto-{quote["number"]}.pdf"'
     )
     assert response.content.startswith(b"%PDF")
+
+
+def test_issued_quote_pdf_contains_human_readable_quote_content(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-pdf-content@acme.test",
+    )
+    quote = create_issued_quote_with_item(client, headers)
+
+    response = client.get(f"/quotes/{quote['id']}/pdf", headers=headers)
+
+    assert response.status_code == 200
+    text = extract_pdf_text(response.content)
+    assert "Presupuesto" in text
+    assert "Acme Clima" in text
+    assert quote["number"] in text
+    assert "Hospital Central" in text
+    assert "Bomba presurizadora" in text
+    assert "Equipo principal" in text
+    assert "Subtotal" in text
+    assert "IVA" in text
+    assert "Total" in text
+    assert "200.00" in text
+    assert "20.48" in text
+    assert "215.48" in text
+
+
+def test_quote_pdf_escapes_special_chars_without_losing_readable_text(
+    api_context,
+) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="A&B <script>",
+        email="admin-pdf-special@acme.test",
+    )
+    tenant_client = create_client(
+        client,
+        headers,
+        name="Hospital A&B <script>",
+    )
+    cost_item = create_cost_item(
+        client,
+        headers,
+        name="Bomba A&B <script>",
+        description="Equipo A&B <script>",
+    )
+    quote = create_quote(client, headers, tenant_client["id"])
+    add_quote_item(client, headers, quote["id"], cost_item["id"])
+    issue_response = client.post(f"/quotes/{quote['id']}/issue", headers=headers)
+    assert issue_response.status_code == 200
+
+    response = client.get(f"/quotes/{quote['id']}/pdf", headers=headers)
+
+    assert response.status_code == 200
+    text = extract_pdf_text(response.content)
+    assert "A&B" in text
+    assert "script" in text
+
+
+def test_quote_pdf_item_table_fits_inside_document_frame(api_context, monkeypatch) -> None:
+    from app.infra import pdf
+
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-pdf-width@acme.test",
+    )
+    quote = create_issued_quote_with_item(client, headers)
+    captured_widths = []
+    original_table = pdf.Table
+
+    def spy_table(*args, **kwargs):
+        if "colWidths" in kwargs:
+            captured_widths.append(kwargs["colWidths"])
+        return original_table(*args, **kwargs)
+
+    monkeypatch.setattr(pdf, "Table", spy_table)
+
+    response = client.get(f"/quotes/{quote['id']}/pdf", headers=headers)
+
+    assert response.status_code == 200
+    item_table_widths = captured_widths[0]
+    document_frame_width = A4[0] - (36 * mm)
+    assert sum(item_table_widths) <= document_frame_width
 
 
 def test_quote_pdf_requires_authentication(api_context) -> None:

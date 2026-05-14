@@ -958,7 +958,7 @@ function QuotesView({
               Presupuestos
             </h2>
           </div>
-          <div style={styles.filterBar}>
+          <div style={styles.quoteFilterBar}>
             <label style={styles.compactLabel}>
               Buscar
               <input
@@ -968,21 +968,25 @@ function QuotesView({
                 value={search}
               />
             </label>
-            <label style={styles.compactLabel}>
-              Estado
-              <select
-                onChange={(event) => setStatusFilter(event.target.value as QuoteStatus | 'all')}
-                style={styles.filterSelect}
-                value={statusFilter}
+            <div aria-label="Filtro de estado" style={styles.statusFilterRow}>
+              <button
+                onClick={() => setStatusFilter('all')}
+                style={statusFilter === 'all' ? styles.filterChipActive : styles.filterChip}
+                type="button"
               >
-                <option value="all">Todos</option>
-                {Object.entries(statusLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                Todos
+              </button>
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setStatusFilter(value as QuoteStatus)}
+                  style={statusFilter === value ? styles.filterChipActive : styles.filterChip}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           {quotes.length === 0 ? (
             <p style={styles.emptyState}>Todavia no hay presupuestos.</p>
@@ -997,8 +1001,10 @@ function QuotesView({
                   style={quote.id === selectedQuoteId ? styles.quoteListActive : styles.quoteListButton}
                   type="button"
                 >
-                  <span>{quote.number}</span>
-                  <strong>{formatMoney(quote.total)}</strong>
+                  <span style={styles.quoteRowMain}>
+                    <span style={styles.quoteNumber}>{quote.number}</span>
+                    <strong>{formatMoney(quote.total)}</strong>
+                  </span>
                   <StatusBadge status={quote.status} />
                 </button>
               ))}
@@ -1558,30 +1564,42 @@ const styles = {
   },
   quoteList: {
     display: 'grid',
-    gap: '8px',
-    padding: '14px',
+    gap: '6px',
+    padding: '10px',
   },
   quoteListButton: {
     background: '#ffffff',
-    border: '1px solid #e5eaf0',
-    borderRadius: '8px',
+    border: '1px solid transparent',
+    borderRadius: '6px',
     color: '#17202a',
     cursor: 'pointer',
-    display: 'grid',
-    gap: '4px',
-    padding: '12px',
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
     textAlign: 'left',
   },
   quoteListActive: {
     background: '#eaf1ff',
     border: '1px solid #9bbcff',
-    borderRadius: '8px',
+    borderRadius: '6px',
     color: '#17202a',
     cursor: 'pointer',
-    display: 'grid',
-    gap: '4px',
-    padding: '12px',
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
     textAlign: 'left',
+  },
+  quoteRowMain: {
+    display: 'grid',
+    gap: '3px',
+    minWidth: 0,
+  },
+  quoteNumber: {
+    color: '#526071',
+    fontSize: '13px',
+    fontWeight: 700,
   },
   inlineForm: {
     alignItems: 'end',
@@ -1608,6 +1626,12 @@ const styles = {
     borderBottom: '1px solid #edf1f5',
     display: 'flex',
     gap: '12px',
+    padding: '14px 20px',
+  },
+  quoteFilterBar: {
+    borderBottom: '1px solid #edf1f5',
+    display: 'grid',
+    gap: '10px',
     padding: '14px 20px',
   },
   compactLabel: {
@@ -1637,6 +1661,31 @@ const styles = {
     minWidth: '130px',
     padding: '9px 10px',
     textTransform: 'none',
+  },
+  statusFilterRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '6px',
+  },
+  filterChip: {
+    background: '#ffffff',
+    border: '1px solid #c9d3df',
+    borderRadius: '999px',
+    color: '#344054',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 700,
+    padding: '6px 9px',
+  },
+  filterChipActive: {
+    background: '#17202a',
+    border: '1px solid #17202a',
+    borderRadius: '999px',
+    color: '#ffffff',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 700,
+    padding: '6px 9px',
   },
   statusBadge: {
     borderRadius: '999px',

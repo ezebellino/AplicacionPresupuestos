@@ -59,6 +59,9 @@ class Tenant(TimestampMixin, Base):
 
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
     clients: Mapped[list["Client"]] = relationship(back_populates="tenant")
+    client_service_records: Mapped[list["ClientServiceRecord"]] = relationship(
+        back_populates="tenant"
+    )
     cost_items: Mapped[list["CostItem"]] = relationship(back_populates="tenant")
     quotes: Mapped[list["Quote"]] = relationship(back_populates="tenant")
 
@@ -99,6 +102,43 @@ class Client(TimestampMixin, Base):
         primaryjoin=lambda: and_(
             Client.id == foreign(Quote.client_id),
             Client.tenant_id == Quote.tenant_id,
+        ),
+    )
+    service_records: Mapped[list["ClientServiceRecord"]] = relationship(
+        back_populates="client",
+        primaryjoin=lambda: and_(
+            Client.id == foreign(ClientServiceRecord.client_id),
+            Client.tenant_id == ClientServiceRecord.tenant_id,
+        ),
+    )
+
+
+class ClientServiceRecord(TimestampMixin, Base):
+    __tablename__ = "client_service_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["client_id", "tenant_id"],
+            ["clients.id", "clients.tenant_id"],
+            name="fk_client_service_records_client_tenant",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    client_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+
+    tenant: Mapped[Tenant] = relationship(back_populates="client_service_records")
+    client: Mapped[Client] = relationship(
+        back_populates="service_records",
+        primaryjoin=lambda: and_(
+            foreign(ClientServiceRecord.client_id) == Client.id,
+            ClientServiceRecord.tenant_id == Client.tenant_id,
         ),
     )
 

@@ -33,6 +33,26 @@ describe('DashboardPage', () => {
           );
         }
 
+        if (url.endsWith('/clients/client-1/service-records')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: 'service-1',
+                    client_id: 'client-1',
+                    performed_at: '2026-05-14T10:30:00',
+                    title: 'Mantenimiento preventivo',
+                    description: 'Limpieza de filtros',
+                    amount: '125000.00',
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
         if (url.endsWith('/cost-items')) {
           return Promise.resolve(
             new Response(
@@ -121,5 +141,19 @@ describe('DashboardPage', () => {
 
     expect(screen.getByLabelText('Progreso del presupuesto')).toBeInTheDocument();
     expect(screen.getAllByText('Borrador').length).toBeGreaterThan(0);
+  });
+
+  it('opens a client service history from the clients table', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    await waitFor(() => expect(screen.getByText('Acme Clima')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Historial' }));
+
+    expect(await screen.findByText('Historial de Acme Clima')).toBeInTheDocument();
+    expect(screen.getByText('Mantenimiento preventivo')).toBeInTheDocument();
   });
 });

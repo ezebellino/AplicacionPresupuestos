@@ -5,6 +5,8 @@ import {
   apiClient,
   Client,
   ClientPayload,
+  ClientServiceRecord,
+  ClientServiceRecordPayload,
   CostCategory,
   CostItem,
   CostItemPayload,
@@ -27,6 +29,13 @@ type ClientForm = {
   phone: string;
   address: string;
   notes: string;
+};
+
+type ServiceRecordForm = {
+  performed_at: string;
+  title: string;
+  description: string;
+  amount: string;
 };
 
 type CostForm = {
@@ -58,6 +67,13 @@ const emptyClientForm: ClientForm = {
   phone: '',
   address: '',
   notes: '',
+};
+
+const emptyServiceRecordForm: ServiceRecordForm = {
+  performed_at: new Date().toISOString().slice(0, 10),
+  title: '',
+  description: '',
+  amount: '',
 };
 
 const emptyCostForm: CostForm = {
@@ -99,13 +115,16 @@ const statusLabels: Record<QuoteStatus, string> = {
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [activeView, setActiveView] = useState<View>('summary');
   const [clients, setClients] = useState<Client[]>([]);
+  const [clientServiceRecords, setClientServiceRecords] = useState<ClientServiceRecord[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
+  const [serviceRecordForm, setServiceRecordForm] = useState<ServiceRecordForm>(emptyServiceRecordForm);
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
   const [quoteForm, setQuoteForm] = useState<QuoteForm>(emptyQuoteForm);
   const [quoteItemForm, setQuoteItemForm] = useState<QuoteItemForm>(emptyQuoteItemForm);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -235,6 +254,57 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       notes: client.notes ?? '',
     });
     setActiveView('clients');
+  };
+
+  const openClientHistory = async (client: Client) => {
+    setSelectedClientId(client.id);
+    setActiveView('clients');
+
+    try {
+      const response = await apiClient.listClientServiceRecords(client.id);
+      setClientServiceRecords(response.items);
+    } catch {
+      setClientServiceRecords([]);
+      await Swal.fire({
+        title: 'No se pudo cargar el historial',
+        text: 'Verifica que tu sesion siga vigente e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
+  };
+
+  const handleServiceRecordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedClientId) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    const payload: ClientServiceRecordPayload = {
+      performed_at: `${serviceRecordForm.performed_at}T00:00:00`,
+      title: serviceRecordForm.title.trim(),
+      description: nullable(serviceRecordForm.description),
+      amount: nullable(serviceRecordForm.amount),
+    };
+
+    try {
+      await apiClient.createClientServiceRecord(selectedClientId, payload);
+      const response = await apiClient.listClientServiceRecords(selectedClientId);
+      setClientServiceRecords(response.items);
+      setServiceRecordForm(emptyServiceRecordForm);
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo guardar el servicio',
+        text: 'Revisa fecha, titulo e importe e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const editCost = (item: CostItem) => {
@@ -443,6 +513,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             form={clientForm}
             isSaving={isSaving}
             editingClientId={editingClientId}
+            selectedClientId={selectedClientId}
+            serviceRecordForm={serviceRecordForm}
+            serviceRecords={clientServiceRecords}
             onCancel={() => {
               setClientForm(emptyClientForm);
               setEditingClientId(null);
@@ -450,6 +523,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onDelete={deleteClient}
             onEdit={editClient}
             onFormChange={setClientForm}
+            onHistory={openClientHistory}
+            onServiceFormChange={setServiceRecordForm}
+            onServiceSubmit={handleServiceRecordSubmit}
             onSubmit={handleClientSubmit}
           />
         ) : null}
@@ -573,20 +649,32 @@ function ClientsView({
   editingClientId,
   form,
   isSaving,
+  selectedClientId,
+  serviceRecordForm,
+  serviceRecords,
   onCancel,
   onDelete,
   onEdit,
+  onHistory,
   onFormChange,
+  onServiceFormChange,
+  onServiceSubmit,
   onSubmit,
 }: {
   clients: Client[];
   editingClientId: string | null;
   form: ClientForm;
   isSaving: boolean;
+  selectedClientId: string | null;
+  serviceRecordForm: ServiceRecordForm;
+  serviceRecords: ClientServiceRecord[];
   onCancel: () => void;
   onDelete: (client: Client) => void;
   onEdit: (client: Client) => void;
+  onHistory: (client: Client) => void;
   onFormChange: (form: ClientForm) => void;
+  onServiceFormChange: (form: ServiceRecordForm) => void;
+  onServiceSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [search, setSearch] = useState('');
@@ -596,36 +684,102 @@ function ClientsView({
       search,
     ),
   );
+  const selectedClient = clients.find((client) => client.id === selectedClientId) ?? null;
 
   return (
     <section style={styles.workspaceGrid}>
-      <form onSubmit={onSubmit} style={styles.formPanel}>
-        <h2 style={styles.panelTitle}>{editingClientId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
-        <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
-        <Field label="CUIT/DNI" value={form.document} onChange={(document) => onFormChange({ ...form, document })} />
-        <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
-        <Field label="Telefono" value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
-        <Field label="Direccion" value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
-        <label style={styles.label}>
-          Notas
-          <textarea
-            onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
-            rows={3}
-            style={styles.textarea}
-            value={form.notes}
-          />
-        </label>
-        <div style={styles.actions}>
-          <button disabled={isSaving} style={styles.primaryButton} type="submit">
-            {editingClientId ? 'Guardar cambios' : 'Crear cliente'}
-          </button>
-          {editingClientId ? (
-            <button onClick={onCancel} style={styles.secondaryButton} type="button">
-              Cancelar
+      <div style={styles.sideStack}>
+        <form onSubmit={onSubmit} style={styles.formPanel}>
+          <h2 style={styles.panelTitle}>{editingClientId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+          <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
+          <Field label="CUIT/DNI" value={form.document} onChange={(document) => onFormChange({ ...form, document })} />
+          <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
+          <Field label="Telefono" value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
+          <Field label="Direccion" value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
+          <label style={styles.label}>
+            Notas
+            <textarea
+              onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
+              rows={3}
+              style={styles.textarea}
+              value={form.notes}
+            />
+          </label>
+          <div style={styles.actions}>
+            <button disabled={isSaving} style={styles.primaryButton} type="submit">
+              {editingClientId ? 'Guardar cambios' : 'Crear cliente'}
             </button>
-          ) : null}
-        </div>
-      </form>
+            {editingClientId ? (
+              <button onClick={onCancel} style={styles.secondaryButton} type="button">
+                Cancelar
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        {selectedClient ? (
+          <section style={styles.formPanel} aria-labelledby="client-history-title">
+            <h2 id="client-history-title" style={styles.panelTitle}>
+              Historial de {selectedClient.name}
+            </h2>
+            <form onSubmit={onServiceSubmit} style={styles.serviceForm}>
+              <Field
+                label="Fecha"
+                required
+                type="date"
+                value={serviceRecordForm.performed_at}
+                onChange={(performedAt) =>
+                  onServiceFormChange({ ...serviceRecordForm, performed_at: performedAt })
+                }
+              />
+              <Field
+                label="Servicio"
+                required
+                value={serviceRecordForm.title}
+                onChange={(title) => onServiceFormChange({ ...serviceRecordForm, title })}
+              />
+              <Field
+                label="Importe"
+                min="0"
+                step="0.01"
+                type="number"
+                value={serviceRecordForm.amount}
+                onChange={(amount) => onServiceFormChange({ ...serviceRecordForm, amount })}
+              />
+              <label style={styles.label}>
+                Detalle
+                <textarea
+                  onChange={(event) =>
+                    onServiceFormChange({ ...serviceRecordForm, description: event.target.value })
+                  }
+                  rows={3}
+                  style={styles.textarea}
+                  value={serviceRecordForm.description}
+                />
+              </label>
+              <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                Agregar servicio
+              </button>
+            </form>
+            {serviceRecords.length === 0 ? (
+              <p style={styles.compactEmpty}>Todavia no hay servicios registrados.</p>
+            ) : (
+              <div style={styles.serviceList}>
+                {serviceRecords.map((record) => (
+                  <article key={record.id} style={styles.serviceRecord}>
+                    <div>
+                      <strong>{record.title}</strong>
+                      <p style={styles.panelSubtitle}>{formatDate(record.performed_at)}</p>
+                    </div>
+                    {record.amount ? <span>{formatMoney(record.amount)}</span> : null}
+                    {record.description ? <p style={styles.serviceDescription}>{record.description}</p> : null}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
+      </div>
 
       <section style={styles.tablePanel} aria-labelledby="clients-title">
         <div style={styles.panelHeader}>
@@ -667,6 +821,9 @@ function ClientsView({
                   <td style={styles.tdRight}>
                     <button onClick={() => onEdit(client)} style={styles.linkButton} type="button">
                       Editar
+                    </button>
+                    <button onClick={() => onHistory(client)} style={styles.linkButton} type="button">
+                      Historial
                     </button>
                     <button onClick={() => onDelete(client)} style={styles.dangerButton} type="button">
                       Eliminar
@@ -1273,6 +1430,14 @@ function formatMoney(value: string): string {
   }).format(Number(value));
 }
 
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
 function navStyle(isActive: boolean): React.CSSProperties {
   return isActive ? styles.navActive : styles.navItem;
 }
@@ -1539,6 +1704,11 @@ const styles = {
     margin: 0,
     padding: '24px 20px',
   },
+  compactEmpty: {
+    color: '#526071',
+    fontSize: '14px',
+    margin: 0,
+  },
   categoryGrid: {
     display: 'grid',
     gap: '12px',
@@ -1561,6 +1731,28 @@ const styles = {
   sideStack: {
     display: 'grid',
     gap: '20px',
+  },
+  serviceForm: {
+    display: 'grid',
+    gap: '12px',
+  },
+  serviceList: {
+    display: 'grid',
+    gap: '10px',
+  },
+  serviceRecord: {
+    background: '#f8fafc',
+    border: '1px solid #e5eaf0',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '8px',
+    padding: '12px',
+  },
+  serviceDescription: {
+    color: '#526071',
+    fontSize: '13px',
+    lineHeight: 1.45,
+    margin: 0,
   },
   quoteList: {
     display: 'grid',

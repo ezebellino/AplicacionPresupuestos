@@ -19,6 +19,22 @@ export type ClientPayload = {
   notes?: string | null;
 };
 
+export type ClientServiceRecord = {
+  id: string;
+  client_id: string;
+  performed_at: string;
+  title: string;
+  description: string | null;
+  amount: string | null;
+};
+
+export type ClientServiceRecordPayload = {
+  performed_at: string;
+  title: string;
+  description?: string | null;
+  amount?: string | null;
+};
+
 export type CostCategory = 'equipment' | 'materials' | 'labor' | 'services';
 
 export type CostItem = {
@@ -156,6 +172,15 @@ export const apiClient = {
   deleteClient(id: string) {
     return request<void>(`/clients/${id}`, {
       method: 'DELETE',
+    });
+  },
+  listClientServiceRecords(clientId: string) {
+    return request<{ items: ClientServiceRecord[] }>(`/clients/${clientId}/service-records`);
+  },
+  createClientServiceRecord(clientId: string, payload: ClientServiceRecordPayload) {
+    return request<ClientServiceRecord>(`/clients/${clientId}/service-records`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
   listCostItems(category?: CostCategory) {

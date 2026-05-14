@@ -55,6 +55,33 @@ describe('DashboardPage', () => {
           );
         }
 
+        if (url.endsWith('/quotes')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: 'quote-1',
+                    client_id: 'client-1',
+                    number: 'Q-000001',
+                    status: 'draft',
+                    title: 'Instalacion',
+                    notes: null,
+                    valid_until: null,
+                    subtotal: '0.00',
+                    discount_total: '0.00',
+                    tax_total: '0.00',
+                    total: '0.00',
+                    issued_at: null,
+                    items: [],
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
         return Promise.resolve(new Response(null, { status: 404 }));
       }),
     );

@@ -8,13 +8,17 @@ import {
   CostCategory,
   CostItem,
   CostItemPayload,
+  Quote,
+  QuoteItemPayload,
+  QuotePayload,
+  QuoteStatus,
 } from '../../shared/api/client';
 
 type DashboardPageProps = {
   onLogout: () => void;
 };
 
-type View = 'summary' | 'clients' | 'costs';
+type View = 'summary' | 'clients' | 'costs' | 'quotes';
 
 type ClientForm = {
   name: string;
@@ -32,6 +36,19 @@ type CostForm = {
   unit: string;
   unit_cost: string;
   tax_rate: string;
+};
+
+type QuoteForm = {
+  client_id: string;
+  title: string;
+  notes: string;
+  valid_until: string;
+};
+
+type QuoteItemForm = {
+  source_cost_item_id: string;
+  quantity: string;
+  discount_amount: string;
 };
 
 const emptyClientForm: ClientForm = {
@@ -52,6 +69,19 @@ const emptyCostForm: CostForm = {
   tax_rate: '',
 };
 
+const emptyQuoteForm: QuoteForm = {
+  client_id: '',
+  title: '',
+  notes: '',
+  valid_until: '',
+};
+
+const emptyQuoteItemForm: QuoteItemForm = {
+  source_cost_item_id: '',
+  quantity: '1',
+  discount_amount: '0',
+};
+
 const categoryLabels: Record<CostCategory, string> = {
   equipment: 'Equipos',
   materials: 'Materiales',
@@ -59,20 +89,25 @@ const categoryLabels: Record<CostCategory, string> = {
   services: 'Servicios',
 };
 
-const quoteRows = [
-  { client: 'Acme Clima', quote: 'P-1024', status: 'Borrador', total: '$18.420' },
-  { client: 'Norte Obras', quote: 'P-1025', status: 'Emitido', total: '$9.870' },
-  { client: 'Soluciones HVAC', quote: 'P-1026', status: 'Aceptado', total: '$31.200' },
-];
+const statusLabels: Record<QuoteStatus, string> = {
+  draft: 'Borrador',
+  issued: 'Emitido',
+  accepted: 'Aceptado',
+  rejected: 'Rechazado',
+};
 
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [activeView, setActiveView] = useState<View>('summary');
   const [clients, setClients] = useState<Client[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
+  const [quoteForm, setQuoteForm] = useState<QuoteForm>(emptyQuoteForm);
+  const [quoteItemForm, setQuoteItemForm] = useState<QuoteItemForm>(emptyQuoteItemForm);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -92,7 +127,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const metrics = [
     { label: 'Clientes', value: String(clients.length) },
     { label: 'Costos activos', value: String(costItems.length) },
-    { label: 'Presupuestos', value: String(quoteRows.length) },
+    { label: 'Presupuestos', value: String(quotes.length) },
   ];
 
   const loadWorkspace = async () => {
@@ -100,12 +135,21 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setLoadError(null);
 
     try {
-      const [clientsResponse, costsResponse] = await Promise.all([
+      const [clientsResponse, costsResponse, quotesResponse] = await Promise.all([
         apiClient.listClients(),
         apiClient.listCostItems(),
+        apiClient.listQuotes(),
       ]);
       setClients(clientsResponse.items);
       setCostItems(costsResponse.items);
+      setQuotes(quotesResponse.items);
+      setSelectedQuoteId((current) => {
+        if (current && quotesResponse.items.some((quote) => quote.id === current)) {
+          return current;
+        }
+
+        return quotesResponse.items[0]?.id ?? null;
+      });
     } catch {
       setLoadError('No pude cargar los datos. Revisá que el backend esté activo y que tu sesión siga vigente.');
     } finally {
@@ -242,6 +286,110 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     await loadWorkspace();
   };
 
+  const handleQuoteSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
+
+    const payload: QuotePayload = {
+      client_id: quoteForm.client_id,
+      title: nullable(quoteForm.title),
+      notes: nullable(quoteForm.notes),
+      valid_until: quoteForm.valid_until ? `${quoteForm.valid_until}T00:00:00` : null,
+    };
+
+    try {
+      const quote = await apiClient.createQuote(payload);
+      setQuoteForm(emptyQuoteForm);
+      setSelectedQuoteId(quote.id);
+      await loadWorkspace();
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo crear el presupuesto',
+        text: 'Selecciona un cliente valido e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleQuoteItemSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!selectedQuoteId) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    const payload: QuoteItemPayload = {
+      source_cost_item_id: quoteItemForm.source_cost_item_id,
+      quantity: quoteItemForm.quantity,
+      discount_amount: quoteItemForm.discount_amount || '0',
+    };
+
+    try {
+      await apiClient.addQuoteItem(selectedQuoteId, payload);
+      setQuoteItemForm(emptyQuoteItemForm);
+      await loadWorkspace();
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo agregar el item',
+        text: 'El presupuesto debe estar en borrador y el costo debe estar activo.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const transitionQuote = async (quote: Quote, action: 'issue' | 'accept' | 'reject') => {
+    try {
+      if (action === 'issue') {
+        await apiClient.issueQuote(quote.id);
+      } else if (action === 'accept') {
+        await apiClient.acceptQuote(quote.id);
+      } else {
+        await apiClient.rejectQuote(quote.id);
+      }
+
+      await loadWorkspace();
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo cambiar el estado',
+        text: 'Recorda que solo se emiten borradores, y solo lo emitido puede aceptarse o rechazarse.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
+  };
+
+  const deleteQuoteItem = async (quote: Quote, itemId: string) => {
+    await apiClient.deleteQuoteItem(quote.id, itemId);
+    await loadWorkspace();
+  };
+
+  const downloadQuotePdf = async (quote: Quote) => {
+    try {
+      const blob = await apiClient.downloadQuotePdf(quote.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `presupuesto-${quote.number}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo descargar el PDF',
+        text: 'Verifica que el backend este activo y tu sesion siga vigente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
+  };
+
   return (
     <main style={styles.page}>
       <aside style={styles.sidebar} aria-label="Navegacion principal">
@@ -258,6 +406,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           </button>
           <button onClick={() => setActiveView('costs')} style={navStyle(activeView === 'costs')} type="button">
             Costos
+          </button>
+          <button onClick={() => setActiveView('quotes')} style={navStyle(activeView === 'quotes')} type="button">
+            Presupuestos
           </button>
         </nav>
       </aside>
@@ -278,8 +429,11 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         {activeView === 'summary' ? (
           <SummaryView
             costTotalsByCategory={costTotalsByCategory}
+            clients={clients}
             isLoading={isLoading}
             metrics={metrics}
+            onNewQuote={() => setActiveView('quotes')}
+            quotes={quotes}
           />
         ) : null}
 
@@ -316,20 +470,48 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onSubmit={handleCostSubmit}
           />
         ) : null}
+
+        {activeView === 'quotes' ? (
+          <QuotesView
+            clients={clients}
+            costItems={costItems}
+            form={quoteForm}
+            isSaving={isSaving}
+            itemForm={quoteItemForm}
+            onDeleteItem={deleteQuoteItem}
+            onDownloadPdf={downloadQuotePdf}
+            onFormChange={setQuoteForm}
+            onItemFormChange={setQuoteItemForm}
+            onItemSubmit={handleQuoteItemSubmit}
+            onSelectQuote={setSelectedQuoteId}
+            onSubmit={handleQuoteSubmit}
+            onTransition={transitionQuote}
+            quotes={quotes}
+            selectedQuoteId={selectedQuoteId}
+          />
+        ) : null}
       </section>
     </main>
   );
 }
 
 function SummaryView({
+  clients,
   costTotalsByCategory,
   isLoading,
   metrics,
+  onNewQuote,
+  quotes,
 }: {
+  clients: Client[];
   costTotalsByCategory: Record<CostCategory, number>;
   isLoading: boolean;
   metrics: { label: string; value: string }[];
+  onNewQuote: () => void;
+  quotes: Quote[];
 }) {
+  const recentQuotes = quotes.slice(0, 5);
+
   return (
     <>
       <section style={styles.metrics} aria-label="Indicadores">
@@ -363,14 +545,23 @@ function SummaryView({
             <h2 id="recent-quotes-title" style={styles.panelTitle}>
               Presupuestos recientes
             </h2>
-            <button style={styles.primaryButton} type="button">
+            <button onClick={onNewQuote} style={styles.primaryButton} type="button">
               Nuevo
             </button>
           </div>
-          <DataTable
-            headers={['Cliente', 'Presupuesto', 'Estado', 'Total']}
-            rows={quoteRows.map((row) => [row.client, row.quote, row.status, row.total])}
-          />
+          {recentQuotes.length === 0 ? (
+            <p style={styles.emptyState}>Todavia no hay presupuestos cargados.</p>
+          ) : (
+            <DataTable
+              headers={['Cliente', 'Presupuesto', 'Estado', 'Total']}
+              rows={recentQuotes.map((quote) => [
+                clientName(clients, quote.client_id),
+                quote.number,
+                statusLabels[quote.status],
+                formatMoney(quote.total),
+              ])}
+            />
+          )}
         </section>
       </section>
     </>
@@ -599,6 +790,245 @@ function CostsView({
   );
 }
 
+function QuotesView({
+  clients,
+  costItems,
+  form,
+  isSaving,
+  itemForm,
+  onDeleteItem,
+  onDownloadPdf,
+  onFormChange,
+  onItemFormChange,
+  onItemSubmit,
+  onSelectQuote,
+  onSubmit,
+  onTransition,
+  quotes,
+  selectedQuoteId,
+}: {
+  clients: Client[];
+  costItems: CostItem[];
+  form: QuoteForm;
+  isSaving: boolean;
+  itemForm: QuoteItemForm;
+  onDeleteItem: (quote: Quote, itemId: string) => void;
+  onDownloadPdf: (quote: Quote) => void;
+  onFormChange: (form: QuoteForm) => void;
+  onItemFormChange: (form: QuoteItemForm) => void;
+  onItemSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSelectQuote: (quoteId: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onTransition: (quote: Quote, action: 'issue' | 'accept' | 'reject') => void;
+  quotes: Quote[];
+  selectedQuoteId: string | null;
+}) {
+  const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
+  const canEditSelected = selectedQuote?.status === 'draft';
+
+  return (
+    <section style={styles.workspaceGrid}>
+      <div style={styles.sideStack}>
+        <form onSubmit={onSubmit} style={styles.formPanel}>
+          <h2 style={styles.panelTitle}>Nuevo presupuesto</h2>
+          <label style={styles.label}>
+            Cliente
+            <select
+              onChange={(event) => onFormChange({ ...form, client_id: event.target.value })}
+              required
+              style={styles.input}
+              value={form.client_id}
+            >
+              <option value="">Seleccionar cliente</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Field label="Titulo" value={form.title} onChange={(title) => onFormChange({ ...form, title })} />
+          <Field
+            label="Valido hasta"
+            type="date"
+            value={form.valid_until}
+            onChange={(validUntil) => onFormChange({ ...form, valid_until: validUntil })}
+          />
+          <label style={styles.label}>
+            Notas
+            <textarea
+              onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
+              rows={3}
+              style={styles.textarea}
+              value={form.notes}
+            />
+          </label>
+          <button disabled={isSaving || clients.length === 0} style={styles.primaryButton} type="submit">
+            Crear borrador
+          </button>
+        </form>
+
+        <section style={styles.tablePanel} aria-labelledby="quotes-title">
+          <div style={styles.panelHeader}>
+            <h2 id="quotes-title" style={styles.panelTitle}>
+              Presupuestos
+            </h2>
+          </div>
+          {quotes.length === 0 ? (
+            <p style={styles.emptyState}>Todavia no hay presupuestos.</p>
+          ) : (
+            <div style={styles.quoteList}>
+              {quotes.map((quote) => (
+                <button
+                  key={quote.id}
+                  onClick={() => onSelectQuote(quote.id)}
+                  style={quote.id === selectedQuoteId ? styles.quoteListActive : styles.quoteListButton}
+                  type="button"
+                >
+                  <span>{quote.number}</span>
+                  <strong>{formatMoney(quote.total)}</strong>
+                  <small>{statusLabels[quote.status]}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <section style={styles.tablePanel} aria-labelledby="quote-detail-title">
+        <div style={styles.panelHeader}>
+          <div>
+            <h2 id="quote-detail-title" style={styles.panelTitle}>
+              {selectedQuote ? selectedQuote.number : 'Detalle'}
+            </h2>
+            {selectedQuote ? (
+              <p style={styles.panelSubtitle}>
+                {clientName(clients, selectedQuote.client_id)} · {statusLabels[selectedQuote.status]}
+              </p>
+            ) : null}
+          </div>
+          {selectedQuote ? (
+            <div style={styles.actions}>
+              {selectedQuote.status === 'draft' ? (
+                <button onClick={() => onTransition(selectedQuote, 'issue')} style={styles.primaryButton} type="button">
+                  Emitir
+                </button>
+              ) : null}
+              {selectedQuote.status === 'issued' ? (
+                <>
+                  <button onClick={() => onTransition(selectedQuote, 'accept')} style={styles.primaryButton} type="button">
+                    Aceptar
+                  </button>
+                  <button onClick={() => onTransition(selectedQuote, 'reject')} style={styles.secondaryButton} type="button">
+                    Rechazar
+                  </button>
+                </>
+              ) : null}
+              <button onClick={() => onDownloadPdf(selectedQuote)} style={styles.secondaryButton} type="button">
+                PDF
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        {selectedQuote ? (
+          <>
+            {canEditSelected ? (
+              <form onSubmit={onItemSubmit} style={styles.inlineForm}>
+                <label style={styles.label}>
+                  Costo
+                  <select
+                    onChange={(event) =>
+                      onItemFormChange({ ...itemForm, source_cost_item_id: event.target.value })
+                    }
+                    required
+                    style={styles.input}
+                    value={itemForm.source_cost_item_id}
+                  >
+                    <option value="">Seleccionar costo</option>
+                    {costItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {categoryLabels[item.category]} · {item.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Field
+                  label="Cantidad"
+                  min="0.01"
+                  required
+                  step="0.01"
+                  type="number"
+                  value={itemForm.quantity}
+                  onChange={(quantity) => onItemFormChange({ ...itemForm, quantity })}
+                />
+                <Field
+                  label="Descuento"
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={itemForm.discount_amount}
+                  onChange={(discount) => onItemFormChange({ ...itemForm, discount_amount: discount })}
+                />
+                <button disabled={isSaving || costItems.length === 0} style={styles.primaryButton} type="submit">
+                  Agregar item
+                </button>
+              </form>
+            ) : null}
+
+            {selectedQuote.items.length === 0 ? (
+              <p style={styles.emptyState}>Agrega items desde el catalogo de costos.</p>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Item</th>
+                    <th style={styles.thRight}>Cant.</th>
+                    <th style={styles.thRight}>Unitario</th>
+                    <th style={styles.thRight}>IVA</th>
+                    <th style={styles.thRight}>Total</th>
+                    {canEditSelected ? <th style={styles.thRight}>Acciones</th> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedQuote.items.map((item) => (
+                    <tr key={item.id}>
+                      <td style={styles.td}>
+                        <strong>{item.name}</strong>
+                        <br />
+                        <span style={styles.mutedText}>{categoryLabels[item.category]}</span>
+                      </td>
+                      <td style={styles.tdRight}>{item.quantity}</td>
+                      <td style={styles.tdRight}>{formatMoney(item.unit_price)}</td>
+                      <td style={styles.tdRight}>{item.tax_rate}%</td>
+                      <td style={styles.tdRight}>{formatMoney(item.line_total)}</td>
+                      {canEditSelected ? (
+                        <td style={styles.tdRight}>
+                          <button onClick={() => onDeleteItem(selectedQuote, item.id)} style={styles.dangerButton} type="button">
+                            Quitar
+                          </button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <div style={styles.totals}>
+              <span>Subtotal {formatMoney(selectedQuote.subtotal)}</span>
+              <span>IVA {formatMoney(selectedQuote.tax_total)}</span>
+              <strong>Total {formatMoney(selectedQuote.total)}</strong>
+            </div>
+          </>
+        ) : (
+          <p style={styles.emptyState}>Selecciona o crea un presupuesto para ver el detalle.</p>
+        )}
+      </section>
+    </section>
+  );
+}
+
 function DataTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
   return (
     <table style={styles.table}>
@@ -658,6 +1088,10 @@ function compactPayload(form: ClientForm): ClientPayload {
     address: nullable(form.address),
     notes: nullable(form.notes),
   };
+}
+
+function clientName(clients: Client[], clientId: string): string {
+  return clients.find((client) => client.id === clientId)?.name ?? 'Cliente';
 }
 
 function nullable(value: string): string | null {
@@ -935,5 +1369,61 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     padding: '12px 14px',
+  },
+  panelSubtitle: {
+    color: '#526071',
+    fontSize: '13px',
+    margin: '4px 0 0',
+  },
+  sideStack: {
+    display: 'grid',
+    gap: '20px',
+  },
+  quoteList: {
+    display: 'grid',
+    gap: '8px',
+    padding: '14px',
+  },
+  quoteListButton: {
+    background: '#ffffff',
+    border: '1px solid #e5eaf0',
+    borderRadius: '8px',
+    color: '#17202a',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '4px',
+    padding: '12px',
+    textAlign: 'left',
+  },
+  quoteListActive: {
+    background: '#eaf1ff',
+    border: '1px solid #9bbcff',
+    borderRadius: '8px',
+    color: '#17202a',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '4px',
+    padding: '12px',
+    textAlign: 'left',
+  },
+  inlineForm: {
+    alignItems: 'end',
+    borderBottom: '1px solid #d9e0e7',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'minmax(220px, 1fr) 110px 130px auto',
+    padding: '16px 20px',
+  },
+  mutedText: {
+    color: '#667085',
+    fontSize: '13px',
+  },
+  totals: {
+    alignItems: 'center',
+    borderTop: '1px solid #d9e0e7',
+    display: 'flex',
+    gap: '18px',
+    justifyContent: 'flex-end',
+    padding: '16px 20px',
   },
 } satisfies Record<string, React.CSSProperties>;

@@ -1,0 +1,227 @@
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+
+export type Client = {
+  id: string;
+  name: string;
+  document: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+};
+
+export type ClientPayload = {
+  name: string;
+  document?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  notes?: string | null;
+};
+
+export type CostCategory = 'equipment' | 'materials' | 'labor' | 'services';
+
+export type CostItem = {
+  id: string;
+  category: CostCategory;
+  name: string;
+  description: string | null;
+  unit: string;
+  unit_cost: string;
+  tax_rate: string | null;
+  effective_tax_rate: string;
+  is_active: boolean;
+};
+
+export type CostItemPayload = {
+  category: CostCategory;
+  name: string;
+  description?: string | null;
+  unit: string;
+  unit_cost: string;
+  tax_rate?: string | null;
+};
+
+export type QuoteStatus = 'draft' | 'issued' | 'accepted' | 'rejected';
+
+export type QuoteItem = {
+  id: string;
+  source_cost_item_id: string | null;
+  category: CostCategory;
+  name: string;
+  description: string | null;
+  unit: string;
+  quantity: string;
+  unit_price: string;
+  tax_rate: string;
+  discount_amount: string;
+  line_subtotal: string;
+  line_tax: string;
+  line_total: string;
+  position: number;
+};
+
+export type Quote = {
+  id: string;
+  client_id: string;
+  number: string;
+  status: QuoteStatus;
+  title: string | null;
+  notes: string | null;
+  valid_until: string | null;
+  subtotal: string;
+  discount_total: string;
+  tax_total: string;
+  total: string;
+  issued_at: string | null;
+  items: QuoteItem[];
+};
+
+export type QuotePayload = {
+  client_id: string;
+  title?: string | null;
+  notes?: string | null;
+  valid_until?: string | null;
+};
+
+export type QuoteItemPayload = {
+  source_cost_item_id: string;
+  quantity: string;
+  discount_amount?: string;
+};
+
+export type LoginRequest = {
+  email: string;
+  password: string;
+};
+
+export type LoginResponse = {
+  access_token: string;
+  token_type: string;
+};
+
+async function request<TResponse>(
+  path: string,
+  options: RequestInit = {},
+): Promise<TResponse> {
+  const token = localStorage.getItem('auth_token');
+  const headers = new Headers(options.headers);
+
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed with status ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return undefined as TResponse;
+  }
+
+  return response.json() as Promise<TResponse>;
+}
+
+export const apiClient = {
+  login(payload: LoginRequest) {
+    return request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  listClients() {
+    return request<{ items: Client[] }>('/clients');
+  },
+  createClient(payload: ClientPayload) {
+    return request<Client>('/clients', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updateClient(id: string, payload: ClientPayload) {
+    return request<Client>(`/clients/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteClient(id: string) {
+    return request<void>(`/clients/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  listCostItems(category?: CostCategory) {
+    const suffix = category ? `?category=${category}` : '';
+    return request<{ items: CostItem[] }>(`/cost-items${suffix}`);
+  },
+  createCostItem(payload: CostItemPayload) {
+    return request<CostItem>('/cost-items', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updateCostItem(id: string, payload: CostItemPayload) {
+    return request<CostItem>(`/cost-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteCostItem(id: string) {
+    return request<void>(`/cost-items/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  listQuotes() {
+    return request<{ items: Quote[] }>('/quotes');
+  },
+  createQuote(payload: QuotePayload) {
+    return request<Quote>('/quotes', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  addQuoteItem(quoteId: string, payload: QuoteItemPayload) {
+    return request<QuoteItem>(`/quotes/${quoteId}/items`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteQuoteItem(quoteId: string, itemId: string) {
+    return request<void>(`/quotes/${quoteId}/items/${itemId}`, {
+      method: 'DELETE',
+    });
+  },
+  issueQuote(id: string) {
+    return request<Quote>(`/quotes/${id}/issue`, { method: 'POST' });
+  },
+  acceptQuote(id: string) {
+    return request<Quote>(`/quotes/${id}/accept`, { method: 'POST' });
+  },
+  rejectQuote(id: string) {
+    return request<Quote>(`/quotes/${id}/reject`, { method: 'POST' });
+  },
+  async downloadQuotePdf(id: string) {
+    const token = localStorage.getItem('auth_token');
+    const headers = new Headers();
+
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+
+    const response = await fetch(`${API_URL}/quotes/${id}/pdf`, { headers });
+
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+
+    return response.blob();
+  },
+};

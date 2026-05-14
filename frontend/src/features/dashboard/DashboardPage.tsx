@@ -589,6 +589,14 @@ function ClientsView({
   onFormChange: (form: ClientForm) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const [search, setSearch] = useState('');
+  const filteredClients = clients.filter((client) =>
+    matchesSearch(
+      [client.name, client.document, client.email, client.phone, client.address],
+      search,
+    ),
+  );
+
   return (
     <section style={styles.workspaceGrid}>
       <form onSubmit={onSubmit} style={styles.formPanel}>
@@ -625,8 +633,21 @@ function ClientsView({
             Clientes
           </h2>
         </div>
+        <div style={styles.filterBar}>
+          <label style={styles.compactLabel}>
+            Buscar
+            <input
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Nombre, documento o contacto"
+              style={styles.searchInput}
+              value={search}
+            />
+          </label>
+        </div>
         {clients.length === 0 ? (
           <p style={styles.emptyState}>Todavia no hay clientes cargados.</p>
+        ) : filteredClients.length === 0 ? (
+          <p style={styles.emptyState}>No hay clientes que coincidan con la busqueda.</p>
         ) : (
           <table style={styles.table}>
             <thead>
@@ -638,7 +659,7 @@ function ClientsView({
               </tr>
             </thead>
             <tbody>
-              {clients.map((client) => (
+              {filteredClients.map((client) => (
                 <tr key={client.id}>
                   <td style={styles.td}>{client.name}</td>
                   <td style={styles.td}>{client.email || client.phone || '-'}</td>
@@ -682,6 +703,20 @@ function CostsView({
   onFormChange: (form: CostForm) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<CostCategory | 'all'>('all');
+  const filteredCostItems = costItems.filter((item) => {
+    const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+
+    return (
+      matchesCategory &&
+      matchesSearch(
+        [item.name, item.description, item.unit, categoryLabels[item.category]],
+        search,
+      )
+    );
+  });
+
   return (
     <section style={styles.workspaceGrid}>
       <form onSubmit={onSubmit} style={styles.formPanel}>
@@ -748,8 +783,36 @@ function CostsView({
             Catalogo de costos
           </h2>
         </div>
+        <div style={styles.filterBar}>
+          <label style={styles.compactLabel}>
+            Buscar
+            <input
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Nombre, unidad o categoria"
+              style={styles.searchInput}
+              value={search}
+            />
+          </label>
+          <label style={styles.compactLabel}>
+            Categoria
+            <select
+              onChange={(event) => setCategoryFilter(event.target.value as CostCategory | 'all')}
+              style={styles.filterSelect}
+              value={categoryFilter}
+            >
+              <option value="all">Todas</option>
+              {Object.entries(categoryLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {costItems.length === 0 ? (
           <p style={styles.emptyState}>Todavia no hay costos cargados.</p>
+        ) : filteredCostItems.length === 0 ? (
+          <p style={styles.emptyState}>No hay costos para esos filtros.</p>
         ) : (
           <table style={styles.table}>
             <thead>
@@ -763,9 +826,11 @@ function CostsView({
               </tr>
             </thead>
             <tbody>
-              {costItems.map((item) => (
+              {filteredCostItems.map((item) => (
                 <tr key={item.id}>
-                  <td style={styles.td}>{categoryLabels[item.category]}</td>
+                  <td style={styles.td}>
+                    <CategoryBadge category={item.category} />
+                  </td>
                   <td style={styles.td}>{item.name}</td>
                   <td style={styles.td}>{item.unit}</td>
                   <td style={styles.tdRight}>{formatMoney(item.unit_cost)}</td>
@@ -823,6 +888,25 @@ function QuotesView({
   quotes: Quote[];
   selectedQuoteId: string | null;
 }) {
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
+  const filteredQuotes = quotes.filter((quote) => {
+    const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
+
+    return (
+      matchesStatus &&
+      matchesSearch(
+        [
+          quote.number,
+          quote.title,
+          quote.notes,
+          statusLabels[quote.status],
+          clientName(clients, quote.client_id),
+        ],
+        search,
+      )
+    );
+  });
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
   const canEditSelected = selectedQuote?.status === 'draft';
 
@@ -874,11 +958,39 @@ function QuotesView({
               Presupuestos
             </h2>
           </div>
+          <div style={styles.filterBar}>
+            <label style={styles.compactLabel}>
+              Buscar
+              <input
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cliente, numero o titulo"
+                style={styles.searchInput}
+                value={search}
+              />
+            </label>
+            <label style={styles.compactLabel}>
+              Estado
+              <select
+                onChange={(event) => setStatusFilter(event.target.value as QuoteStatus | 'all')}
+                style={styles.filterSelect}
+                value={statusFilter}
+              >
+                <option value="all">Todos</option>
+                {Object.entries(statusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {quotes.length === 0 ? (
             <p style={styles.emptyState}>Todavia no hay presupuestos.</p>
+          ) : filteredQuotes.length === 0 ? (
+            <p style={styles.emptyState}>No hay presupuestos para esos filtros.</p>
           ) : (
             <div style={styles.quoteList}>
-              {quotes.map((quote) => (
+              {filteredQuotes.map((quote) => (
                 <button
                   key={quote.id}
                   onClick={() => onSelectQuote(quote.id)}
@@ -887,7 +999,7 @@ function QuotesView({
                 >
                   <span>{quote.number}</span>
                   <strong>{formatMoney(quote.total)}</strong>
-                  <small>{statusLabels[quote.status]}</small>
+                  <StatusBadge status={quote.status} />
                 </button>
               ))}
             </div>
@@ -902,9 +1014,10 @@ function QuotesView({
               {selectedQuote ? selectedQuote.number : 'Detalle'}
             </h2>
             {selectedQuote ? (
-              <p style={styles.panelSubtitle}>
-                {clientName(clients, selectedQuote.client_id)} · {statusLabels[selectedQuote.status]}
-              </p>
+              <div style={styles.detailMeta}>
+                <span>{clientName(clients, selectedQuote.client_id)}</span>
+                <StatusBadge status={selectedQuote.status} />
+              </div>
             ) : null}
           </div>
           {selectedQuote ? (
@@ -933,6 +1046,8 @@ function QuotesView({
 
         {selectedQuote ? (
           <>
+            <QuoteProgress quote={selectedQuote} />
+
             {canEditSelected ? (
               <form onSubmit={onItemSubmit} style={styles.inlineForm}>
                 <label style={styles.label}>
@@ -1056,6 +1171,42 @@ function DataTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
   );
 }
 
+function StatusBadge({ status }: { status: QuoteStatus }) {
+  return <span style={{ ...styles.statusBadge, ...statusBadgeStyle(status) }}>{statusLabels[status]}</span>;
+}
+
+function CategoryBadge({ category }: { category: CostCategory }) {
+  return <span style={styles.categoryBadge}>{categoryLabels[category]}</span>;
+}
+
+function QuoteProgress({ quote }: { quote: Quote }) {
+  const steps = [
+    { key: 'client', label: 'Cliente', isDone: true },
+    { key: 'items', label: 'Items', isDone: quote.items.length > 0 },
+    {
+      key: 'issued',
+      label: quote.status === 'rejected' ? 'Rechazado' : 'Emitido',
+      isDone: quote.status !== 'draft',
+    },
+    {
+      key: 'decision',
+      label: quote.status === 'accepted' ? 'Aceptado' : 'Decision',
+      isDone: quote.status === 'accepted' || quote.status === 'rejected',
+    },
+  ];
+
+  return (
+    <div style={styles.progressBar} aria-label="Progreso del presupuesto">
+      {steps.map((step) => (
+        <div key={step.key} style={styles.progressStep}>
+          <span style={step.isDone ? styles.progressDotDone : styles.progressDot} />
+          <span style={step.isDone ? styles.progressLabelDone : styles.progressLabel}>{step.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Field({
   label,
   onChange,
@@ -1094,6 +1245,16 @@ function clientName(clients: Client[], clientId: string): string {
   return clients.find((client) => client.id === clientId)?.name ?? 'Cliente';
 }
 
+function matchesSearch(values: Array<string | null>, search: string): boolean {
+  const term = search.trim().toLowerCase();
+
+  if (!term) {
+    return true;
+  }
+
+  return values.some((value) => value?.toLowerCase().includes(term));
+}
+
 function nullable(value: string): string | null {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -1108,6 +1269,22 @@ function formatMoney(value: string): string {
 
 function navStyle(isActive: boolean): React.CSSProperties {
   return isActive ? styles.navActive : styles.navItem;
+}
+
+function statusBadgeStyle(status: QuoteStatus): React.CSSProperties {
+  if (status === 'accepted') {
+    return styles.statusAccepted;
+  }
+
+  if (status === 'issued') {
+    return styles.statusIssued;
+  }
+
+  if (status === 'rejected') {
+    return styles.statusRejected;
+  }
+
+  return styles.statusDraft;
 }
 
 const styles = {
@@ -1425,5 +1602,121 @@ const styles = {
     gap: '18px',
     justifyContent: 'flex-end',
     padding: '16px 20px',
+  },
+  filterBar: {
+    alignItems: 'end',
+    borderBottom: '1px solid #edf1f5',
+    display: 'flex',
+    gap: '12px',
+    padding: '14px 20px',
+  },
+  compactLabel: {
+    color: '#526071',
+    display: 'grid',
+    flex: 1,
+    fontSize: '12px',
+    fontWeight: 700,
+    gap: '6px',
+    textTransform: 'uppercase',
+  },
+  searchInput: {
+    border: '1px solid #c9d3df',
+    borderRadius: '6px',
+    color: '#17202a',
+    font: 'inherit',
+    fontSize: '14px',
+    padding: '9px 10px',
+    textTransform: 'none',
+  },
+  filterSelect: {
+    border: '1px solid #c9d3df',
+    borderRadius: '6px',
+    color: '#17202a',
+    font: 'inherit',
+    fontSize: '14px',
+    minWidth: '130px',
+    padding: '9px 10px',
+    textTransform: 'none',
+  },
+  statusBadge: {
+    borderRadius: '999px',
+    display: 'inline-flex',
+    fontSize: '12px',
+    fontWeight: 700,
+    justifySelf: 'start',
+    lineHeight: 1,
+    padding: '6px 8px',
+  },
+  statusDraft: {
+    background: '#eef2f7',
+    color: '#475467',
+  },
+  statusIssued: {
+    background: '#eaf1ff',
+    color: '#1d4ed8',
+  },
+  statusAccepted: {
+    background: '#ecfdf3',
+    color: '#027a48',
+  },
+  statusRejected: {
+    background: '#fff1f2',
+    color: '#be123c',
+  },
+  categoryBadge: {
+    background: '#f8fafc',
+    border: '1px solid #d9e0e7',
+    borderRadius: '999px',
+    color: '#344054',
+    display: 'inline-flex',
+    fontSize: '12px',
+    fontWeight: 700,
+    lineHeight: 1,
+    padding: '6px 8px',
+  },
+  detailMeta: {
+    alignItems: 'center',
+    color: '#526071',
+    display: 'flex',
+    fontSize: '13px',
+    gap: '8px',
+    marginTop: '6px',
+  },
+  progressBar: {
+    alignItems: 'center',
+    borderBottom: '1px solid #edf1f5',
+    display: 'grid',
+    gap: '10px',
+    gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+    padding: '16px 20px',
+  },
+  progressStep: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: '8px',
+  },
+  progressDot: {
+    background: '#d0d5dd',
+    borderRadius: '999px',
+    display: 'inline-block',
+    height: '10px',
+    width: '10px',
+  },
+  progressDotDone: {
+    background: '#027a48',
+    borderRadius: '999px',
+    display: 'inline-block',
+    height: '10px',
+    width: '10px',
+  },
+  progressLabel: {
+    color: '#667085',
+    fontSize: '13px',
+    fontWeight: 700,
+  },
+  progressLabelDone: {
+    color: '#17202a',
+    fontSize: '13px',
+    fontWeight: 700,
   },
 } satisfies Record<string, React.CSSProperties>;

@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardPage } from './DashboardPage';
@@ -102,5 +103,23 @@ describe('DashboardPage', () => {
       expect(screen.getByText('Equipos')).toBeInTheDocument();
       expect(screen.getByText('Presupuestos recientes')).toBeInTheDocument();
     });
+  });
+
+  it('filters costs by category and shows quote progress badges', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Costos' }));
+    await waitFor(() => expect(screen.getByText('Equipo split 3000 frigorias')).toBeInTheDocument());
+
+    await user.selectOptions(screen.getAllByLabelText('Categoria')[1], 'materials');
+
+    expect(screen.getByText('No hay costos para esos filtros.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+
+    expect(screen.getByLabelText('Progreso del presupuesto')).toBeInTheDocument();
+    expect(screen.getAllByText('Borrador').length).toBeGreaterThan(0);
   });
 });

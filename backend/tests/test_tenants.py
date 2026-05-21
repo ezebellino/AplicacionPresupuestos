@@ -1,4 +1,7 @@
 from conftest import create_tenant_and_login
+from sqlalchemy import select
+
+from app.infra.models import User
 
 
 def test_tenant_profile_update_does_not_accept_fiscal_fields(api_context) -> None:
@@ -72,3 +75,87 @@ def test_tenant_change_request_requires_a_fiscal_field(api_context) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_public_signup_request_and_platform_review(api_context) -> None:
+    client, SessionLocal = api_context
+    platform_headers = create_tenant_and_login(
+        client,
+        name="FacturEasy",
+        email="platform@factureasy.test",
+    )
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "platform@factureasy.test"))
+        assert user is not None
+        user.role = "platform_admin"
+        db.commit()
+
+    signup = client.post(
+        "/admin/tenants/signup-requests",
+        json={
+            "company_name": "DM Refrigeracion",
+            "contact_name": "Diego",
+            "email": "dm@test.com",
+            "phone": "3515550101",
+            "business_type": "Refrigeracion",
+        },
+    )
+
+    assert signup.status_code == 201
+    assert signup.json()["status"] == "pending"
+
+    listed = client.get("/admin/tenants/platform/signup-requests", headers=platform_headers)
+
+    assert listed.status_code == 200
+    assert len(listed.json()["items"]) == 1
+
+    contacted = client.post(
+        f"/admin/tenants/platform/signup-requests/{signup.json()['id']}/contacted",
+        headers=platform_headers,
+        json={"review_notes": "Contactado por WhatsApp"},
+    )
+
+    assert contacted.status_code == 200
+    assert contacted.json()["status"] == "contacted"
+
+
+def test_platform_admin_can_approve_fiscal_change_request(api_context) -> None:
+    client, SessionLocal = api_context
+    tenant_headers = create_tenant_and_login(
+        client,
+        name="DM Refrigeracion",
+        email="admin@dm.test",
+    )
+    platform_headers = create_tenant_and_login(
+        client,
+        name="FacturEasy",
+        email="platform@factureasy.test",
+    )
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "platform@factureasy.test"))
+        assert user is not None
+        user.role = "platform_admin"
+        db.commit()
+
+    change_request = client.post(
+        "/admin/tenants/me/change-requests",
+        headers=tenant_headers,
+        json={"proposed_legal_name": "DM Refrigeracion SRL"},
+    )
+
+    assert change_request.status_code == 201
+
+    approved = client.post(
+        f"/admin/tenants/platform/change-requests/{change_request.json()['id']}/approve",
+        headers=platform_headers,
+        json={"review_notes": "Documentacion validada"},
+    )
+
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+
+    profile = client.get("/admin/tenants/me", headers=tenant_headers)
+
+    assert profile.json()["legal_name"] == "DM Refrigeracion SRL"

@@ -70,6 +70,37 @@ class TenantChangeRequestList(BaseModel):
     items: list[TenantChangeRequestRead]
 
 
+class PlatformReviewUpdate(BaseModel):
+    review_notes: str | None = None
+
+
+class TenantSignupRequestCreate(BaseModel):
+    company_name: str
+    contact_name: str
+    email: str
+    phone: str
+    business_type: str | None = None
+    message: str | None = None
+
+
+class TenantSignupRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    company_name: str
+    contact_name: str
+    email: str
+    phone: str
+    business_type: str | None
+    message: str | None
+    status: str
+    review_notes: str | None
+
+
+class TenantSignupRequestList(BaseModel):
+    items: list[TenantSignupRequestRead]
+
+
 class TenantAdminRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -57,11 +57,40 @@ export type TenantChangeRequest = {
   reason: string | null;
 };
 
+export type TenantSignupRequest = {
+  id: string;
+  company_name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  business_type: string | null;
+  message: string | null;
+  status: string;
+  review_notes: string | null;
+};
+
+export type TenantSignupRequestPayload = {
+  company_name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  business_type?: string | null;
+  message?: string | null;
+};
+
 export type TenantChangeRequestPayload = {
   proposed_name?: string | null;
   proposed_legal_name?: string | null;
   proposed_tax_id?: string | null;
   reason?: string | null;
+};
+
+export type CurrentUser = {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role: string;
+  tenant: TenantProfile;
 };
 
 export type ClientServiceRecord = {
@@ -200,6 +229,15 @@ export const apiClient = {
       body: JSON.stringify(payload),
     });
   },
+  getCurrentUser() {
+    return request<CurrentUser>('/auth/me');
+  },
+  createTenantSignupRequest(payload: TenantSignupRequestPayload) {
+    return request<TenantSignupRequest>('/admin/tenants/signup-requests', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
   getTenantProfile() {
     return request<TenantProfile>('/admin/tenants/me');
   },
@@ -216,6 +254,36 @@ export const apiClient = {
     return request<TenantChangeRequest>('/admin/tenants/me/change-requests', {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+  listPlatformSignupRequests() {
+    return request<{ items: TenantSignupRequest[] }>('/admin/tenants/platform/signup-requests');
+  },
+  markPlatformSignupRequestContacted(id: string, reviewNotes?: string | null) {
+    return request<TenantSignupRequest>(`/admin/tenants/platform/signup-requests/${id}/contacted`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  rejectPlatformSignupRequest(id: string, reviewNotes?: string | null) {
+    return request<TenantSignupRequest>(`/admin/tenants/platform/signup-requests/${id}/rejected`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  listPlatformChangeRequests() {
+    return request<{ items: TenantChangeRequest[] }>('/admin/tenants/platform/change-requests');
+  },
+  approvePlatformChangeRequest(id: string, reviewNotes?: string | null) {
+    return request<TenantChangeRequest>(`/admin/tenants/platform/change-requests/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  rejectPlatformChangeRequest(id: string, reviewNotes?: string | null) {
+    return request<TenantChangeRequest>(`/admin/tenants/platform/change-requests/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
     });
   },
   listClients() {

@@ -76,3 +76,12 @@ npm run build
 ## Nota de seguridad
 
 Los datos fiscales del tenant (`empresa`, `razón social`, `CUIT`) quedan bloqueados para edición directa. Los cambios se registran como solicitudes pendientes para revisión administrativa, evitando que un usuario cambie identidad fiscal sin control.
+
+## Administración de plataforma
+
+El rol `platform_admin` habilita la vista `Plataforma` dentro del dashboard. Desde ahí se revisan:
+
+- Solicitudes públicas de alta SaaS enviadas desde el login.
+- Solicitudes de cambio fiscal enviadas por empresas existentes.
+
+Para el primer despliegue, crear una empresa interna de plataforma y promover su usuario admin actualizando `users.role = 'platform_admin'` en la base de datos. Luego ese usuario puede revisar solicitudes desde la UI. La creación efectiva de cuentas nuevas sigue siendo manual y controlada por el administrador de plataforma.

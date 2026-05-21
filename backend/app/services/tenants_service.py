@@ -3,8 +3,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.infra.models import Tenant, TenantChangeRequest, User
-from app.schemas.tenants import TenantChangeRequestCreate, TenantCreate
+from app.infra.models import Tenant, TenantChangeRequest, TenantSignupRequest, User, utc_now
+from app.schemas.tenants import (
+    PlatformReviewUpdate,
+    TenantChangeRequestCreate,
+    TenantCreate,
+    TenantSignupRequestCreate,
+)
 
 
 def create_tenant_with_admin(db: Session, payload: TenantCreate) -> tuple[Tenant, User]:
@@ -46,6 +51,70 @@ def list_tenant_change_requests(db: Session, user: User) -> list[TenantChangeReq
     )
 
 
+def list_platform_tenant_change_requests(db: Session) -> list[TenantChangeRequest]:
+    return list(
+        db.scalars(
+            select(TenantChangeRequest).order_by(TenantChangeRequest.created_at.desc())
+        )
+    )
+
+
+def approve_tenant_change_request(
+    db: Session,
+    reviewer: User,
+    request_id,
+    payload: PlatformReviewUpdate,
+) -> TenantChangeRequest | None:
+    request = db.get(TenantChangeRequest, request_id)
+
+    if request is None:
+        return None
+
+    if request.status != "pending":
+        raise ValueError("request is not pending")
+
+    tenant = request.tenant
+    if request.proposed_name:
+        tenant.name = request.proposed_name
+    if request.proposed_legal_name:
+        tenant.legal_name = request.proposed_legal_name
+    if request.proposed_tax_id:
+        tenant.tax_id = request.proposed_tax_id
+
+    request.status = "approved"
+    request.reviewed_at = utc_now()
+    request.reviewed_by_user_id = reviewer.id
+    request.review_notes = _clean(payload.review_notes)
+    db.commit()
+    db.refresh(request)
+
+    return request
+
+
+def reject_tenant_change_request(
+    db: Session,
+    reviewer: User,
+    request_id,
+    payload: PlatformReviewUpdate,
+) -> TenantChangeRequest | None:
+    request = db.get(TenantChangeRequest, request_id)
+
+    if request is None:
+        return None
+
+    if request.status != "pending":
+        raise ValueError("request is not pending")
+
+    request.status = "rejected"
+    request.reviewed_at = utc_now()
+    request.reviewed_by_user_id = reviewer.id
+    request.review_notes = _clean(payload.review_notes)
+    db.commit()
+    db.refresh(request)
+
+    return request
+
+
 def create_tenant_change_request(
     db: Session,
     user: User,
@@ -73,6 +142,60 @@ def create_tenant_change_request(
     )
 
     db.add(request)
+    db.commit()
+    db.refresh(request)
+
+    return request
+
+
+def create_tenant_signup_request(
+    db: Session,
+    payload: TenantSignupRequestCreate,
+) -> TenantSignupRequest:
+    request = TenantSignupRequest(
+        company_name=payload.company_name.strip(),
+        contact_name=payload.contact_name.strip(),
+        email=payload.email.strip().lower(),
+        phone=payload.phone.strip(),
+        business_type=_clean(payload.business_type),
+        message=_clean(payload.message),
+        status="pending",
+    )
+
+    if not request.company_name or not request.contact_name or not request.email or not request.phone:
+        raise ValueError("company, contact, email and phone are required")
+
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+
+    return request
+
+
+def list_tenant_signup_requests(db: Session) -> list[TenantSignupRequest]:
+    return list(
+        db.scalars(
+            select(TenantSignupRequest).order_by(TenantSignupRequest.created_at.desc())
+        )
+    )
+
+
+def update_tenant_signup_request_status(
+    db: Session,
+    reviewer: User,
+    request_id,
+    status: str,
+    payload: PlatformReviewUpdate,
+) -> TenantSignupRequest | None:
+    request = db.get(TenantSignupRequest, request_id)
+
+    if request is None:
+        return None
+
+    request.status = status
+    request.reviewed_at = utc_now()
+    request.reviewed_by_user_id = reviewer.id
+    request.review_notes = _clean(payload.review_notes)
     db.commit()
     db.refresh(request)
 

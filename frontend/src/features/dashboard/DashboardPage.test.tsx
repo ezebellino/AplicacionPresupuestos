@@ -24,6 +24,33 @@ describe('DashboardPage', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string, options?: RequestInit) => {
+        if (url.endsWith('/auth/me')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: 'user-1',
+                tenant_id: 'tenant-1',
+                email: 'admin@empresa.test',
+                role: 'admin',
+                tenant: {
+                  id: 'tenant-1',
+                  name: 'Empresa Demo',
+                  legal_name: null,
+                  tax_id: null,
+                  address: null,
+                  phone: null,
+                  email: null,
+                  website: null,
+                  logo_url: null,
+                  invoice_notes: null,
+                  default_tax_rate: '21.00',
+                },
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
         if (url.endsWith('/admin/tenants/me')) {
           if (options?.method === 'PATCH') {
             return Promise.resolve(

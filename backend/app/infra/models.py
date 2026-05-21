@@ -102,6 +102,24 @@ class TenantChangeRequest(TimestampMixin, Base):
     tenant: Mapped[Tenant] = relationship(back_populates="change_requests")
 
 
+class TenantSignupRequest(TimestampMixin, Base):
+    __tablename__ = "tenant_signup_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    phone: Mapped[str] = mapped_column(String(100), nullable=False)
+    business_type: Mapped[str | None] = mapped_column(String(255))
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id")
+    )
+    review_notes: Mapped[str | None] = mapped_column(Text)
+
+
 class User(TimestampMixin, Base):
     __tablename__ = "users"
 

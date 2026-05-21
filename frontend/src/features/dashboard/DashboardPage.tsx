@@ -10,12 +10,14 @@ import {
   CostCategory,
   CostItem,
   CostItemPayload,
+  CurrentUser,
   Quote,
   QuoteItemPayload,
   QuotePayload,
   QuoteStatus,
   TenantProfile,
   TenantChangeRequest,
+  TenantSignupRequest,
   TenantChangeRequestPayload,
   TenantProfilePayload,
 } from '../../shared/api/client';
@@ -24,7 +26,7 @@ type DashboardPageProps = {
   onLogout: () => void;
 };
 
-type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company';
+type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' | 'platform';
 
 type ClientForm = {
   name: string;
@@ -161,8 +163,11 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientServiceRecords, setClientServiceRecords] = useState<ClientServiceRecord[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [companyProfile, setCompanyProfile] = useState<TenantProfile | null>(null);
   const [tenantChangeRequests, setTenantChangeRequests] = useState<TenantChangeRequest[]>([]);
+  const [platformChangeRequests, setPlatformChangeRequests] = useState<TenantChangeRequest[]>([]);
+  const [platformSignupRequests, setPlatformSignupRequests] = useState<TenantSignupRequest[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
@@ -194,13 +199,15 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setLoadError(null);
 
     try {
-      const [profileResponse, changeRequestsResponse, clientsResponse, costsResponse, quotesResponse] = await Promise.all([
+      const [userResponse, profileResponse, changeRequestsResponse, clientsResponse, costsResponse, quotesResponse] = await Promise.all([
+        apiClient.getCurrentUser(),
         apiClient.getTenantProfile(),
         apiClient.listTenantChangeRequests(),
         apiClient.listClients(),
         apiClient.listCostItems(),
         apiClient.listQuotes(),
       ]);
+      setCurrentUser(userResponse);
       setCompanyProfile(profileResponse);
       setCompanyProfileForm(companyProfileToForm(profileResponse));
       setTenantChangeRequests(changeRequestsResponse.items);
@@ -214,6 +221,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
         return quotesResponse.items[0]?.id ?? null;
       });
+      if (userResponse.role === 'platform_admin') {
+        const [signupRequests, changeRequests] = await Promise.all([
+          apiClient.listPlatformSignupRequests(),
+          apiClient.listPlatformChangeRequests(),
+        ]);
+        setPlatformSignupRequests(signupRequests.items);
+        setPlatformChangeRequests(changeRequests.items);
+      }
     } catch {
       setLoadError('No pude cargar los datos. Revisá que el backend esté activo y que tu sesión siga vigente.');
     } finally {
@@ -723,10 +738,15 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     { label: 'Tesoreria', view: 'treasury' },
     { label: 'Empresa', view: 'company' },
   ];
+  if (currentUser?.role === 'platform_admin') {
+    navigationItems.push({ label: 'Plataforma', view: 'platform' });
+  }
   const bottomNavigationItems = navigationItems.filter((item) =>
     ['summary', 'clients', 'quotes', 'treasury'].includes(item.view),
   );
-  const mobileDrawerNavigationItems = navigationItems.filter((item) => ['costs', 'company'].includes(item.view));
+  const mobileDrawerNavigationItems = navigationItems.filter((item) =>
+    ['costs', 'company', 'platform'].includes(item.view),
+  );
   const shouldHideSidebarText = isSidebarCollapsed && !isCompactLayout;
   const currentViewLabel = navigationItems.find((item) => item.view === activeView)?.label ?? 'Resumen';
   const goToView = (view: View) => {
@@ -950,6 +970,62 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onLegalChangeSubmit={handleTenantLegalChangeSubmit}
             onSubmit={handleCompanyProfileSubmit}
             requests={tenantChangeRequests}
+          />
+        ) : null}
+
+        {activeView === 'platform' && currentUser?.role === 'platform_admin' ? (
+          <PlatformAdminView
+            changeRequests={platformChangeRequests}
+            isSaving={isSaving}
+            onApproveFiscalChange={async (request) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.approvePlatformChangeRequest(request.id);
+                setPlatformChangeRequests((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                showSuccessToast('Cambio fiscal aprobado');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
+            onMarkSignupContacted={async (request) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.markPlatformSignupRequestContacted(request.id);
+                setPlatformSignupRequests((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                showSuccessToast('Alta marcada como contactada');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
+            onRejectFiscalChange={async (request) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.rejectPlatformChangeRequest(request.id);
+                setPlatformChangeRequests((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                showSuccessToast('Cambio fiscal rechazado');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
+            onRejectSignup={async (request) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.rejectPlatformSignupRequest(request.id);
+                setPlatformSignupRequests((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                showSuccessToast('Alta rechazada');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
+            signupRequests={platformSignupRequests}
           />
         ) : null}
       </section>
@@ -2206,6 +2282,129 @@ function TreasuryView({
   );
 }
 
+function PlatformAdminView({
+  changeRequests,
+  isSaving,
+  onApproveFiscalChange,
+  onMarkSignupContacted,
+  onRejectFiscalChange,
+  onRejectSignup,
+  signupRequests,
+}: {
+  changeRequests: TenantChangeRequest[];
+  isSaving: boolean;
+  onApproveFiscalChange: (request: TenantChangeRequest) => void;
+  onMarkSignupContacted: (request: TenantSignupRequest) => void;
+  onRejectFiscalChange: (request: TenantChangeRequest) => void;
+  onRejectSignup: (request: TenantSignupRequest) => void;
+  signupRequests: TenantSignupRequest[];
+}) {
+  return (
+    <section style={styles.gridTwo}>
+      <section style={styles.tablePanel}>
+        <div style={styles.panelHeader}>
+          <div>
+            <h2 style={styles.panelTitle}>Solicitudes de alta</h2>
+            <p style={styles.panelSubtitle}>Leads que quieren contratar FacturEasy.</p>
+          </div>
+        </div>
+        {signupRequests.length === 0 ? (
+          <p style={styles.emptyState}>No hay solicitudes de alta.</p>
+        ) : (
+          <div style={styles.clientList}>
+            {signupRequests.map((request) => (
+              <article key={request.id} style={styles.serviceRecord}>
+                <div style={styles.historyRecordHeader}>
+                  <div style={styles.clientIdentity}>
+                    <strong>{request.company_name}</strong>
+                    <span style={styles.mutedText}>
+                      {request.contact_name} - {request.email} - {request.phone}
+                    </span>
+                    {request.business_type ? <span style={styles.mutedText}>{request.business_type}</span> : null}
+                  </div>
+                  <span style={styles.categoryBadge}>{request.status}</span>
+                </div>
+                {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
+                <div style={styles.actions}>
+                  <button
+                    disabled={isSaving || request.status !== 'pending'}
+                    onClick={() => onMarkSignupContacted(request)}
+                    style={styles.secondaryButton}
+                    type="button"
+                  >
+                    Contactada
+                  </button>
+                  <button
+                    disabled={isSaving || request.status !== 'pending'}
+                    onClick={() => onRejectSignup(request)}
+                    style={styles.dangerOutlineButton}
+                    type="button"
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={styles.tablePanel}>
+        <div style={styles.panelHeader}>
+          <div>
+            <h2 style={styles.panelTitle}>Cambios fiscales</h2>
+            <p style={styles.panelSubtitle}>Solicitudes de cambio de empresa, razon social o CUIT.</p>
+          </div>
+        </div>
+        {changeRequests.length === 0 ? (
+          <p style={styles.emptyState}>No hay cambios fiscales pendientes.</p>
+        ) : (
+          <div style={styles.clientList}>
+            {changeRequests.map((request) => (
+              <article key={request.id} style={styles.serviceRecord}>
+                <div style={styles.historyRecordHeader}>
+                  <div style={styles.clientIdentity}>
+                    <strong>{request.current_name}</strong>
+                    <span style={styles.mutedText}>
+                      {[
+                        request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
+                        request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
+                        request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' | ')}
+                    </span>
+                  </div>
+                  <span style={styles.categoryBadge}>{request.status}</span>
+                </div>
+                {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : null}
+                <div style={styles.actions}>
+                  <button
+                    disabled={isSaving || request.status !== 'pending'}
+                    onClick={() => onApproveFiscalChange(request)}
+                    style={styles.primaryButton}
+                    type="button"
+                  >
+                    Aprobar
+                  </button>
+                  <button
+                    disabled={isSaving || request.status !== 'pending'}
+                    onClick={() => onRejectFiscalChange(request)}
+                    style={styles.dangerOutlineButton}
+                    type="button"
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
 function ChartPanel({
   emptyText,
   rows,
@@ -2747,6 +2946,7 @@ function bottomTabIcon(view: View): string {
     clients: 'C',
     company: 'E',
     costs: 'S',
+    platform: 'A',
     quotes: 'P',
     summary: 'I',
     treasury: 'T',
@@ -3306,6 +3506,16 @@ const styles = {
     font: 'inherit',
     fontWeight: 700,
     padding: 0,
+  },
+  dangerOutlineButton: {
+    background: 'transparent',
+    border: '1px solid var(--danger)',
+    borderRadius: '6px',
+    color: 'var(--danger)',
+    cursor: 'pointer',
+    font: 'inherit',
+    fontWeight: 700,
+    padding: '10px 14px',
   },
   emptyState: {
     color: 'var(--muted)',

@@ -45,7 +45,7 @@ Backend:
 - Root directory: `backend`
 - Build/install: `python -m pip install -e .`
 - Start command: `python -m uvicorn app.api.main:app --host 0.0.0.0 --port $PORT`
-- Variables: `DATABASE_URL`, `JWT_SECRET`, `PUBLIC_API_BASE_URL`, `CORS_ALLOWED_ORIGINS`
+- Variables: `DATABASE_URL`, `JWT_SECRET`, `PUBLIC_API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `PLATFORM_NOTIFICATION_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_USE_TLS`
 - Ejecutar migraciones antes de publicar una versión nueva: `python -m alembic upgrade head`
 
 Frontend:
@@ -85,3 +85,5 @@ El rol `platform_admin` habilita la vista `Plataforma` dentro del dashboard. Des
 - Solicitudes de cambio fiscal enviadas por empresas existentes.
 
 Para el primer despliegue, crear una empresa interna de plataforma y promover su usuario admin actualizando `users.role = 'platform_admin'` en la base de datos. Luego ese usuario puede revisar solicitudes desde la UI. La creación efectiva de cuentas nuevas sigue siendo manual y controlada por el administrador de plataforma.
+ 
+Si se configuran las variables SMTP, cada solicitud publica de alta y cada solicitud de cambio fiscal tambien envian un email al `PLATFORM_NOTIFICATION_EMAIL`. Si SMTP no esta configurado, la solicitud se guarda igual y queda disponible en el panel `Plataforma`.

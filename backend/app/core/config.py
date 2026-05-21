@@ -7,6 +7,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
     public_api_base_url: str = "http://127.0.0.1:8000"
+    platform_notification_email: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
     cors_allowed_origins: str = (
         "http://localhost:50111,"
         "http://127.0.0.1:50111,"

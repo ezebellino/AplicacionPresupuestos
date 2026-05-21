@@ -10,6 +10,7 @@ from app.schemas.tenants import (
     TenantCreate,
     TenantSignupRequestCreate,
 )
+from app.services.notification_service import notify_platform
 
 
 def create_tenant_with_admin(db: Session, payload: TenantCreate) -> tuple[Tenant, User]:
@@ -144,6 +145,20 @@ def create_tenant_change_request(
     db.add(request)
     db.commit()
     db.refresh(request)
+    notify_platform(
+        "Nueva solicitud de cambio fiscal en FacturEasy",
+        "\n".join(
+            [
+                f"Empresa actual: {tenant.name}",
+                f"Razon social actual: {tenant.legal_name or '-'}",
+                f"CUIT actual: {tenant.tax_id or '-'}",
+                f"Nueva empresa: {proposed_name or '-'}",
+                f"Nueva razon social: {proposed_legal_name or '-'}",
+                f"Nuevo CUIT: {proposed_tax_id or '-'}",
+                f"Motivo: {_clean(payload.reason) or '-'}",
+            ]
+        ),
+    )
 
     return request
 
@@ -168,6 +183,19 @@ def create_tenant_signup_request(
     db.add(request)
     db.commit()
     db.refresh(request)
+    notify_platform(
+        "Nueva solicitud de alta en FacturEasy",
+        "\n".join(
+            [
+                f"Empresa: {request.company_name}",
+                f"Responsable: {request.contact_name}",
+                f"Email: {request.email}",
+                f"Celular: {request.phone}",
+                f"Rubro: {request.business_type or '-'}",
+                f"Comentario: {request.message or '-'}",
+            ]
+        ),
+    )
 
     return request
 

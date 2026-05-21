@@ -28,6 +28,16 @@ type DashboardPageProps = {
 
 type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' | 'platform';
 
+const NAV_SHORTCUTS: Record<View, string> = {
+  clients: 'CL',
+  company: 'EM',
+  costs: 'SV',
+  platform: 'PF',
+  quotes: 'PR',
+  summary: 'IN',
+  treasury: 'TS',
+};
+
 type ClientForm = {
   name: string;
   document: string;
@@ -827,13 +837,17 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           }}
           aria-label="Navegacion principal"
         >
-          <div style={styles.logoRow}>
-            <img alt="" src="/FacturEasy-icon.png" style={styles.logoMark} />
-            {shouldHideSidebarText ? null : <strong>FacturEasy</strong>}
+          <div style={{ ...styles.logoRow, ...(shouldHideSidebarText ? styles.logoRowCollapsed : null) }}>
+            <img
+              alt=""
+              src="/FacturEasy-icon.png"
+              style={{ ...styles.logoMark, ...(shouldHideSidebarText ? styles.logoMarkCollapsed : null) }}
+            />
+            {shouldHideSidebarText ? null : <strong style={styles.logoText}>FacturEasy</strong>}
             <button
               aria-label={isSidebarCollapsed ? 'Expandir menu' : 'Minimizar menu'}
               onClick={() => setIsSidebarCollapsed((current) => !current)}
-              style={styles.sidebarToggle}
+              style={{ ...styles.sidebarToggle, ...(shouldHideSidebarText ? styles.sidebarToggleCollapsed : null) }}
               type="button"
             >
               {isSidebarCollapsed ? '>' : '<'}
@@ -848,10 +862,21 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                   ...navStyle(activeView === item.view),
                   ...(shouldHideSidebarText ? styles.navItemCollapsed : null),
                 }}
+                aria-label={item.label}
                 title={item.label}
                 type="button"
               >
-                {shouldHideSidebarText ? item.label.charAt(0) : item.label}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    ...styles.navMonogram,
+                    ...(activeView === item.view ? styles.navMonogramActive : null),
+                    ...(shouldHideSidebarText ? styles.navMonogramCollapsed : null),
+                  }}
+                >
+                  {NAV_SHORTCUTS[item.view]}
+                </span>
+                {shouldHideSidebarText ? null : <span style={styles.navLabel}>{item.label}</span>}
               </button>
             ))}
           </nav>
@@ -3058,14 +3083,17 @@ const styles = {
   sidebar: {
     background: 'var(--panel-bg)',
     borderRight: '1px solid var(--border)',
-    flex: '0 0 220px',
+    boxSizing: 'border-box',
+    flex: '0 0 248px',
+    overflow: 'hidden',
     padding: '24px',
-    width: '220px',
+    transition: 'flex-basis 220ms ease, width 220ms ease, padding 220ms ease, border-color 220ms ease',
+    width: '248px',
   },
   sidebarCollapsed: {
-    flex: '0 0 104px',
+    flex: '0 0 92px',
     padding: '20px 14px',
-    width: '104px',
+    width: '92px',
   },
   mobileHeader: {
     alignItems: 'center',
@@ -3175,6 +3203,21 @@ const styles = {
     display: 'flex',
     gap: '10px',
     marginBottom: '32px',
+    minHeight: '64px',
+    transition: 'gap 220ms ease, margin 220ms ease, min-height 220ms ease',
+  },
+  logoRowCollapsed: {
+    display: 'grid',
+    gap: '12px',
+    justifyItems: 'center',
+    marginBottom: '24px',
+    minHeight: '112px',
+  },
+  logoText: {
+    fontSize: '15px',
+    lineHeight: 1,
+    overflow: 'hidden',
+    whiteSpace: 'nowrap',
   },
   sidebarToggle: {
     background: 'var(--panel-subtle)',
@@ -3187,14 +3230,24 @@ const styles = {
     marginLeft: 'auto',
     minHeight: '32px',
     minWidth: '32px',
+    transition: 'background 180ms ease, border-color 180ms ease, color 180ms ease, transform 220ms ease',
+  },
+  sidebarToggleCollapsed: {
+    marginLeft: 0,
   },
   logoMark: {
     borderRadius: '6px',
     display: 'block',
-    flex: '0 0 76px',
-    height: '76px',
+    flex: '0 0 64px',
+    height: '64px',
     objectFit: 'contain',
-    width: '76px',
+    transition: 'height 220ms ease, width 220ms ease, flex-basis 220ms ease, transform 220ms ease',
+    width: '64px',
+  },
+  logoMarkCollapsed: {
+    flexBasis: '56px',
+    height: '56px',
+    width: '56px',
   },
   nav: {
     display: 'grid',
@@ -3207,36 +3260,85 @@ const styles = {
     paddingBottom: '2px',
   },
   navItem: {
+    alignItems: 'center',
     background: 'transparent',
     border: 0,
     borderRadius: '6px',
     color: 'var(--muted)',
     cursor: 'pointer',
+    display: 'flex',
     fontSize: '14px',
+    gap: '10px',
+    minHeight: '42px',
     padding: '10px 12px',
     textAlign: 'left',
+    transition:
+      'background 180ms ease, color 180ms ease, padding 220ms ease, min-height 220ms ease, border-color 180ms ease',
     whiteSpace: 'nowrap',
   },
   navActive: {
+    alignItems: 'center',
     background: 'var(--accent-soft)',
     border: 0,
     borderRadius: '6px',
     color: 'var(--accent)',
     cursor: 'pointer',
+    display: 'flex',
     fontSize: '14px',
+    gap: '10px',
     fontWeight: 700,
+    minHeight: '42px',
     padding: '10px 12px',
     textAlign: 'left',
+    transition:
+      'background 180ms ease, color 180ms ease, padding 220ms ease, min-height 220ms ease, border-color 180ms ease',
     whiteSpace: 'nowrap',
   },
   navItemCollapsed: {
-    minHeight: '42px',
+    justifyContent: 'center',
+    minHeight: '50px',
+    padding: '8px 6px',
     textAlign: 'center',
+  },
+  navMonogram: {
+    alignItems: 'center',
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--muted)',
+    display: 'inline-grid',
+    flex: '0 0 28px',
+    fontSize: '11px',
+    fontWeight: 900,
+    height: '28px',
+    justifyContent: 'center',
+    letterSpacing: 0,
+    lineHeight: 1,
+    transition:
+      'background 180ms ease, border-color 180ms ease, color 180ms ease, height 220ms ease, width 220ms ease, flex-basis 220ms ease',
+    width: '28px',
+  },
+  navMonogramActive: {
+    background: 'var(--accent)',
+    borderColor: 'var(--accent)',
+    color: '#111827',
+  },
+  navMonogramCollapsed: {
+    flexBasis: '42px',
+    fontSize: '13px',
+    height: '42px',
+    width: '42px',
+  },
+  navLabel: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   content: {
     flex: 1,
     minWidth: 0,
     padding: 'clamp(20px, 3vw, 32px)',
+    transition: 'padding 220ms ease',
   },
   contentCompact: {
     overflowX: 'hidden',

@@ -100,6 +100,7 @@ class QuoteRead(BaseModel):
     title: str | None
     notes: str | None
     valid_until: datetime | None
+    created_at: datetime
     subtotal: Decimal
     discount_total: Decimal
     tax_total: Decimal
@@ -110,3 +111,8 @@ class QuoteRead(BaseModel):
 
 class QuoteList(BaseModel):
     items: list[QuoteRead]
+
+
+class QuoteShareLinkRead(BaseModel):
+    token: str
+    url: str

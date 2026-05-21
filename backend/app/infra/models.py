@@ -53,6 +53,12 @@ class Tenant(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     legal_name: Mapped[str | None] = mapped_column(String(255))
     tax_id: Mapped[str | None] = mapped_column(String(64))
+    address: Mapped[str | None] = mapped_column(String(500))
+    phone: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(255))
+    website: Mapped[str | None] = mapped_column(String(255))
+    logo_url: Mapped[str | None] = mapped_column(String(1000))
+    invoice_notes: Mapped[str | None] = mapped_column(Text)
     default_tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("21.00")
     )
@@ -64,6 +70,36 @@ class Tenant(TimestampMixin, Base):
     )
     cost_items: Mapped[list["CostItem"]] = relationship(back_populates="tenant")
     quotes: Mapped[list["Quote"]] = relationship(back_populates="tenant")
+    change_requests: Mapped[list["TenantChangeRequest"]] = relationship(
+        back_populates="tenant"
+    )
+
+
+class TenantChangeRequest(TimestampMixin, Base):
+    __tablename__ = "tenant_change_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    current_name: Mapped[str | None] = mapped_column(String(255))
+    current_legal_name: Mapped[str | None] = mapped_column(String(255))
+    current_tax_id: Mapped[str | None] = mapped_column(String(64))
+    proposed_name: Mapped[str | None] = mapped_column(String(255))
+    proposed_legal_name: Mapped[str | None] = mapped_column(String(255))
+    proposed_tax_id: Mapped[str | None] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id")
+    )
+    review_notes: Mapped[str | None] = mapped_column(Text)
+
+    tenant: Mapped[Tenant] = relationship(back_populates="change_requests")
 
 
 class User(TimestampMixin, Base):
@@ -95,6 +131,7 @@ class Client(TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(100))
     address: Mapped[str | None] = mapped_column(String(500))
     notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="clients")
     quotes: Mapped[list["Quote"]] = relationship(
@@ -208,6 +245,7 @@ class Quote(TimestampMixin, Base):
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    public_share_token: Mapped[str | None] = mapped_column(String(96), unique=True, index=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="quotes")
     client: Mapped[Client] = relationship(

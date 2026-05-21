@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import Swal from 'sweetalert2';
 
 import {
@@ -14,13 +14,17 @@ import {
   QuoteItemPayload,
   QuotePayload,
   QuoteStatus,
+  TenantProfile,
+  TenantChangeRequest,
+  TenantChangeRequestPayload,
+  TenantProfilePayload,
 } from '../../shared/api/client';
 
 type DashboardPageProps = {
   onLogout: () => void;
 };
 
-type View = 'summary' | 'clients' | 'costs' | 'quotes';
+type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company';
 
 type ClientForm = {
   name: string;
@@ -36,6 +40,26 @@ type ServiceRecordForm = {
   title: string;
   description: string;
   amount: string;
+};
+
+type CompanyProfileForm = {
+  name: string;
+  legal_name: string;
+  tax_id: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  logo_url: string;
+  invoice_notes: string;
+  default_tax_rate: string;
+};
+
+type TenantLegalChangeForm = {
+  proposed_name: string;
+  proposed_legal_name: string;
+  proposed_tax_id: string;
+  reason: string;
 };
 
 type CostForm = {
@@ -54,12 +78,6 @@ type QuoteForm = {
   valid_until: string;
 };
 
-type QuoteItemForm = {
-  source_cost_item_id: string;
-  quantity: string;
-  discount_amount: string;
-};
-
 const emptyClientForm: ClientForm = {
   name: '',
   document: '',
@@ -76,11 +94,31 @@ const emptyServiceRecordForm: ServiceRecordForm = {
   amount: '',
 };
 
+const emptyCompanyProfileForm: CompanyProfileForm = {
+  name: '',
+  legal_name: '',
+  tax_id: '',
+  address: '',
+  phone: '',
+  email: '',
+  website: '',
+  logo_url: '',
+  invoice_notes: '',
+  default_tax_rate: '21.00',
+};
+
+const emptyTenantLegalChangeForm: TenantLegalChangeForm = {
+  proposed_name: '',
+  proposed_legal_name: '',
+  proposed_tax_id: '',
+  reason: '',
+};
+
 const emptyCostForm: CostForm = {
-  category: 'equipment',
+  category: 'services',
   name: '',
   description: '',
-  unit: 'unidad',
+  unit: 'servicio',
   unit_cost: '',
   tax_rate: '',
 };
@@ -90,12 +128,6 @@ const emptyQuoteForm: QuoteForm = {
   title: '',
   notes: '',
   valid_until: '',
-};
-
-const emptyQuoteItemForm: QuoteItemForm = {
-  source_cost_item_id: '',
-  quantity: '1',
-  discount_amount: '0',
 };
 
 const categoryLabels: Record<CostCategory, string> = {
@@ -112,17 +144,35 @@ const statusLabels: Record<QuoteStatus, string> = {
   rejected: 'Rechazado',
 };
 
+const serviceOperationPresets = [
+  'Instalación',
+  'Mantenimiento',
+  'Carga de Gas',
+  'Reparación',
+  'Mano de Obra',
+  'Desinstalación',
+];
+
 export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [activeView, setActiveView] = useState<View>('summary');
+  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') !== 'light');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientServiceRecords, setClientServiceRecords] = useState<ClientServiceRecord[]>([]);
+  const [companyProfile, setCompanyProfile] = useState<TenantProfile | null>(null);
+  const [tenantChangeRequests, setTenantChangeRequests] = useState<TenantChangeRequest[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
+  const [companyProfileForm, setCompanyProfileForm] = useState<CompanyProfileForm>(emptyCompanyProfileForm);
+  const [tenantLegalChangeForm, setTenantLegalChangeForm] = useState<TenantLegalChangeForm>(
+    emptyTenantLegalChangeForm,
+  );
   const [serviceRecordForm, setServiceRecordForm] = useState<ServiceRecordForm>(emptyServiceRecordForm);
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
   const [quoteForm, setQuoteForm] = useState<QuoteForm>(emptyQuoteForm);
-  const [quoteItemForm, setQuoteItemForm] = useState<QuoteItemForm>(emptyQuoteItemForm);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
@@ -130,23 +180,13 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  const costTotalsByCategory = useMemo(
-    () =>
-      costItems.reduce<Record<CostCategory, number>>(
-        (totals, item) => ({
-          ...totals,
-          [item.category]: totals[item.category] + 1,
-        }),
-        { equipment: 0, materials: 0, labor: 0, services: 0 },
-      ),
-    [costItems],
-  );
+  const isCompactLayout = viewportWidth < 860;
 
   const metrics = [
     { label: 'Clientes', value: String(clients.length) },
-    { label: 'Costos activos', value: String(costItems.length) },
+    { label: 'Servicios activos', value: String(costItems.length) },
     { label: 'Presupuestos', value: String(quotes.length) },
+    { label: 'Facturado', value: formatMoney(sumQuotes(quotes, 'accepted')) },
   ];
 
   const loadWorkspace = async () => {
@@ -154,11 +194,16 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setLoadError(null);
 
     try {
-      const [clientsResponse, costsResponse, quotesResponse] = await Promise.all([
+      const [profileResponse, changeRequestsResponse, clientsResponse, costsResponse, quotesResponse] = await Promise.all([
+        apiClient.getTenantProfile(),
+        apiClient.listTenantChangeRequests(),
         apiClient.listClients(),
         apiClient.listCostItems(),
         apiClient.listQuotes(),
       ]);
+      setCompanyProfile(profileResponse);
+      setCompanyProfileForm(companyProfileToForm(profileResponse));
+      setTenantChangeRequests(changeRequestsResponse.items);
       setClients(clientsResponse.items);
       setCostItems(costsResponse.items);
       setQuotes(quotesResponse.items);
@@ -180,13 +225,40 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     void loadWorkspace();
   }, []);
 
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const toggleTheme = () => {
+    setIsDarkMode((current) => {
+      const next = !current;
+      localStorage.setItem('theme', next ? 'dark' : 'light');
+      return next;
+    });
+  };
+
   const handleClientSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setIsSaving(true);
 
     const payload: ClientPayload = compactPayload(clientForm);
 
+    if (!payload.name) {
+      await Swal.fire({
+        title: 'Falta el nombre',
+        text: 'El cliente necesita un nombre para poder guardarse.',
+        icon: 'warning',
+        confirmButtonText: 'Cerrar',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
     try {
+      const wasEditing = Boolean(editingClientId);
       if (editingClientId) {
         await apiClient.updateClient(editingClientId, payload);
       } else {
@@ -196,6 +268,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       setClientForm(emptyClientForm);
       setEditingClientId(null);
       await loadWorkspace();
+      showSuccessToast(wasEditing ? 'Cliente actualizado' : 'Cliente creado');
     } catch {
       await Swal.fire({
         title: 'No se pudo guardar el cliente',
@@ -210,18 +283,30 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
   const handleCostSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setIsSaving(true);
 
     const payload: CostItemPayload = {
-      category: costForm.category,
+      category: 'services',
       name: costForm.name.trim(),
       description: nullable(costForm.description),
-      unit: costForm.unit.trim(),
+      unit: 'servicio',
       unit_cost: costForm.unit_cost,
       tax_rate: nullable(costForm.tax_rate),
     };
 
+    if (!payload.name || !payload.unit_cost) {
+      await Swal.fire({
+        title: 'Faltan datos del servicio',
+        text: 'Carga el nombre del servicio y el precio antes de guardar.',
+        icon: 'warning',
+        confirmButtonText: 'Cerrar',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
     try {
+      const wasEditing = Boolean(editingCostId);
       if (editingCostId) {
         await apiClient.updateCostItem(editingCostId, payload);
       } else {
@@ -231,9 +316,10 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       setCostForm(emptyCostForm);
       setEditingCostId(null);
       await loadWorkspace();
+      showSuccessToast(wasEditing ? 'Servicio actualizado' : 'Servicio creado');
     } catch {
       await Swal.fire({
-        title: 'No se pudo guardar el costo',
+        title: 'No se pudo guardar el servicio',
         text: 'Revisá importe, unidad e IVA. El IVA vacío usa el valor general de la empresa.',
         icon: 'error',
         confirmButtonText: 'Cerrar',
@@ -254,6 +340,81 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       notes: client.notes ?? '',
     });
     setActiveView('clients');
+  };
+
+  const handleCompanyProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
+
+    const payload: TenantProfilePayload = {
+      address: nullable(companyProfileForm.address),
+      phone: nullable(companyProfileForm.phone),
+      email: nullable(companyProfileForm.email),
+      website: nullable(companyProfileForm.website),
+      logo_url: nullable(companyProfileForm.logo_url),
+      invoice_notes: nullable(companyProfileForm.invoice_notes),
+      default_tax_rate: nullable(companyProfileForm.default_tax_rate),
+    };
+
+    try {
+      const updatedProfile = await apiClient.updateTenantProfile(payload);
+      setCompanyProfile(updatedProfile);
+      setCompanyProfileForm(companyProfileToForm(updatedProfile));
+      await Swal.fire({
+        title: 'Perfil actualizado',
+        text: 'Los datos de empresa ya estan disponibles para impresiones y facturas.',
+        icon: 'success',
+        confirmButtonText: 'Cerrar',
+      });
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo guardar el perfil',
+        text: 'Revisa los datos e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleTenantLegalChangeSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const payload: TenantChangeRequestPayload = {
+      proposed_name: nullable(tenantLegalChangeForm.proposed_name),
+      proposed_legal_name: nullable(tenantLegalChangeForm.proposed_legal_name),
+      proposed_tax_id: nullable(tenantLegalChangeForm.proposed_tax_id),
+      reason: nullable(tenantLegalChangeForm.reason),
+    };
+
+    if (!payload.proposed_name && !payload.proposed_legal_name && !payload.proposed_tax_id) {
+      await Swal.fire({
+        title: 'Faltan datos',
+        text: 'Indica al menos un cambio fiscal para enviar la solicitud.',
+        icon: 'warning',
+        confirmButtonText: 'Cerrar',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const request = await apiClient.createTenantChangeRequest(payload);
+      setTenantChangeRequests((current) => [request, ...current]);
+      setTenantLegalChangeForm(emptyTenantLegalChangeForm);
+      showSuccessToast('Solicitud enviada');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo enviar la solicitud',
+        text: 'Revisa los datos e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openClientHistory = async (client: Client) => {
@@ -290,11 +451,22 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       amount: nullable(serviceRecordForm.amount),
     };
 
+    if (!serviceRecordForm.performed_at || !payload.title) {
+      await Swal.fire({
+        title: 'Faltan datos del historial',
+        text: 'Carga fecha y titulo del servicio realizado.',
+        icon: 'warning',
+        confirmButtonText: 'Cerrar',
+      });
+      return;
+    }
+
     try {
       await apiClient.createClientServiceRecord(selectedClientId, payload);
       const response = await apiClient.listClientServiceRecords(selectedClientId);
       setClientServiceRecords(response.items);
       setServiceRecordForm(emptyServiceRecordForm);
+      showSuccessToast('Historial actualizado');
     } catch {
       await Swal.fire({
         title: 'No se pudo guardar el servicio',
@@ -322,8 +494,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
   const deleteClient = async (client: Client) => {
     const result = await Swal.fire({
-      title: `Eliminar ${client.name}`,
-      text: 'El cliente dejará de estar disponible para nuevos presupuestos.',
+        title: `Eliminar ${client.name}`,
+        text: 'El cliente dejara de estar disponible para nuevos presupuestos, manteniendo su historial.',
       icon: 'warning',
       confirmButtonText: 'Eliminar',
       cancelButtonText: 'Cancelar',
@@ -334,8 +506,22 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       return;
     }
 
-    await apiClient.deleteClient(client.id);
-    await loadWorkspace();
+    try {
+      await apiClient.deleteClient(client.id);
+      if (selectedClientId === client.id) {
+        setSelectedClientId(null);
+        setClientServiceRecords([]);
+      }
+      await loadWorkspace();
+      showSuccessToast('Cliente eliminado');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo eliminar el cliente',
+        text: 'Revisa que tu sesion siga vigente e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
   };
 
   const deleteCost = async (item: CostItem) => {
@@ -352,13 +538,22 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       return;
     }
 
-    await apiClient.deleteCostItem(item.id);
-    await loadWorkspace();
+    try {
+      await apiClient.deleteCostItem(item.id);
+      await loadWorkspace();
+      showSuccessToast('Servicio desactivado');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo desactivar el servicio',
+        text: 'Revisa que tu sesion siga vigente e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
   };
 
   const handleQuoteSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setIsSaving(true);
 
     const payload: QuotePayload = {
       client_id: quoteForm.client_id,
@@ -367,11 +562,24 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       valid_until: quoteForm.valid_until ? `${quoteForm.valid_until}T00:00:00` : null,
     };
 
+    if (!payload.client_id) {
+      await Swal.fire({
+        title: 'Selecciona un cliente',
+        text: 'Para crear un presupuesto primero hay que elegir el cliente.',
+        icon: 'warning',
+        confirmButtonText: 'Cerrar',
+      });
+      return false;
+    }
+
+    setIsSaving(true);
+
     try {
       const quote = await apiClient.createQuote(payload);
       setQuoteForm(emptyQuoteForm);
       setSelectedQuoteId(quote.id);
       await loadWorkspace();
+      showSuccessToast('Presupuesto creado');
       return true;
     } catch {
       await Swal.fire({
@@ -386,29 +594,27 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
-  const handleQuoteItemSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!selectedQuoteId) {
+  const addQuoteItemFromCatalog = async (quote: Quote, item: CostItem) => {
+    if (quote.status !== 'draft') {
       return;
     }
 
     setIsSaving(true);
 
     const payload: QuoteItemPayload = {
-      source_cost_item_id: quoteItemForm.source_cost_item_id,
-      quantity: quoteItemForm.quantity,
-      discount_amount: quoteItemForm.discount_amount || '0',
+      source_cost_item_id: item.id,
+      quantity: '1',
+      discount_amount: '0',
     };
 
     try {
-      await apiClient.addQuoteItem(selectedQuoteId, payload);
-      setQuoteItemForm(emptyQuoteItemForm);
+      await apiClient.addQuoteItem(quote.id, payload);
       await loadWorkspace();
+      showSuccessToast(`${item.name} agregado`);
     } catch {
       await Swal.fire({
         title: 'No se pudo agregar el item',
-        text: 'El presupuesto debe estar en borrador y el costo debe estar activo.',
+        text: 'El presupuesto debe estar en borrador y el servicio debe estar activo.',
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });
@@ -428,6 +634,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       }
 
       await loadWorkspace();
+      showSuccessToast(quoteTransitionSuccessMessage(action));
     } catch {
       await Swal.fire({
         title: 'No se pudo cambiar el estado',
@@ -439,19 +646,25 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   };
 
   const deleteQuoteItem = async (quote: Quote, itemId: string) => {
-    await apiClient.deleteQuoteItem(quote.id, itemId);
-    await loadWorkspace();
+    try {
+      await apiClient.deleteQuoteItem(quote.id, itemId);
+      await loadWorkspace();
+      showSuccessToast('Item eliminado');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo eliminar el item',
+        text: 'El presupuesto debe estar en borrador para modificar sus items.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
   };
 
   const downloadQuotePdf = async (quote: Quote) => {
     try {
       const blob = await apiClient.downloadQuotePdf(quote.id);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `presupuesto-${quote.number}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `presupuesto-${quote.number}.pdf`);
+      showSuccessToast('PDF descargado');
     } catch {
       await Swal.fire({
         title: 'No se pudo descargar el PDF',
@@ -462,46 +675,196 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
-  return (
-    <main style={styles.page}>
-      <aside style={styles.sidebar} aria-label="Navegacion principal">
-        <div style={styles.logoRow}>
-          <div style={styles.logoMark}>P</div>
-          <strong>Presupuestos</strong>
-        </div>
-        <nav style={styles.nav}>
-          <button onClick={() => setActiveView('summary')} style={navStyle(activeView === 'summary')} type="button">
-            Resumen
-          </button>
-          <button onClick={() => setActiveView('clients')} style={navStyle(activeView === 'clients')} type="button">
-            Clientes
-          </button>
-          <button onClick={() => setActiveView('costs')} style={navStyle(activeView === 'costs')} type="button">
-            Costos
-          </button>
-          <button onClick={() => setActiveView('quotes')} style={navStyle(activeView === 'quotes')} type="button">
-            Presupuestos
-          </button>
-        </nav>
-      </aside>
+  const sendInvoiceByWhatsApp = async (quote: Quote) => {
+    const client = clients.find((currentClient) => currentClient.id === quote.client_id);
+    const phone = client?.phone?.replace(/\D/g, '') ?? '';
+    const companyName = companyProfile?.legal_name || companyProfile?.name || 'nuestra empresa';
+    const message = buildWhatsAppInvoiceMessage({
+      clientName: client?.name,
+      companyName,
+      quote,
+    });
+    const filename = `factura-${quote.number}.pdf`;
 
-      <section style={styles.content}>
-        <header style={styles.topbar}>
+    try {
+      const blob = await apiClient.downloadQuotePdf(quote.id);
+      const nav = navigator as Navigator & {
+        canShare?: (data: { files?: File[] }) => boolean;
+        share?: (data: { files?: File[]; text?: string; title?: string }) => Promise<void>;
+      };
+      const canTryFileShare = typeof nav.canShare === 'function' && typeof nav.share === 'function';
+      const file = canTryFileShare ? new File([blob], filename, { type: 'application/pdf' }) : null;
+
+      if (file && nav.canShare?.({ files: [file] }) && nav.share) {
+        await nav.share({
+          files: [file],
+          text: message,
+          title: `Factura ${quote.number}`,
+        });
+        return;
+      }
+
+      try {
+        downloadBlob(blob, filename);
+      } catch {
+        // Some embedded browsers block synthetic downloads; WhatsApp still opens with the prepared message.
+      }
+      openWhatsAppMessage(phone, message);
+    } catch {
+      openWhatsAppMessage(phone, message);
+    }
+  };
+
+  const navigationItems: Array<{ label: string; view: View }> = [
+    { label: 'Resumen', view: 'summary' },
+    { label: 'Clientes', view: 'clients' },
+    { label: 'Servicios', view: 'costs' },
+    { label: 'Presupuestos', view: 'quotes' },
+    { label: 'Tesoreria', view: 'treasury' },
+    { label: 'Empresa', view: 'company' },
+  ];
+  const bottomNavigationItems = navigationItems.filter((item) =>
+    ['summary', 'clients', 'quotes', 'treasury'].includes(item.view),
+  );
+  const mobileDrawerNavigationItems = navigationItems.filter((item) => ['costs', 'company'].includes(item.view));
+  const shouldHideSidebarText = isSidebarCollapsed && !isCompactLayout;
+  const currentViewLabel = navigationItems.find((item) => item.view === activeView)?.label ?? 'Resumen';
+  const goToView = (view: View) => {
+    setActiveView(view);
+    setIsMobileMenuOpen(false);
+  };
+
+  return (
+    <main
+      style={{
+        ...styles.page,
+        ...themeVariables(isDarkMode),
+        ...(isCompactLayout ? styles.pageCompact : null),
+      }}
+    >
+      {isCompactLayout ? (
+        <>
+          <header style={styles.mobileHeader}>
+            <div style={styles.mobileBrand}>
+              <img alt="" src="/FacturEasy-icon.png" style={styles.mobileLogo} />
+              <div style={styles.mobileBrandText}>
+                <strong>FacturEasy</strong>
+                <span style={styles.mobileCurrentView}>{currentViewLabel}</span>
+              </div>
+            </div>
+            <button
+              aria-label="Abrir menu"
+              onClick={() => setIsMobileMenuOpen(true)}
+              style={styles.hamburgerButton}
+              type="button"
+            >
+              <span style={styles.hamburgerGlyph}>Menu</span>
+            </button>
+          </header>
+          {isMobileMenuOpen ? (
+            <div onClick={() => setIsMobileMenuOpen(false)} style={styles.mobileDrawerOverlay}>
+              <aside onClick={(event) => event.stopPropagation()} style={styles.mobileDrawer} aria-label="Menu movil">
+                <div style={styles.mobileDrawerHeader}>
+                  <strong>Mas opciones</strong>
+                  <button
+                    aria-label="Cerrar menu"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    style={styles.sidebarToggle}
+                    type="button"
+                  >
+                    X
+                  </button>
+                </div>
+                <nav style={styles.mobileDrawerNav}>
+                  {mobileDrawerNavigationItems.map((item) => (
+                    <button
+                      key={item.view}
+                      onClick={() => goToView(item.view)}
+                      style={{ ...navStyle(activeView === item.view), ...styles.mobileDrawerNavButton }}
+                      type="button"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </nav>
+                <div style={styles.mobileDrawerActions}>
+                  <button onClick={toggleTheme} style={styles.secondaryButton} type="button">
+                    {isDarkMode ? 'Modo claro' : 'Dark mode'}
+                  </button>
+                  <button onClick={onLogout} style={styles.secondaryButton} type="button">
+                    Salir
+                  </button>
+                </div>
+              </aside>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <aside
+          style={{
+            ...styles.sidebar,
+            ...(isSidebarCollapsed ? styles.sidebarCollapsed : null),
+          }}
+          aria-label="Navegacion principal"
+        >
+          <div style={styles.logoRow}>
+            <img alt="" src="/FacturEasy-icon.png" style={styles.logoMark} />
+            {shouldHideSidebarText ? null : <strong>FacturEasy</strong>}
+            <button
+              aria-label={isSidebarCollapsed ? 'Expandir menu' : 'Minimizar menu'}
+              onClick={() => setIsSidebarCollapsed((current) => !current)}
+              style={styles.sidebarToggle}
+              type="button"
+            >
+              {isSidebarCollapsed ? '>' : '<'}
+            </button>
+          </div>
+          <nav style={styles.nav}>
+            {navigationItems.map((item) => (
+              <button
+                key={item.view}
+                onClick={() => goToView(item.view)}
+                style={{
+                  ...navStyle(activeView === item.view),
+                  ...(shouldHideSidebarText ? styles.navItemCollapsed : null),
+                }}
+                title={item.label}
+                type="button"
+              >
+                {shouldHideSidebarText ? item.label.charAt(0) : item.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+      )}
+
+      <section style={{ ...styles.content, ...(isCompactLayout ? styles.contentCompact : null) }}>
+        <header style={{ ...styles.topbar, ...(isCompactLayout ? styles.topbarMobileHidden : null) }}>
           <div>
             <h1 style={styles.title}>Panel operativo</h1>
-            <p style={styles.subtitle}>Clientes y costos aislados por empresa para armar presupuestos.</p>
+            <p style={styles.subtitle}>Clientes, catalogo de servicios y facturacion aislados por empresa.</p>
           </div>
-          <button onClick={onLogout} style={styles.secondaryButton} type="button">
-            Salir
-          </button>
+          <div style={styles.topbarActions}>
+            <button
+              onClick={toggleTheme}
+              style={styles.secondaryButton}
+              type="button"
+            >
+              {isDarkMode ? 'Modo claro' : 'Dark mode'}
+            </button>
+            <button onClick={onLogout} style={styles.secondaryButton} type="button">
+              Salir
+            </button>
+          </div>
         </header>
 
         {loadError ? <p style={styles.errorBanner}>{loadError}</p> : null}
 
         {activeView === 'summary' ? (
           <SummaryView
-            costTotalsByCategory={costTotalsByCategory}
             clients={clients}
+            costItems={costItems}
+            isCompactLayout={isCompactLayout}
             isLoading={isLoading}
             metrics={metrics}
             onNewQuote={() => setActiveView('quotes')}
@@ -516,6 +879,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             isSaving={isSaving}
             editingClientId={editingClientId}
             selectedClientId={selectedClientId}
+            quotes={quotes}
             serviceRecordForm={serviceRecordForm}
             serviceRecords={clientServiceRecords}
             onCancel={() => {
@@ -555,12 +919,10 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             costItems={costItems}
             form={quoteForm}
             isSaving={isSaving}
-            itemForm={quoteItemForm}
+            onAddCostItem={addQuoteItemFromCatalog}
             onDeleteItem={deleteQuoteItem}
             onDownloadPdf={downloadQuotePdf}
             onFormChange={setQuoteForm}
-            onItemFormChange={setQuoteItemForm}
-            onItemSubmit={handleQuoteItemSubmit}
             onSelectQuote={setSelectedQuoteId}
             onSubmit={handleQuoteSubmit}
             onTransition={transitionQuote}
@@ -568,21 +930,60 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             selectedQuoteId={selectedQuoteId}
           />
         ) : null}
+
+        {activeView === 'treasury' ? (
+          <TreasuryView
+            clients={clients}
+            isCompactLayout={isCompactLayout}
+            onSendInvoiceByWhatsApp={sendInvoiceByWhatsApp}
+            quotes={quotes}
+          />
+        ) : null}
+
+        {activeView === 'company' ? (
+          <CompanyProfileView
+            form={companyProfileForm}
+            isSaving={isSaving}
+            legalChangeForm={tenantLegalChangeForm}
+            onFormChange={setCompanyProfileForm}
+            onLegalChangeFormChange={setTenantLegalChangeForm}
+            onLegalChangeSubmit={handleTenantLegalChangeSubmit}
+            onSubmit={handleCompanyProfileSubmit}
+            requests={tenantChangeRequests}
+          />
+        ) : null}
       </section>
+      {isCompactLayout ? (
+        <nav style={styles.bottomTabBar} aria-label="Accesos rapidos">
+          {bottomNavigationItems.map((item) => (
+            <button
+              key={item.view}
+              onClick={() => goToView(item.view)}
+              style={activeView === item.view ? styles.bottomTabActive : styles.bottomTab}
+              type="button"
+            >
+              <span>{bottomTabIcon(item.view)}</span>
+              {item.label === 'Presupuestos' ? 'Presup.' : item.label}
+            </button>
+          ))}
+        </nav>
+      ) : null}
     </main>
   );
 }
 
 function SummaryView({
   clients,
-  costTotalsByCategory,
+  costItems,
+  isCompactLayout,
   isLoading,
   metrics,
   onNewQuote,
   quotes,
 }: {
   clients: Client[];
-  costTotalsByCategory: Record<CostCategory, number>;
+  costItems: CostItem[];
+  isCompactLayout: boolean;
   isLoading: boolean;
   metrics: { label: string; value: string }[];
   onNewQuote: () => void;
@@ -602,20 +1003,30 @@ function SummaryView({
       </section>
 
       <section style={styles.gridTwo}>
-        <section style={styles.tablePanel} aria-labelledby="costs-by-category-title">
+        <section style={styles.tablePanel} aria-labelledby="services-summary-title">
           <div style={styles.panelHeader}>
-            <h2 id="costs-by-category-title" style={styles.panelTitle}>
-              Costos por categoria
+            <h2 id="services-summary-title" style={styles.panelTitle}>
+              Items de cobro
             </h2>
           </div>
-          <div style={styles.categoryGrid}>
-            {Object.entries(categoryLabels).map(([category, label]) => (
-              <div key={category} style={styles.categoryRow}>
-                <span>{label}</span>
-                <strong>{costTotalsByCategory[category as CostCategory]}</strong>
-              </div>
-            ))}
-          </div>
+          {costItems.length === 0 ? (
+            <p style={styles.emptyState}>Todavia no hay servicios cargados.</p>
+          ) : (
+            <div style={styles.categoryGrid}>
+              {costItems.slice(0, 5).map((item) => (
+                <div key={item.id} style={styles.categoryRow}>
+                  <span>{item.name}</span>
+                  <strong>{formatMoney(item.unit_cost)}</strong>
+                </div>
+              ))}
+              {costItems.length > 5 ? (
+                <div style={styles.categoryRow}>
+                  <span>Otros servicios</span>
+                  <strong>{costItems.length - 5}</strong>
+                </div>
+              ) : null}
+            </div>
+          )}
         </section>
 
         <section style={styles.tablePanel} aria-labelledby="recent-quotes-title">
@@ -632,6 +1043,7 @@ function SummaryView({
           ) : (
             <DataTable
               headers={['Cliente', 'Presupuesto', 'Estado', 'Total']}
+              isCompactLayout={isCompactLayout}
               rows={recentQuotes.map((quote) => [
                 clientName(clients, quote.client_id),
                 quote.number,
@@ -651,6 +1063,7 @@ function ClientsView({
   editingClientId,
   form,
   isSaving,
+  quotes,
   selectedClientId,
   serviceRecordForm,
   serviceRecords,
@@ -667,6 +1080,7 @@ function ClientsView({
   editingClientId: string | null;
   form: ClientForm;
   isSaving: boolean;
+  quotes: Quote[];
   selectedClientId: string | null;
   serviceRecordForm: ServiceRecordForm;
   serviceRecords: ClientServiceRecord[];
@@ -687,6 +1101,11 @@ function ClientsView({
     ),
   );
   const selectedClient = clients.find((client) => client.id === selectedClientId) ?? null;
+  const selectedClientQuotes = selectedClient
+    ? quotes
+        .filter((quote) => quote.client_id === selectedClient.id)
+        .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
+    : [];
 
   return (
     <section style={styles.workspaceGrid}>
@@ -724,6 +1143,44 @@ function ClientsView({
             <h2 id="client-history-title" style={styles.panelTitle}>
               Historial de {selectedClient.name}
             </h2>
+            <div style={styles.historyBlock}>
+              <div>
+                <strong>Presupuestos</strong>
+                <p style={styles.panelSubtitle}>Todas las veces que se presupuestaron trabajos para este cliente.</p>
+              </div>
+              {selectedClientQuotes.length === 0 ? (
+                <p style={styles.compactEmpty}>Todavia no hay presupuestos para este cliente.</p>
+              ) : (
+                <div style={styles.serviceList}>
+                  {selectedClientQuotes.map((quote) => (
+                    <article key={quote.id} style={styles.historyQuoteRecord}>
+                      <div style={styles.historyRecordHeader}>
+                        <div>
+                          <strong>{quote.title || quote.number}</strong>
+                          <p style={styles.panelSubtitle}>
+                            {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
+                          </p>
+                        </div>
+                        <StatusBadge status={quote.status} />
+                      </div>
+                      {quote.items.length > 0 ? (
+                        <p style={styles.serviceDescription}>
+                          {quote.items.map((item) => item.name).join(', ')}
+                        </p>
+                      ) : (
+                        <p style={styles.serviceDescription}>Presupuesto sin items cargados.</p>
+                      )}
+                      <strong>{formatMoney(quote.total)}</strong>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={styles.historyBlock}>
+              <div>
+                <strong>Servicios realizados</strong>
+                <p style={styles.panelSubtitle}>Registro manual para trabajos ya ejecutados o novedades operativas.</p>
+              </div>
             <form onSubmit={onServiceSubmit} style={styles.serviceForm}>
               <Field
                 label="Fecha"
@@ -779,6 +1236,7 @@ function ClientsView({
                 ))}
               </div>
             )}
+            </div>
           </section>
         ) : null}
       </div>
@@ -805,22 +1263,18 @@ function ClientsView({
         ) : filteredClients.length === 0 ? (
           <p style={styles.emptyState}>No hay clientes que coincidan con la busqueda.</p>
         ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Nombre</th>
-                <th style={styles.th}>Contacto</th>
-                <th style={styles.th}>Documento</th>
-                <th style={styles.thRight}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClients.map((client) => (
-                <tr key={client.id}>
-                  <td style={styles.td}>{client.name}</td>
-                  <td style={styles.td}>{client.email || client.phone || '-'}</td>
-                  <td style={styles.td}>{client.document || '-'}</td>
-                  <td style={styles.tdRight}>
+          <div style={styles.clientList}>
+            {filteredClients.map((client) => (
+              <article key={client.id} style={styles.clientRow}>
+                <div style={styles.clientIdentity}>
+                  <strong>{client.name}</strong>
+                  <span style={styles.mutedText}>{client.document || 'Sin documento'}</span>
+                </div>
+                <div style={styles.clientContact}>
+                  <span>{client.email || client.phone || 'Sin contacto'}</span>
+                  {client.address ? <span style={styles.mutedText}>{client.address}</span> : null}
+                </div>
+                <div style={styles.clientActions}>
                     <button onClick={() => onEdit(client)} style={styles.linkButton} type="button">
                       Editar
                     </button>
@@ -830,11 +1284,10 @@ function ClientsView({
                     <button onClick={() => onDelete(client)} style={styles.dangerButton} type="button">
                       Eliminar
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                </div>
+              </article>
+            ))}
+          </div>
         )}
       </section>
     </section>
@@ -863,41 +1316,34 @@ function CostsView({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<CostCategory | 'all'>('all');
   const filteredCostItems = costItems.filter((item) => {
-    const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
-
-    return (
-      matchesCategory &&
-      matchesSearch(
-        [item.name, item.description, item.unit, categoryLabels[item.category]],
-        search,
-      )
-    );
+    return matchesSearch([item.name, item.description], search);
   });
 
   return (
     <section style={styles.workspaceGrid}>
       <form onSubmit={onSubmit} style={styles.formPanel}>
-        <h2 style={styles.panelTitle}>{editingCostId ? 'Editar costo' : 'Nuevo costo'}</h2>
-        <label style={styles.label}>
-          Categoria
-          <select
-            onChange={(event) => onFormChange({ ...form, category: event.target.value as CostCategory })}
-            style={styles.input}
-            value={form.category}
-          >
-            {Object.entries(categoryLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
-        <Field label="Unidad" required value={form.unit} onChange={(unit) => onFormChange({ ...form, unit })} />
+        <div>
+          <h2 style={styles.panelTitle}>{editingCostId ? 'Editar servicio' : 'Nuevo servicio'}</h2>
+          <p style={styles.panelSubtitle}>
+            Catalogo de operaciones que se cobran en cada presupuesto.
+          </p>
+        </div>
+        <div style={styles.presetGrid} aria-label="Operaciones frecuentes">
+          {serviceOperationPresets.map((operation) => (
+            <button
+              key={operation}
+              onClick={() => onFormChange({ ...form, category: 'services', name: operation })}
+              style={form.name === operation ? styles.filterChipActive : styles.filterChip}
+              type="button"
+            >
+              {operation}
+            </button>
+          ))}
+        </div>
+        <Field label="Operacion" required value={form.name} onChange={(name) => onFormChange({ ...form, category: 'services', name })} />
         <Field
-          label="Costo unitario"
+          label="Importe"
           min="0"
           required
           step="0.01"
@@ -926,7 +1372,7 @@ function CostsView({
         </label>
         <div style={styles.actions}>
           <button disabled={isSaving} style={styles.primaryButton} type="submit">
-            {editingCostId ? 'Guardar cambios' : 'Crear costo'}
+            {editingCostId ? 'Guardar cambios' : 'Crear servicio'}
           </button>
           {editingCostId ? (
             <button onClick={onCancel} style={styles.secondaryButton} type="button">
@@ -939,7 +1385,7 @@ function CostsView({
       <section style={styles.tablePanel} aria-labelledby="costs-title">
         <div style={styles.panelHeader}>
           <h2 id="costs-title" style={styles.panelTitle}>
-            Catalogo de costos
+            Catalogo de servicios
           </h2>
         </div>
         <div style={styles.filterBar}>
@@ -947,38 +1393,21 @@ function CostsView({
             Buscar
             <input
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Nombre, unidad o categoria"
+              placeholder="Instalación, mantenimiento o desinstalación"
               style={styles.searchInput}
               value={search}
             />
           </label>
-          <label style={styles.compactLabel}>
-            Categoria
-            <select
-              onChange={(event) => setCategoryFilter(event.target.value as CostCategory | 'all')}
-              style={styles.filterSelect}
-              value={categoryFilter}
-            >
-              <option value="all">Todas</option>
-              {Object.entries(categoryLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
         {costItems.length === 0 ? (
-          <p style={styles.emptyState}>Todavia no hay costos cargados.</p>
+          <p style={styles.emptyState}>Todavia no hay servicios cargados.</p>
         ) : filteredCostItems.length === 0 ? (
-          <p style={styles.emptyState}>No hay costos para esos filtros.</p>
+          <p style={styles.emptyState}>No hay servicios para esa busqueda.</p>
         ) : (
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Categoria</th>
-                <th style={styles.th}>Nombre</th>
-                <th style={styles.th}>Unidad</th>
+                <th style={styles.th}>Operacion</th>
                 <th style={styles.thRight}>Costo</th>
                 <th style={styles.thRight}>IVA</th>
                 <th style={styles.thRight}>Acciones</th>
@@ -987,11 +1416,7 @@ function CostsView({
             <tbody>
               {filteredCostItems.map((item) => (
                 <tr key={item.id}>
-                  <td style={styles.td}>
-                    <CategoryBadge category={item.category} />
-                  </td>
                   <td style={styles.td}>{item.name}</td>
-                  <td style={styles.td}>{item.unit}</td>
                   <td style={styles.tdRight}>{formatMoney(item.unit_cost)}</td>
                   <td style={styles.tdRight}>
                     {item.tax_rate ? `${item.tax_rate}%` : `${item.effective_tax_rate}% general`}
@@ -1019,12 +1444,10 @@ function QuotesView({
   costItems,
   form,
   isSaving,
-  itemForm,
+  onAddCostItem,
   onDeleteItem,
   onDownloadPdf,
   onFormChange,
-  onItemFormChange,
-  onItemSubmit,
   onSelectQuote,
   onSubmit,
   onTransition,
@@ -1035,12 +1458,10 @@ function QuotesView({
   costItems: CostItem[];
   form: QuoteForm;
   isSaving: boolean;
-  itemForm: QuoteItemForm;
+  onAddCostItem: (quote: Quote, item: CostItem) => void;
   onDeleteItem: (quote: Quote, itemId: string) => void;
   onDownloadPdf: (quote: Quote) => void;
   onFormChange: (form: QuoteForm) => void;
-  onItemFormChange: (form: QuoteItemForm) => void;
-  onItemSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSelectQuote: (quoteId: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => boolean | Promise<boolean>;
   onTransition: (quote: Quote, action: 'issue' | 'accept' | 'reject') => void;
@@ -1232,50 +1653,37 @@ function QuotesView({
             <QuoteProgress quote={selectedQuote} />
 
             {canEditSelected ? (
-              <form onSubmit={onItemSubmit} style={styles.inlineForm}>
-                <label style={styles.label}>
-                  Costo
-                  <select
-                    onChange={(event) =>
-                      onItemFormChange({ ...itemForm, source_cost_item_id: event.target.value })
-                    }
-                    required
-                    style={styles.input}
-                    value={itemForm.source_cost_item_id}
-                  >
-                    <option value="">Seleccionar costo</option>
+              <section style={styles.catalogPicker} aria-label="Items de cobro">
+                <div>
+                  <h3 style={styles.compactTitle}>Items de cobro</h3>
+                  <p style={styles.helperText}>Hace click en un servicio para sumarlo al presupuesto.</p>
+                </div>
+                {costItems.length === 0 ? (
+                  <p style={styles.emptyState}>Carga primero los servicios con su precio.</p>
+                ) : (
+                  <div style={styles.catalogGrid}>
                     {costItems.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {categoryLabels[item.category]} · {item.name}
-                      </option>
+                      <button
+                        disabled={isSaving}
+                        key={item.id}
+                        onClick={() => onAddCostItem(selectedQuote, item)}
+                        style={styles.catalogItemButton}
+                        type="button"
+                      >
+                        <span>
+                          <strong>{item.name}</strong>
+                          {item.description ? <small style={styles.catalogItemDescription}>{item.description}</small> : null}
+                        </span>
+                        <span style={styles.catalogItemPrice}>{formatMoney(item.unit_cost)}</span>
+                      </button>
                     ))}
-                  </select>
-                </label>
-                <Field
-                  label="Cantidad"
-                  min="0.01"
-                  required
-                  step="0.01"
-                  type="number"
-                  value={itemForm.quantity}
-                  onChange={(quantity) => onItemFormChange({ ...itemForm, quantity })}
-                />
-                <Field
-                  label="Descuento"
-                  min="0"
-                  step="0.01"
-                  type="number"
-                  value={itemForm.discount_amount}
-                  onChange={(discount) => onItemFormChange({ ...itemForm, discount_amount: discount })}
-                />
-                <button disabled={isSaving || costItems.length === 0} style={styles.primaryButton} type="submit">
-                  Agregar item
-                </button>
-              </form>
+                  </div>
+                )}
+              </section>
             ) : null}
 
             {selectedQuote.items.length === 0 ? (
-              <p style={styles.emptyState}>Agrega items desde el catalogo de costos.</p>
+              <p style={styles.emptyState}>Agrega items desde el catalogo de servicios.</p>
             ) : (
               <table style={styles.table}>
                 <thead>
@@ -1293,8 +1701,12 @@ function QuotesView({
                     <tr key={item.id}>
                       <td style={styles.td}>
                         <strong>{item.name}</strong>
-                        <br />
-                        <span style={styles.mutedText}>{categoryLabels[item.category]}</span>
+                        {item.description ? (
+                          <>
+                            <br />
+                            <span style={styles.mutedText}>{item.description}</span>
+                          </>
+                        ) : null}
                       </td>
                       <td style={styles.tdRight}>{item.quantity}</td>
                       <td style={styles.tdRight}>{formatMoney(item.unit_price)}</td>
@@ -1327,7 +1739,544 @@ function QuotesView({
   );
 }
 
-function DataTable({ headers, rows }: { headers: string[]; rows: string[][] }) {
+function CompanyProfileView({
+  form,
+  isSaving,
+  legalChangeForm,
+  onFormChange,
+  onLegalChangeFormChange,
+  onLegalChangeSubmit,
+  onSubmit,
+  requests,
+}: {
+  form: CompanyProfileForm;
+  isSaving: boolean;
+  legalChangeForm: TenantLegalChangeForm;
+  onFormChange: (form: CompanyProfileForm) => void;
+  onLegalChangeFormChange: (form: TenantLegalChangeForm) => void;
+  onLegalChangeSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  requests: TenantChangeRequest[];
+}) {
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const hasLocalLogo = form.logo_url.startsWith('data:image/');
+
+  return (
+    <section style={styles.profileGrid}>
+      <form onSubmit={onSubmit} style={styles.formPanel}>
+        <div>
+          <h2 style={styles.panelTitle}>Perfil de empresa</h2>
+          <p style={styles.panelSubtitle}>
+            Estos datos son opcionales y se usan para presupuestos, facturas e impresiones.
+          </p>
+        </div>
+        <section style={styles.lockedFiscalPanel}>
+          <div>
+            <strong>Datos fiscales bloqueados</strong>
+            <p style={styles.panelSubtitle}>
+              Nombre, razon social y CUIT solo cambian con solicitud para evitar uso indebido de empresas.
+            </p>
+          </div>
+          <div style={styles.lockedFiscalGrid}>
+            <span>Empresa: {form.name || 'Sin cargar'}</span>
+            <span>Razon social: {form.legal_name || 'Sin cargar'}</span>
+            <span>CUIT: {form.tax_id || 'Sin cargar'}</span>
+          </div>
+        </section>
+        <Field
+          label="Direccion"
+          value={form.address}
+          onChange={(address) => onFormChange({ ...form, address })}
+        />
+        <section style={styles.formGridTwo}>
+          <Field label="Telefono" value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
+          <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
+        </section>
+        <section style={styles.formGridTwo}>
+          <Field label="Sitio web" value={form.website} onChange={(website) => onFormChange({ ...form, website })} />
+          <Field
+            label="IVA general"
+            min="0"
+            max="100"
+            step="0.01"
+            type="number"
+            value={form.default_tax_rate}
+            onChange={(defaultTaxRate) => onFormChange({ ...form, default_tax_rate: defaultTaxRate })}
+          />
+        </section>
+        <label style={styles.label}>
+          Logo
+          <div style={styles.actions}>
+            <button
+              onClick={() => logoInputRef.current?.click()}
+              style={styles.secondaryButton}
+              type="button"
+            >
+              Subir logo local
+            </button>
+            {form.logo_url ? (
+              <button
+                onClick={() => onFormChange({ ...form, logo_url: '' })}
+                style={styles.linkButton}
+                type="button"
+              >
+                Quitar logo
+              </button>
+            ) : null}
+          </div>
+          <input
+            accept="image/*"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+
+              if (!file) {
+                return;
+              }
+
+              if (!file.type.startsWith('image/')) {
+                void Swal.fire({
+                  title: 'Archivo no valido',
+                  text: 'Selecciona un archivo de imagen para usarlo como logo.',
+                  icon: 'warning',
+                  confirmButtonText: 'Cerrar',
+                });
+                event.target.value = '';
+                return;
+              }
+
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result;
+                if (typeof result === 'string') {
+                  onFormChange({ ...form, logo_url: result });
+                }
+              };
+              reader.onerror = () => {
+                void Swal.fire({
+                  title: 'No se pudo leer el archivo',
+                  text: 'Intenta nuevamente con otra imagen.',
+                  icon: 'error',
+                  confirmButtonText: 'Cerrar',
+                });
+              };
+              reader.readAsDataURL(file);
+              event.target.value = '';
+            }}
+            ref={logoInputRef}
+            style={{ display: 'none' }}
+            type="file"
+          />
+          <input
+            onChange={(event) => onFormChange({ ...form, logo_url: event.target.value })}
+            placeholder="https://..."
+            style={styles.input}
+            value={hasLocalLogo ? '' : form.logo_url}
+          />
+          <small style={styles.panelSubtitle}>
+            {hasLocalLogo
+              ? 'Logo local cargado. Se guardara como imagen embebida.'
+              : 'Tambien puedes pegar una URL publica de imagen.'}
+          </small>
+        </label>
+        <label style={styles.label}>
+          Leyenda para facturas
+          <textarea
+            onChange={(event) => onFormChange({ ...form, invoice_notes: event.target.value })}
+            rows={4}
+            style={styles.textarea}
+            value={form.invoice_notes}
+          />
+        </label>
+        <button disabled={isSaving} style={styles.primaryButton} type="submit">
+          Guardar perfil
+        </button>
+      </form>
+
+      <form onSubmit={onLegalChangeSubmit} style={styles.formPanel}>
+        <div>
+          <h2 style={styles.panelTitle}>Solicitar cambio fiscal</h2>
+          <p style={styles.panelSubtitle}>
+            La solicitud queda pendiente hasta que un administrador de plataforma la revise.
+          </p>
+        </div>
+        <Field
+          label="Nuevo nombre de empresa"
+          value={legalChangeForm.proposed_name}
+          onChange={(proposedName) => onLegalChangeFormChange({ ...legalChangeForm, proposed_name: proposedName })}
+        />
+        <Field
+          label="Nueva razon social"
+          value={legalChangeForm.proposed_legal_name}
+          onChange={(proposedLegalName) =>
+            onLegalChangeFormChange({ ...legalChangeForm, proposed_legal_name: proposedLegalName })
+          }
+        />
+        <Field
+          label="Nuevo CUIT"
+          value={legalChangeForm.proposed_tax_id}
+          onChange={(proposedTaxId) => onLegalChangeFormChange({ ...legalChangeForm, proposed_tax_id: proposedTaxId })}
+        />
+        <label style={styles.label}>
+          Motivo
+          <textarea
+            onChange={(event) => onLegalChangeFormChange({ ...legalChangeForm, reason: event.target.value })}
+            rows={3}
+            style={styles.textarea}
+            value={legalChangeForm.reason}
+          />
+        </label>
+        <button disabled={isSaving} style={styles.secondaryButton} type="submit">
+          Enviar solicitud
+        </button>
+        {requests.length > 0 ? (
+          <div style={styles.serviceList}>
+            <strong>Solicitudes recientes</strong>
+            {requests.slice(0, 3).map((request) => (
+              <article key={request.id} style={styles.serviceRecord}>
+                <span style={styles.categoryBadge}>{request.status}</span>
+                <span style={styles.mutedText}>
+                  {[
+                    request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
+                    request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
+                    request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' | ')}
+                </span>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </form>
+
+      <section style={styles.tablePanel} aria-labelledby="profile-preview-title">
+        <div style={styles.panelHeader}>
+          <h2 id="profile-preview-title" style={styles.panelTitle}>
+            Vista PDF
+          </h2>
+        </div>
+        <div style={styles.pdfPreviewShell}>
+          <article style={styles.pdfPreviewPage} aria-label="Vista previa PDF de factura">
+            <header style={styles.pdfPreviewHeader}>
+              <div>
+                <h3 style={styles.invoiceCompanyName}>{form.legal_name || form.name || 'FacturEasy'}</h3>
+                <p style={styles.pdfPreviewMuted}>{form.tax_id ? `CUIT ${form.tax_id}` : 'CUIT pendiente'}</p>
+                <p style={styles.pdfPreviewMuted}>{form.address || 'Direccion pendiente'}</p>
+                <p style={styles.pdfPreviewMuted}>
+                  {[form.phone, form.email].filter(Boolean).join(' - ') || 'Contacto pendiente'}
+                </p>
+              </div>
+              {form.logo_url ? <img alt="" src={form.logo_url} style={styles.logoPreview} /> : <div style={styles.logoPlaceholder}>Logo</div>}
+            </header>
+            <section style={styles.pdfPreviewMeta}>
+              <div>
+                <strong>Factura electronica</strong>
+                <p style={styles.pdfPreviewMuted}>Presupuesto Q-000001 - {formatDate(new Date().toISOString())}</p>
+              </div>
+              <div style={styles.pdfPreviewClient}>
+                <span>Cliente</span>
+                <strong>Cliente demo</strong>
+              </div>
+            </section>
+            <table style={styles.pdfPreviewTable}>
+              <thead>
+                <tr>
+                  <th style={styles.pdfPreviewTh}>Servicio</th>
+                  <th style={styles.pdfPreviewThRight}>Cantidad</th>
+                  <th style={styles.pdfPreviewThRight}>Unitario</th>
+                  <th style={styles.pdfPreviewThRight}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={styles.pdfPreviewTd}>Instalacion</td>
+                  <td style={styles.pdfPreviewTdRight}>1</td>
+                  <td style={styles.pdfPreviewTdRight}>{formatMoney(85000)}</td>
+                  <td style={styles.pdfPreviewTdRight}>{formatMoney(85000)}</td>
+                </tr>
+                <tr>
+                  <td style={styles.pdfPreviewTd}>Carga de gas</td>
+                  <td style={styles.pdfPreviewTdRight}>1</td>
+                  <td style={styles.pdfPreviewTdRight}>{formatMoney(60000)}</td>
+                  <td style={styles.pdfPreviewTdRight}>{formatMoney(60000)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <footer style={styles.pdfPreviewTotals}>
+              <span>Subtotal {formatMoney(145000)}</span>
+              <span>IVA {formatMoney(30450)}</span>
+              <strong>Total {formatMoney(175450)}</strong>
+            </footer>
+            {form.invoice_notes ? <p style={styles.pdfPreviewNotes}>{form.invoice_notes}</p> : null}
+          </article>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function TreasuryView({
+  clients,
+  isCompactLayout,
+  onSendInvoiceByWhatsApp,
+  quotes,
+}: {
+  clients: Client[];
+  isCompactLayout: boolean;
+  onSendInvoiceByWhatsApp: (quote: Quote) => void;
+  quotes: Quote[];
+}) {
+  const [isSmartTreasury, setIsSmartTreasury] = useState(false);
+  const acceptedQuotes = quotes.filter((quote) => quote.status === 'accepted');
+  const issuedQuotes = quotes.filter((quote) => quote.status === 'issued');
+  const draftQuotes = quotes.filter((quote) => quote.status === 'draft');
+  const rejectedQuotes = quotes.filter((quote) => quote.status === 'rejected');
+  const treasuryMetrics = [
+    { label: 'Facturado aceptado', value: formatMoney(sumQuotes(acceptedQuotes)) },
+    { label: 'Pendiente emitido', value: formatMoney(sumQuotes(issuedQuotes)) },
+    { label: 'En borrador', value: formatMoney(sumQuotes(draftQuotes)) },
+    { label: 'Rechazado', value: formatMoney(sumQuotes(rejectedQuotes)) },
+  ];
+  const averageAccepted = acceptedQuotes.length
+    ? sumQuotes(acceptedQuotes) / acceptedQuotes.length
+    : 0;
+  const conversionRate = quotes.length ? (acceptedQuotes.length / quotes.length) * 100 : 0;
+  const monthlyRows = buildMonthlyTreasuryRows(acceptedQuotes);
+  const latestMovements = [...quotes]
+    .filter((quote) => quote.status !== 'draft')
+    .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
+    .slice(0, 8);
+  const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes);
+
+  if (isSmartTreasury) {
+    return (
+      <>
+        <section style={styles.smartHeader}>
+          <div>
+            <h2 style={styles.panelTitle}>Tesoreria inteligente</h2>
+            <p style={styles.panelSubtitle}>Lectura rapida de ventas, meses fuertes y oportunidades.</p>
+          </div>
+          <button onClick={() => setIsSmartTreasury(false)} style={styles.secondaryButton} type="button">
+            Volver a tesoreria
+          </button>
+        </section>
+
+        <section style={styles.metrics} aria-label="Indicadores inteligentes">
+          {smartTreasury.cards.map((card) => (
+            <article key={card.label} style={styles.metricCard}>
+              <p style={styles.metricLabel}>{card.label}</p>
+              <strong style={styles.metricValue}>{card.value}</strong>
+            </article>
+          ))}
+        </section>
+
+        <section style={styles.gridTwo}>
+          <ChartPanel
+            emptyText="Todavia no hay servicios aceptados."
+            rows={smartTreasury.services}
+            title="Servicios mas vendidos"
+            valueFormatter={(value) => `${value.toFixed(0)} ventas`}
+          />
+          <ChartPanel
+            emptyText="Todavia no hay facturacion aceptada."
+            rows={smartTreasury.months}
+            title="Meses mas facturados"
+            valueFormatter={formatMoney}
+          />
+        </section>
+
+        <section style={styles.tablePanel} aria-labelledby="smart-report-title">
+          <div style={styles.panelHeader}>
+            <h2 id="smart-report-title" style={styles.panelTitle}>
+              Reporte inteligente
+            </h2>
+          </div>
+          <div style={styles.smartReportGrid}>
+            {smartTreasury.insights.map((insight) => (
+              <article key={insight.title} style={styles.smartInsight}>
+                <strong>{insight.title}</strong>
+                <p>{insight.text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <section style={styles.smartHeader}>
+        <div>
+          <h2 style={styles.panelTitle}>Tesoreria</h2>
+          <p style={styles.panelSubtitle}>Control de facturacion y movimientos del negocio.</p>
+        </div>
+        <button onClick={() => setIsSmartTreasury(true)} style={styles.primaryButton} type="button">
+          Tesoreria inteligente
+        </button>
+      </section>
+
+      <section style={styles.metrics} aria-label="Metricas de tesoreria">
+        {treasuryMetrics.map((metric) => (
+          <article key={metric.label} style={styles.metricCard}>
+            <p style={styles.metricLabel}>{metric.label}</p>
+            <strong style={styles.metricValue}>{metric.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section style={styles.gridTwo}>
+        <section style={styles.tablePanel} aria-labelledby="treasury-health-title">
+          <div style={styles.panelHeader}>
+            <h2 id="treasury-health-title" style={styles.panelTitle}>
+              Metricas
+            </h2>
+          </div>
+          <div style={styles.categoryGrid}>
+            <div style={styles.categoryRow}>
+              <span>Ticket promedio aceptado</span>
+              <strong>{formatMoney(String(averageAccepted))}</strong>
+            </div>
+            <div style={styles.categoryRow}>
+              <span>Conversion aceptada</span>
+              <strong>{conversionRate.toFixed(0)}%</strong>
+            </div>
+            <div style={styles.categoryRow}>
+              <span>Presupuestos aceptados</span>
+              <strong>{acceptedQuotes.length}</strong>
+            </div>
+            <div style={styles.categoryRow}>
+              <span>Presupuestos pendientes</span>
+              <strong>{issuedQuotes.length}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.tablePanel} aria-labelledby="treasury-monthly-title">
+          <div style={styles.panelHeader}>
+            <h2 id="treasury-monthly-title" style={styles.panelTitle}>
+              Facturacion por mes
+            </h2>
+          </div>
+          {monthlyRows.length === 0 ? (
+            <p style={styles.emptyState}>Todavia no hay presupuestos aceptados.</p>
+          ) : (
+            <DataTable headers={['Mes', 'Cantidad', 'Facturado']} isCompactLayout={isCompactLayout} rows={monthlyRows} />
+          )}
+        </section>
+      </section>
+
+      <section style={styles.tablePanel} aria-labelledby="treasury-movements-title">
+        <div style={styles.panelHeader}>
+          <h2 id="treasury-movements-title" style={styles.panelTitle}>
+            Movimientos recientes
+          </h2>
+        </div>
+        {latestMovements.length === 0 ? (
+          <p style={styles.emptyState}>Todavia no hay presupuestos emitidos o aceptados.</p>
+        ) : (
+          <div style={styles.clientList}>
+            {latestMovements.map((quote) => (
+              <article key={quote.id} style={styles.treasuryMovementRow}>
+                <div style={styles.clientIdentity}>
+                  <strong>{clientName(clients, quote.client_id)}</strong>
+                  <span style={styles.mutedText}>
+                    {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
+                  </span>
+                </div>
+                <StatusBadge status={quote.status} />
+                <strong>{formatMoney(quote.total)}</strong>
+                <div style={styles.clientActions}>
+                  {quote.status === 'accepted' ? (
+                    <>
+                      <button onClick={() => onSendInvoiceByWhatsApp(quote)} style={styles.whatsAppButton} type="button">
+                        Enviar PDF por WhatsApp
+                      </button>
+                    </>
+                  ) : (
+                    <span style={styles.mutedText}>Sin factura</span>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function ChartPanel({
+  emptyText,
+  rows,
+  title,
+  valueFormatter,
+}: {
+  emptyText: string;
+  rows: Array<{ label: string; value: number; secondary?: string }>;
+  title: string;
+  valueFormatter: (value: number) => string;
+}) {
+  const maxValue = Math.max(...rows.map((row) => row.value), 0);
+
+  return (
+    <section style={styles.tablePanel} aria-label={title}>
+      <div style={styles.panelHeader}>
+        <h2 style={styles.panelTitle}>{title}</h2>
+      </div>
+      {rows.length === 0 ? (
+        <p style={styles.emptyState}>{emptyText}</p>
+      ) : (
+        <div style={styles.chartList}>
+          {rows.map((row) => {
+            const width = maxValue ? Math.max((row.value / maxValue) * 100, 4) : 0;
+
+            return (
+              <div key={row.label} style={styles.chartRow}>
+                <div style={styles.chartLabelRow}>
+                  <strong>{row.label}</strong>
+                  <span>{valueFormatter(row.value)}</span>
+                </div>
+                {row.secondary ? <p style={styles.chartSecondary}>{row.secondary}</p> : null}
+                <div style={styles.chartTrack}>
+                  <span style={{ ...styles.chartBar, width: `${width}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DataTable({
+  headers,
+  isCompactLayout = false,
+  rows,
+}: {
+  headers: string[];
+  isCompactLayout?: boolean;
+  rows: string[][];
+}) {
+  if (isCompactLayout) {
+    return (
+      <div style={styles.mobileDataList}>
+        {rows.map((row) => (
+          <article key={row.join('-')} style={styles.mobileDataCard}>
+            <strong>{row[0]}</strong>
+            {row.slice(1).map((cell, index) => (
+              <div key={`${headers[index + 1]}-${cell}`} style={styles.mobileDataRow}>
+                <span>{headers[index + 1]}</span>
+                <b>{cell}</b>
+              </div>
+            ))}
+          </article>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <table style={styles.table}>
       <thead>
@@ -1413,6 +2362,161 @@ function Field({
   );
 }
 
+function companyProfileToForm(profile: TenantProfile): CompanyProfileForm {
+  return {
+    name: profile.name,
+    legal_name: profile.legal_name ?? '',
+    tax_id: profile.tax_id ?? '',
+    address: profile.address ?? '',
+    phone: profile.phone ?? '',
+    email: profile.email ?? '',
+    website: profile.website ?? '',
+    logo_url: profile.logo_url ?? '',
+    invoice_notes: profile.invoice_notes ?? '',
+    default_tax_rate: profile.default_tax_rate,
+  };
+}
+
+function buildWhatsAppInvoiceMessage({
+  clientName,
+  companyName,
+  quote,
+}: {
+  clientName?: string;
+  companyName: string;
+  quote: Quote;
+}): string {
+  const greeting = buenosAiresGreeting();
+
+  return [
+    `Hola ${clientName ?? ''}, ${greeting}.`,
+    `Te enviamos adjunta la factura electronica correspondiente al presupuesto ${quote.number} de ${companyName}.`,
+    `Total: ${formatMoney(quote.total)}.`,
+    'Muchas gracias. Quedamos a disposicion por cualquier consulta.',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buenosAiresGreeting(date = new Date()): string {
+  const timeParts = new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  }).formatToParts(date);
+  const hour = Number(timeParts.find((part) => part.type === 'hour')?.value ?? '0');
+  const minute = Number(timeParts.find((part) => part.type === 'minute')?.value ?? '0');
+  const minutes = hour * 60 + minute;
+
+  if (minutes >= 8 * 60 && minutes < 13 * 60) {
+    return 'Buen dia';
+  }
+
+  if (minutes >= 13 * 60 && minutes < 19 * 60 + 30) {
+    return 'Buenas tardes';
+  }
+
+  return 'Buenas noches';
+}
+
+function buildInvoiceHtml(quote: Quote, clients: Client[], profile: TenantProfile | null): string {
+  const companyName = profile?.legal_name || profile?.name || 'Empresa';
+  const client = clientName(clients, quote.client_id);
+  const contactLine = [profile?.phone, profile?.email, profile?.website].filter(Boolean).join(' - ');
+  const rows = quote.items
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.name)}</td>
+          <td>${escapeHtml(categoryLabels[item.category])}</td>
+          <td class="right">${escapeHtml(item.quantity)}</td>
+          <td class="right">${escapeHtml(formatMoney(item.unit_price))}</td>
+          <td class="right">${escapeHtml(formatMoney(item.line_total))}</td>
+        </tr>
+      `,
+    )
+    .join('');
+
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <title>Factura ${escapeHtml(quote.number)}</title>
+        <style>
+          body { color: #17202a; font-family: Arial, sans-serif; margin: 32px; }
+          header { align-items: flex-start; border-bottom: 1px solid #d9e0e7; display: flex; justify-content: space-between; padding-bottom: 20px; }
+          h1, h2, p { margin: 0; }
+          h1 { font-size: 24px; }
+          h2 { font-size: 18px; margin-bottom: 8px; }
+          .muted { color: #526071; margin-top: 6px; }
+          .logo { max-height: 72px; max-width: 180px; object-fit: contain; }
+          .section { margin-top: 24px; }
+          table { border-collapse: collapse; margin-top: 14px; width: 100%; }
+          th { color: #526071; font-size: 12px; text-align: left; text-transform: uppercase; }
+          th, td { border-bottom: 1px solid #edf1f5; padding: 10px 8px; }
+          .right { text-align: right; }
+          .totals { display: grid; gap: 8px; justify-content: end; margin-top: 18px; text-align: right; }
+          .notes { background: #f8fafc; border: 1px solid #e5eaf0; border-radius: 6px; padding: 12px; }
+        </style>
+      </head>
+      <body>
+        <header>
+          <div>
+            <h1>${escapeHtml(companyName)}</h1>
+            ${profile?.tax_id ? `<p class="muted">CUIT ${escapeHtml(profile.tax_id)}</p>` : ''}
+            ${profile?.address ? `<p class="muted">${escapeHtml(profile.address)}</p>` : ''}
+            ${contactLine ? `<p class="muted">${escapeHtml(contactLine)}</p>` : ''}
+          </div>
+          ${profile?.logo_url ? `<img alt="" class="logo" src="${escapeAttribute(profile.logo_url)}" />` : ''}
+        </header>
+        <section class="section">
+          <h2>Factura</h2>
+          <p class="muted">Presupuesto ${escapeHtml(quote.number)} - ${escapeHtml(formatDate(quote.issued_at ?? quote.created_at))}</p>
+          <p class="muted">Cliente: ${escapeHtml(client)}</p>
+        </section>
+        <section class="section">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Categoria</th>
+                <th class="right">Cantidad</th>
+                <th class="right">Unitario</th>
+                <th class="right">Total</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="totals">
+            <span>Subtotal ${escapeHtml(formatMoney(quote.subtotal))}</span>
+            <span>IVA ${escapeHtml(formatMoney(quote.tax_total))}</span>
+            <strong>Total ${escapeHtml(formatMoney(quote.total))}</strong>
+          </div>
+        </section>
+        ${
+          profile?.invoice_notes
+            ? `<section class="section notes">${escapeHtml(profile.invoice_notes)}</section>`
+            : ''
+        }
+      </body>
+    </html>
+  `;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value).replaceAll('`', '&#096;');
+}
+
 function compactPayload(form: ClientForm): ClientPayload {
   return {
     name: form.name.trim(),
@@ -1428,6 +2532,23 @@ function clientName(clients: Client[], clientId: string): string {
   return clients.find((client) => client.id === clientId)?.name ?? 'Cliente';
 }
 
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function openWhatsAppMessage(phone: string, message: string): void {
+  const target = phone
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+  window.open(target, '_blank', 'noopener,noreferrer');
+}
+
 function matchesSearch(values: Array<string | null>, search: string): boolean {
   const term = search.trim().toLowerCase();
 
@@ -1438,12 +2559,127 @@ function matchesSearch(values: Array<string | null>, search: string): boolean {
   return values.some((value) => value?.toLowerCase().includes(term));
 }
 
+function sumQuotes(quotes: Quote[], status?: QuoteStatus): number {
+  return quotes.reduce((total, quote) => {
+    if (status && quote.status !== status) {
+      return total;
+    }
+
+    return total + Number(quote.total);
+  }, 0);
+}
+
+function quoteTimestamp(quote: Quote): number {
+  return new Date(quote.issued_at ?? quote.created_at).getTime();
+}
+
+function buildMonthlyTreasuryRows(quotes: Quote[]): string[][] {
+  const monthlyTotals = quotes.reduce<Record<string, { count: number; total: number }>>(
+    (totals, quote) => {
+      const date = new Date(quote.issued_at ?? quote.created_at);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const current = totals[key] ?? { count: 0, total: 0 };
+
+      return {
+        ...totals,
+        [key]: {
+          count: current.count + 1,
+          total: current.total + Number(quote.total),
+        },
+      };
+    },
+    {},
+  );
+
+  return Object.entries(monthlyTotals)
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([month, value]) => [formatMonth(month), String(value.count), formatMoney(value.total)]);
+}
+
+function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
+  const serviceTotals = acceptedQuotes.reduce<Record<string, { count: number; total: number }>>((totals, quote) => {
+    quote.items.forEach((item) => {
+      const current = totals[item.name] ?? { count: 0, total: 0 };
+      totals[item.name] = {
+        count: current.count + Number(item.quantity),
+        total: current.total + Number(item.line_total),
+      };
+    });
+
+    return totals;
+  }, {});
+  const services = Object.entries(serviceTotals)
+    .map(([label, value]) => ({
+      label,
+      secondary: formatMoney(value.total),
+      value: value.count,
+    }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 5);
+  const monthlyTotals = acceptedQuotes.reduce<Record<string, number>>((totals, quote) => {
+    const date = new Date(quote.issued_at ?? quote.created_at);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    totals[key] = (totals[key] ?? 0) + Number(quote.total);
+    return totals;
+  }, {});
+  const months = Object.entries(monthlyTotals)
+    .map(([label, value]) => ({ label: formatMonth(label), value }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 6);
+  const totalAccepted = sumQuotes(acceptedQuotes);
+  const averageTicket = acceptedQuotes.length ? totalAccepted / acceptedQuotes.length : 0;
+  const conversionRate = allQuotes.length ? (acceptedQuotes.length / allQuotes.length) * 100 : 0;
+  const topService = services[0];
+  const topMonth = months[0];
+  const pendingValue = sumQuotes(allQuotes, 'issued');
+
+  return {
+    cards: [
+      { label: 'Servicio lider', value: topService?.label ?? 'Sin datos' },
+      { label: 'Mejor mes', value: topMonth?.label ?? 'Sin datos' },
+      { label: 'Ticket promedio', value: formatMoney(averageTicket) },
+      { label: 'Conversion', value: `${conversionRate.toFixed(0)}%` },
+    ],
+    insights: [
+      {
+        title: 'Foco comercial',
+        text: topService
+          ? `${topService.label} es el servicio con mayor cantidad de ventas. Conviene destacarlo en la carga rapida y revisar su precio periodicamente.`
+          : 'Cuando haya presupuestos aceptados, aca se va a mostrar el servicio con mejor traccion.',
+      },
+      {
+        title: 'Temporada fuerte',
+        text: topMonth
+          ? `${topMonth.label} concentra la mayor facturacion aceptada con ${formatMoney(topMonth.value)}. Puede servir para planificar stock, agenda y disponibilidad.`
+          : 'Todavia no hay meses con facturacion aceptada suficiente para detectar estacionalidad.',
+      },
+      {
+        title: 'Caja por cerrar',
+        text: pendingValue > 0
+          ? `Hay ${formatMoney(pendingValue)} en presupuestos emitidos pendientes de aceptacion. Es el primer lugar donde conviene hacer seguimiento.`
+          : 'No hay monto emitido pendiente. La tesoreria actual no muestra caja inmediata por cerrar.',
+      },
+    ],
+    months,
+    services,
+  };
+}
+
+function formatMonth(value: string): string {
+  const [year, month] = value.split('-').map(Number);
+
+  return new Intl.DateTimeFormat('es-AR', {
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, 1));
+}
+
 function nullable(value: string): string | null {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function formatMoney(value: string): string {
+function formatMoney(value: number | string): string {
   return new Intl.NumberFormat('es-AR', {
     currency: 'ARS',
     style: 'currency',
@@ -1462,6 +2698,34 @@ function navStyle(isActive: boolean): React.CSSProperties {
   return isActive ? styles.navActive : styles.navItem;
 }
 
+function showSuccessToast(title: string) {
+  try {
+    void Swal.fire({
+      icon: 'success',
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 2200,
+      timerProgressBar: true,
+      title,
+      toast: true,
+    });
+  } catch {
+    // SweetAlert2 can throw in headless test environments; runtime UI remains unaffected.
+  }
+}
+
+function quoteTransitionSuccessMessage(action: 'issue' | 'accept' | 'reject'): string {
+  if (action === 'issue') {
+    return 'Presupuesto emitido';
+  }
+
+  if (action === 'accept') {
+    return 'Presupuesto aceptado';
+  }
+
+  return 'Presupuesto rechazado';
+}
+
 function statusBadgeStyle(status: QuoteStatus): React.CSSProperties {
   if (status === 'accepted') {
     return styles.statusAccepted;
@@ -1478,20 +2742,189 @@ function statusBadgeStyle(status: QuoteStatus): React.CSSProperties {
   return styles.statusDraft;
 }
 
+function bottomTabIcon(view: View): string {
+  const icons: Record<View, string> = {
+    clients: 'C',
+    company: 'E',
+    costs: 'S',
+    quotes: 'P',
+    summary: 'I',
+    treasury: 'T',
+  };
+
+  return icons[view];
+}
+
+function themeVariables(isDarkMode: boolean): React.CSSProperties {
+  if (!isDarkMode) {
+    return {
+      '--accent': '#1d4ed8',
+      '--accent-contrast': '#ffffff',
+      '--accent-soft': '#eaf1ff',
+      '--border': '#d9e0e7',
+      '--danger': '#be123c',
+      '--danger-bg': '#fff1f2',
+      '--input-bg': '#ffffff',
+      '--muted': '#526071',
+      '--page-bg': '#f4f6f8',
+      '--panel-bg': '#ffffff',
+      '--panel-subtle': '#f8fafc',
+      '--success': '#027a48',
+      '--success-bg': '#ecfdf3',
+      '--text': '#17202a',
+      '--warning': '#b45309',
+      '--warning-bg': '#fffbeb',
+    } as React.CSSProperties;
+  }
+
+  return {
+    '--accent': '#daa520',
+    '--accent-contrast': '#09090b',
+    '--accent-soft': 'rgba(218, 165, 32, 0.16)',
+    '--border': 'rgba(218, 165, 32, 0.28)',
+    '--danger': '#fb7185',
+    '--danger-bg': 'rgba(244, 63, 94, 0.16)',
+    '--input-bg': '#111827',
+    '--muted': '#a7b0c0',
+    '--page-bg': '#07070c',
+    '--panel-bg': '#0e1118',
+    '--panel-subtle': '#151a24',
+    '--success': '#34d399',
+    '--success-bg': 'rgba(52, 211, 153, 0.14)',
+    '--text': '#f8fafc',
+    '--warning': '#fbbf24',
+    '--warning-bg': 'rgba(251, 191, 36, 0.14)',
+  } as React.CSSProperties;
+}
+
 const styles = {
   page: {
-    background: '#f4f6f8',
-    color: '#17202a',
+    background:
+      'radial-gradient(circle at 18% 10%, rgba(218, 165, 32, 0.16), transparent 28%), linear-gradient(135deg, var(--page-bg), var(--page-bg))',
+    color: 'var(--text)',
     display: 'flex',
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     minHeight: '100vh',
+    minWidth: 0,
+  },
+  pageCompact: {
+    display: 'block',
   },
   sidebar: {
-    background: '#ffffff',
-    borderRight: '1px solid #d9e0e7',
+    background: 'var(--panel-bg)',
+    borderRight: '1px solid var(--border)',
+    flex: '0 0 220px',
     padding: '24px',
-    width: '240px',
+    width: '220px',
+  },
+  sidebarCollapsed: {
+    flex: '0 0 104px',
+    padding: '20px 14px',
+    width: '104px',
+  },
+  mobileHeader: {
+    alignItems: 'center',
+    background: 'var(--panel-bg)',
+    borderBottom: '1px solid var(--border)',
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '10px 14px',
+    position: 'sticky',
+    top: 0,
+    zIndex: 20,
+  },
+  mobileBrand: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: '10px',
+    minWidth: 0,
+  },
+  mobileBrandText: {
+    display: 'grid',
+    gap: '2px',
+    minWidth: 0,
+  },
+  mobileCurrentView: {
+    color: 'var(--muted)',
+    display: 'block',
+    fontSize: '12px',
+    fontWeight: 700,
+    lineHeight: 1.1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  mobileLogo: {
+    borderRadius: '6px',
+    display: 'block',
+    height: '44px',
+    objectFit: 'contain',
+    width: '44px',
+  },
+  hamburgerButton: {
+    alignItems: 'center',
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '4px',
+    height: '42px',
+    justifyContent: 'center',
+    padding: '0 10px',
+    width: '46px',
+  },
+  hamburgerGlyph: {
+    fontSize: '12px',
+    fontWeight: 800,
+    letterSpacing: 0,
+    lineHeight: 1,
+  },
+  mobileDrawerOverlay: {
+    alignItems: 'flex-start',
+    background: 'rgba(0, 0, 0, 0.48)',
+    bottom: 0,
+    display: 'flex',
+    left: 0,
+    padding: '12px',
+    position: 'fixed',
+    right: 0,
+    top: 0,
+    zIndex: 40,
+  },
+  mobileDrawer: {
+    background: 'var(--panel-bg)',
+    borderRight: '1px solid var(--border)',
+    borderRadius: '10px',
+    boxShadow: '18px 0 44px rgba(0, 0, 0, 0.35)',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateRows: 'auto auto auto',
+    maxHeight: 'calc(100dvh - 24px)',
+    maxWidth: '300px',
+    overflowY: 'auto',
+    padding: '18px',
+    width: 'min(82vw, 300px)',
+  },
+  mobileDrawerHeader: {
+    alignItems: 'center',
+    display: 'flex',
+    justifyContent: 'space-between',
+  },
+  mobileDrawerNav: {
+    display: 'grid',
+    gap: '8px',
+  },
+  mobileDrawerNavButton: {
+    minHeight: '44px',
+    width: '100%',
+  },
+  mobileDrawerActions: {
+    display: 'grid',
+    gap: '10px',
+    marginTop: '8px',
   },
   logoRow: {
     alignItems: 'center',
@@ -1499,51 +2932,88 @@ const styles = {
     gap: '10px',
     marginBottom: '32px',
   },
-  logoMark: {
-    alignItems: 'center',
-    background: '#1d4ed8',
+  sidebarToggle: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
     borderRadius: '6px',
-    color: '#ffffff',
-    display: 'flex',
-    fontWeight: 700,
-    height: '34px',
-    justifyContent: 'center',
-    width: '34px',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 800,
+    marginLeft: 'auto',
+    minHeight: '32px',
+    minWidth: '32px',
+  },
+  logoMark: {
+    borderRadius: '6px',
+    display: 'block',
+    flex: '0 0 76px',
+    height: '76px',
+    objectFit: 'contain',
+    width: '76px',
   },
   nav: {
     display: 'grid',
     gap: '6px',
   },
+  navCompact: {
+    display: 'flex',
+    gap: '8px',
+    overflowX: 'auto',
+    paddingBottom: '2px',
+  },
   navItem: {
     background: 'transparent',
     border: 0,
     borderRadius: '6px',
-    color: '#526071',
+    color: 'var(--muted)',
     cursor: 'pointer',
     fontSize: '14px',
     padding: '10px 12px',
     textAlign: 'left',
+    whiteSpace: 'nowrap',
   },
   navActive: {
-    background: '#eaf1ff',
+    background: 'var(--accent-soft)',
     border: 0,
     borderRadius: '6px',
-    color: '#1d4ed8',
+    color: 'var(--accent)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: 700,
     padding: '10px 12px',
     textAlign: 'left',
+    whiteSpace: 'nowrap',
+  },
+  navItemCollapsed: {
+    minHeight: '42px',
+    textAlign: 'center',
   },
   content: {
     flex: 1,
-    padding: '32px',
+    minWidth: 0,
+    padding: 'clamp(20px, 3vw, 32px)',
+  },
+  contentCompact: {
+    overflowX: 'hidden',
+    padding: '14px 14px 108px',
+  },
+  topbarMobileHidden: {
+    display: 'none',
   },
   topbar: {
     alignItems: 'center',
     display: 'flex',
+    gap: '16px',
     justifyContent: 'space-between',
     marginBottom: '24px',
+    flexWrap: 'wrap',
+  },
+  topbarActions: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
   },
   title: {
     fontSize: '28px',
@@ -1551,33 +3021,74 @@ const styles = {
     margin: 0,
   },
   subtitle: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '15px',
     margin: '8px 0 0',
   },
-  errorBanner: {
-    background: '#fff1f2',
-    border: '1px solid #fecdd3',
+  bottomTabBar: {
+    background: 'var(--panel-bg)',
+    borderTop: '1px solid var(--border)',
+    bottom: 0,
+    display: 'grid',
+    gap: '4px',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    left: 0,
+    padding: '8px 8px 10px',
+    position: 'fixed',
+    right: 0,
+    zIndex: 30,
+  },
+  bottomTab: {
+    alignItems: 'center',
+    background: 'transparent',
+    border: 0,
     borderRadius: '8px',
-    color: '#9f1239',
+    color: 'var(--muted)',
+    cursor: 'pointer',
+    display: 'grid',
+    fontSize: '11px',
+    fontWeight: 700,
+    gap: '3px',
+    justifyItems: 'center',
+    minHeight: '48px',
+  },
+  bottomTabActive: {
+    alignItems: 'center',
+    background: 'var(--accent-soft)',
+    border: 0,
+    borderRadius: '8px',
+    color: 'var(--accent)',
+    cursor: 'pointer',
+    display: 'grid',
+    fontSize: '11px',
+    fontWeight: 800,
+    gap: '3px',
+    justifyItems: 'center',
+    minHeight: '48px',
+  },
+  errorBanner: {
+    background: 'var(--danger-bg)',
+    border: '1px solid var(--danger)',
+    borderRadius: '8px',
+    color: 'var(--danger)',
     margin: '0 0 20px',
     padding: '12px 14px',
   },
   secondaryButton: {
-    background: '#ffffff',
-    border: '1px solid #c9d3df',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '6px',
-    color: '#344054',
+    color: 'var(--text)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: 700,
     padding: '10px 14px',
   },
   primaryButton: {
-    background: '#1d4ed8',
+    background: 'var(--accent)',
     border: 0,
     borderRadius: '6px',
-    color: '#ffffff',
+    color: 'var(--accent-contrast)',
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: 700,
@@ -1585,18 +3096,20 @@ const styles = {
   },
   metrics: {
     display: 'grid',
-    gap: '16px',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: '12px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 170px), 1fr))',
     marginBottom: '24px',
   },
   metricCard: {
-    background: '#ffffff',
-    border: '1px solid #d9e0e7',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '8px',
-    padding: '20px',
+    minWidth: 0,
+    overflow: 'hidden',
+    padding: 'clamp(14px, 3vw, 20px)',
   },
   metricLabel: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '13px',
     fontWeight: 700,
     margin: 0,
@@ -1604,37 +3117,56 @@ const styles = {
   },
   metricValue: {
     display: 'block',
-    fontSize: '30px',
+    fontSize: 'clamp(22px, 6vw, 30px)',
+    lineHeight: 1.1,
     marginTop: '10px',
+    overflowWrap: 'anywhere',
   },
   gridTwo: {
     display: 'grid',
     gap: '20px',
-    gridTemplateColumns: 'minmax(280px, 0.8fr) minmax(420px, 1.2fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))',
+    marginBottom: '20px',
   },
   workspaceGrid: {
     display: 'grid',
     gap: '20px',
-    gridTemplateColumns: '360px minmax(0, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
+  },
+  profileGrid: {
+    display: 'grid',
+    gap: '20px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
+  },
+  formGridTwo: {
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  },
+  presetGrid: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
   },
   formPanel: {
     alignSelf: 'start',
-    background: '#ffffff',
-    border: '1px solid #d9e0e7',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'grid',
     gap: '14px',
     padding: '20px',
   },
   tablePanel: {
-    background: '#ffffff',
-    border: '1px solid #d9e0e7',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '8px',
-    overflow: 'hidden',
+    minWidth: 0,
+    overflowX: 'auto',
   },
   panelHeader: {
     alignItems: 'center',
-    borderBottom: '1px solid #d9e0e7',
+    borderBottom: '1px solid var(--border)',
     display: 'flex',
     justifyContent: 'space-between',
     padding: '18px 20px',
@@ -1644,93 +3176,177 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
   },
+  smartHeader: {
+    alignItems: 'center',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '12px',
+    justifyContent: 'space-between',
+    marginBottom: '16px',
+    padding: '18px 20px',
+  },
   panelTitle: {
     fontSize: '18px',
     margin: 0,
   },
   table: {
     borderCollapse: 'collapse',
+    minWidth: '680px',
     width: '100%',
   },
   th: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '12px',
     padding: '12px 20px',
     textAlign: 'left',
     textTransform: 'uppercase',
   },
   thRight: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '12px',
     padding: '12px 20px',
     textAlign: 'right',
     textTransform: 'uppercase',
   },
   td: {
-    borderTop: '1px solid #edf1f5',
+    borderTop: '1px solid var(--border)',
     fontSize: '14px',
     padding: '14px 20px',
     verticalAlign: 'top',
   },
   tdRight: {
-    borderTop: '1px solid #edf1f5',
+    borderTop: '1px solid var(--border)',
     fontSize: '14px',
     fontWeight: 700,
     padding: '14px 20px',
     textAlign: 'right',
     verticalAlign: 'top',
   },
+  mobileDataList: {
+    display: 'grid',
+    gap: '10px',
+    padding: '12px',
+  },
+  mobileDataCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '8px',
+    minWidth: 0,
+    padding: '12px',
+  },
+  mobileDataRow: {
+    alignItems: 'start',
+    borderTop: '1px solid var(--border)',
+    display: 'grid',
+    gap: '8px',
+    gridTemplateColumns: 'minmax(84px, 0.8fr) minmax(0, 1.2fr)',
+    overflowWrap: 'anywhere',
+    paddingTop: '8px',
+  },
   label: {
-    color: '#344054',
+    color: 'var(--text)',
     display: 'grid',
     fontSize: '14px',
     fontWeight: 600,
     gap: '7px',
   },
   input: {
-    border: '1px solid #c9d3df',
+    background: 'var(--input-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '6px',
+    color: 'var(--text)',
     font: 'inherit',
     padding: '10px 11px',
   },
   textarea: {
-    border: '1px solid #c9d3df',
+    background: 'var(--input-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '6px',
+    color: 'var(--text)',
     font: 'inherit',
     padding: '10px 11px',
     resize: 'vertical',
   },
   actions: {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '10px',
     marginTop: '4px',
   },
   linkButton: {
     background: 'transparent',
     border: 0,
-    color: '#1d4ed8',
+    color: 'var(--accent)',
     cursor: 'pointer',
     font: 'inherit',
     fontWeight: 700,
     marginRight: '10px',
     padding: 0,
   },
+  whatsAppButton: {
+    background: 'rgba(37, 211, 102, 0.14)',
+    border: '1px solid rgba(37, 211, 102, 0.5)',
+    borderRadius: '999px',
+    color: '#25d366',
+    cursor: 'pointer',
+    font: 'inherit',
+    fontWeight: 800,
+    padding: '6px 10px',
+  },
   dangerButton: {
     background: 'transparent',
     border: 0,
-    color: '#be123c',
+    color: 'var(--danger)',
     cursor: 'pointer',
     font: 'inherit',
     fontWeight: 700,
     padding: 0,
   },
   emptyState: {
-    color: '#526071',
+    color: 'var(--muted)',
     margin: 0,
     padding: '24px 20px',
   },
+  clientList: {
+    display: 'grid',
+    gap: '8px',
+    padding: '12px',
+  },
+  clientRow: {
+    alignItems: 'center',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.2fr) auto',
+    padding: '12px 14px',
+  },
+  clientIdentity: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0,
+  },
+  clientContact: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  clientActions: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    justifyContent: 'flex-end',
+  },
   compactEmpty: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '14px',
     margin: 0,
   },
@@ -1741,15 +3357,15 @@ const styles = {
   },
   categoryRow: {
     alignItems: 'center',
-    background: '#f8fafc',
-    border: '1px solid #e5eaf0',
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'flex',
     justifyContent: 'space-between',
     padding: '12px 14px',
   },
   panelSubtitle: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '13px',
     margin: '4px 0 0',
   },
@@ -1765,16 +3381,190 @@ const styles = {
     display: 'grid',
     gap: '10px',
   },
-  serviceRecord: {
+  historyBlock: {
+    borderTop: '1px solid var(--border)',
+    display: 'grid',
+    gap: '12px',
+    paddingTop: '14px',
+  },
+  historyQuoteRecord: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '8px',
+    padding: '12px',
+  },
+  historyRecordHeader: {
+    alignItems: 'start',
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'space-between',
+  },
+  lockedFiscalPanel: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '14px',
+  },
+  lockedFiscalGrid: {
+    color: 'var(--muted)',
+    display: 'grid',
+    fontSize: '13px',
+    gap: '6px',
+  },
+  treasuryMovementRow: {
+    alignItems: 'center',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'minmax(180px, 1fr) auto auto auto',
+    padding: '12px 14px',
+  },
+  invoicePreview: {
+    display: 'grid',
+    gap: '14px',
+    padding: '20px',
+  },
+  logoPreview: {
+    maxHeight: '72px',
+    maxWidth: 'min(180px, 42vw)',
+    objectFit: 'contain',
+  },
+  logoPlaceholder: {
+    alignItems: 'center',
+    background: 'var(--panel-subtle)',
+    border: '1px dashed var(--border)',
+    borderRadius: '8px',
+    color: 'var(--muted)',
+    display: 'flex',
+    fontWeight: 700,
+    height: '72px',
+    justifyContent: 'center',
+    maxWidth: '180px',
+    width: '42vw',
+  },
+  invoiceCompanyName: {
+    fontSize: '20px',
+    margin: 0,
+  },
+  pdfPreviewShell: {
+    background: 'var(--panel-subtle)',
+    display: 'flex',
+    justifyContent: 'center',
+    minWidth: 0,
+    overflowX: 'hidden',
+    padding: 'clamp(10px, 3vw, 20px)',
+  },
+  pdfPreviewPage: {
+    background: '#ffffff',
+    borderRadius: '6px',
+    boxSizing: 'border-box',
+    boxShadow: '0 18px 45px rgba(0, 0, 0, 0.28)',
+    color: '#17202a',
+    display: 'grid',
+    gap: 'clamp(12px, 3vw, 18px)',
+    maxWidth: '680px',
+    minHeight: '720px',
+    minWidth: 0,
+    overflow: 'hidden',
+    padding: 'clamp(14px, 4vw, 28px)',
+    width: '100%',
+  },
+  pdfPreviewHeader: {
+    alignItems: 'start',
+    borderBottom: '1px solid #d9e0e7',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '16px',
+    justifyContent: 'space-between',
+    paddingBottom: '18px',
+  },
+  pdfPreviewMuted: {
+    color: '#526071',
+    fontSize: '13px',
+    margin: '4px 0 0',
+  },
+  pdfPreviewMeta: {
+    alignItems: 'start',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '16px',
+    justifyContent: 'space-between',
+  },
+  pdfPreviewClient: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0,
+    textAlign: 'right',
+  },
+  pdfPreviewTable: {
+    borderCollapse: 'collapse',
+    tableLayout: 'fixed',
+    width: '100%',
+  },
+  pdfPreviewTh: {
+    borderBottom: '1px solid #d9e0e7',
+    color: '#526071',
+    fontSize: 'clamp(10px, 2.7vw, 12px)',
+    padding: '10px 6px',
+    textAlign: 'left',
+    textTransform: 'uppercase',
+  },
+  pdfPreviewThRight: {
+    borderBottom: '1px solid #d9e0e7',
+    color: '#526071',
+    fontSize: 'clamp(10px, 2.7vw, 12px)',
+    padding: '10px 6px',
+    textAlign: 'right',
+    textTransform: 'uppercase',
+  },
+  pdfPreviewTd: {
+    borderBottom: '1px solid #edf1f5',
+    fontSize: 'clamp(12px, 3.2vw, 14px)',
+    overflowWrap: 'anywhere',
+    padding: '12px 6px',
+  },
+  pdfPreviewTdRight: {
+    borderBottom: '1px solid #edf1f5',
+    fontSize: 'clamp(12px, 3.2vw, 14px)',
+    fontWeight: 700,
+    overflowWrap: 'anywhere',
+    padding: '12px 6px',
+    textAlign: 'right',
+  },
+  pdfPreviewTotals: {
+    alignItems: 'end',
+    display: 'grid',
+    gap: '7px',
+    justifyContent: 'end',
+    maxWidth: '100%',
+    overflowWrap: 'anywhere',
+    textAlign: 'right',
+  },
+  pdfPreviewNotes: {
     background: '#f8fafc',
     border: '1px solid #e5eaf0',
+    borderRadius: '6px',
+    color: '#526071',
+    fontSize: '13px',
+    margin: 0,
+    padding: '12px',
+  },
+  serviceRecord: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'grid',
     gap: '8px',
     padding: '12px',
   },
   serviceDescription: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '13px',
     lineHeight: 1.45,
     margin: 0,
@@ -1785,10 +3575,10 @@ const styles = {
     padding: '10px',
   },
   quoteListButton: {
-    background: '#ffffff',
+    background: 'var(--panel-bg)',
     border: '1px solid transparent',
     borderRadius: '6px',
-    color: '#17202a',
+    color: 'var(--text)',
     cursor: 'pointer',
     display: 'flex',
     gap: '10px',
@@ -1797,10 +3587,10 @@ const styles = {
     textAlign: 'left',
   },
   quoteListActive: {
-    background: '#eaf1ff',
-    border: '1px solid #9bbcff',
+    background: 'var(--accent-soft)',
+    border: '1px solid var(--accent)',
     borderRadius: '6px',
-    color: '#17202a',
+    color: 'var(--text)',
     cursor: 'pointer',
     display: 'flex',
     gap: '10px',
@@ -1814,45 +3604,95 @@ const styles = {
     minWidth: 0,
   },
   quoteNumber: {
-    color: '#526071',
+    color: 'var(--muted)',
     fontSize: '13px',
     fontWeight: 700,
   },
   inlineForm: {
     alignItems: 'end',
-    borderBottom: '1px solid #d9e0e7',
+    borderBottom: '1px solid var(--border)',
     display: 'grid',
     gap: '12px',
-    gridTemplateColumns: 'minmax(220px, 1fr) 110px 130px auto',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
     padding: '16px 20px',
   },
+  catalogPicker: {
+    borderBottom: '1px solid var(--border)',
+    display: 'grid',
+    gap: '12px',
+    padding: '16px 20px',
+  },
+  compactTitle: {
+    fontSize: '15px',
+    margin: 0,
+  },
+  helperText: {
+    color: 'var(--muted)',
+    fontSize: '13px',
+    lineHeight: 1.4,
+    margin: '4px 0 0',
+  },
+  catalogGrid: {
+    display: 'grid',
+    gap: '8px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  },
+  catalogItemButton: {
+    alignItems: 'center',
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'space-between',
+    minHeight: '58px',
+    padding: '10px 12px',
+    textAlign: 'left',
+  },
+  catalogItemDescription: {
+    color: 'var(--muted)',
+    display: 'block',
+    fontSize: '12px',
+    fontWeight: 500,
+    lineHeight: 1.3,
+    marginTop: '3px',
+  },
+  catalogItemPrice: {
+    color: 'var(--accent)',
+    fontSize: '13px',
+    fontWeight: 800,
+    whiteSpace: 'nowrap',
+  },
   mutedText: {
-    color: '#667085',
+    color: 'var(--muted)',
     fontSize: '13px',
   },
   totals: {
     alignItems: 'center',
-    borderTop: '1px solid #d9e0e7',
+    borderTop: '1px solid var(--border)',
     display: 'flex',
+    flexWrap: 'wrap',
     gap: '18px',
     justifyContent: 'flex-end',
     padding: '16px 20px',
   },
   filterBar: {
     alignItems: 'end',
-    borderBottom: '1px solid #edf1f5',
+    borderBottom: '1px solid var(--border)',
     display: 'flex',
     gap: '12px',
     padding: '14px 20px',
   },
   quoteFilterBar: {
-    borderBottom: '1px solid #edf1f5',
+    borderBottom: '1px solid var(--border)',
     display: 'grid',
     gap: '10px',
     padding: '14px 20px',
   },
   compactLabel: {
-    color: '#526071',
+    color: 'var(--muted)',
     display: 'grid',
     flex: 1,
     fontSize: '12px',
@@ -1861,18 +3701,68 @@ const styles = {
     textTransform: 'uppercase',
   },
   searchInput: {
-    border: '1px solid #c9d3df',
+    background: 'var(--input-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '6px',
-    color: '#17202a',
+    color: 'var(--text)',
     font: 'inherit',
     fontSize: '14px',
     padding: '9px 10px',
     textTransform: 'none',
   },
+  chartList: {
+    display: 'grid',
+    gap: '14px',
+    padding: '18px 20px',
+  },
+  chartRow: {
+    display: 'grid',
+    gap: '7px',
+  },
+  chartLabelRow: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'space-between',
+  },
+  chartSecondary: {
+    color: 'var(--muted)',
+    fontSize: '12px',
+    margin: 0,
+  },
+  chartTrack: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '999px',
+    height: '12px',
+    overflow: 'hidden',
+  },
+  chartBar: {
+    background: 'linear-gradient(90deg, var(--accent), #25d366)',
+    display: 'block',
+    height: '100%',
+  },
+  smartReportGrid: {
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    padding: '18px 20px',
+  },
+  smartInsight: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--text)',
+    display: 'grid',
+    gap: '6px',
+    lineHeight: 1.45,
+    padding: '14px',
+  },
   filterSelect: {
-    border: '1px solid #c9d3df',
+    background: 'var(--input-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '6px',
-    color: '#17202a',
+    color: 'var(--text)',
     font: 'inherit',
     fontSize: '14px',
     minWidth: '130px',
@@ -1885,20 +3775,20 @@ const styles = {
     gap: '6px',
   },
   filterChip: {
-    background: '#ffffff',
-    border: '1px solid #c9d3df',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
     borderRadius: '999px',
-    color: '#344054',
+    color: 'var(--text)',
     cursor: 'pointer',
     fontSize: '12px',
     fontWeight: 700,
     padding: '6px 9px',
   },
   filterChipActive: {
-    background: '#17202a',
-    border: '1px solid #17202a',
+    background: 'var(--accent)',
+    border: '1px solid var(--accent)',
     borderRadius: '999px',
-    color: '#ffffff',
+    color: 'var(--accent-contrast)',
     cursor: 'pointer',
     fontSize: '12px',
     fontWeight: 700,
@@ -1914,26 +3804,26 @@ const styles = {
     padding: '6px 8px',
   },
   statusDraft: {
-    background: '#eef2f7',
-    color: '#475467',
+    background: 'var(--panel-subtle)',
+    color: 'var(--muted)',
   },
   statusIssued: {
-    background: '#eaf1ff',
-    color: '#1d4ed8',
+    background: 'var(--accent-soft)',
+    color: 'var(--accent)',
   },
   statusAccepted: {
-    background: '#ecfdf3',
-    color: '#027a48',
+    background: 'var(--success-bg)',
+    color: 'var(--success)',
   },
   statusRejected: {
-    background: '#fff1f2',
-    color: '#be123c',
+    background: 'var(--danger-bg)',
+    color: 'var(--danger)',
   },
   categoryBadge: {
-    background: '#f8fafc',
-    border: '1px solid #d9e0e7',
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
     borderRadius: '999px',
-    color: '#344054',
+    color: 'var(--text)',
     display: 'inline-flex',
     fontSize: '12px',
     fontWeight: 700,
@@ -1942,7 +3832,7 @@ const styles = {
   },
   detailMeta: {
     alignItems: 'center',
-    color: '#526071',
+    color: 'var(--muted)',
     display: 'flex',
     fontSize: '13px',
     gap: '8px',
@@ -1950,7 +3840,7 @@ const styles = {
   },
   progressBar: {
     alignItems: 'center',
-    borderBottom: '1px solid #edf1f5',
+    borderBottom: '1px solid var(--border)',
     display: 'grid',
     gap: '10px',
     gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
@@ -1962,26 +3852,26 @@ const styles = {
     gap: '8px',
   },
   progressDot: {
-    background: '#d0d5dd',
+    background: 'var(--muted)',
     borderRadius: '999px',
     display: 'inline-block',
     height: '10px',
     width: '10px',
   },
   progressDotDone: {
-    background: '#027a48',
+    background: 'var(--success)',
     borderRadius: '999px',
     display: 'inline-block',
     height: '10px',
     width: '10px',
   },
   progressLabel: {
-    color: '#667085',
+    color: 'var(--muted)',
     fontSize: '13px',
     fontWeight: 700,
   },
   progressLabelDone: {
-    color: '#17202a',
+    color: 'var(--text)',
     fontSize: '13px',
     fontWeight: 700,
   },

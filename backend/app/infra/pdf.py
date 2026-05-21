@@ -1,3 +1,5 @@
+import base64
+import binascii
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
@@ -5,9 +7,9 @@ from io import BytesIO
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.infra.models import Client, Quote, QuoteItem, Tenant
 
@@ -29,19 +31,84 @@ def build_quote_pdf(
     )
     styles = getSampleStyleSheet()
     normal = styles["Normal"]
-    title = styles["Title"]
-    heading = styles["Heading2"]
+    normal.fontName = "Helvetica"
+    normal.fontSize = 9
+    normal.leading = 12
+    title = ParagraphStyle(
+        "InvoiceTitle",
+        parent=normal,
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#0F172A"),
+    )
+    heading = ParagraphStyle(
+        "CompanyHeading",
+        parent=normal,
+        fontName="Helvetica-Bold",
+        fontSize=14,
+        leading=17,
+        textColor=colors.HexColor("#0F172A"),
+    )
+    muted = ParagraphStyle(
+        "Muted",
+        parent=normal,
+        textColor=colors.HexColor("#475569"),
+    )
+
+    logo = _logo_image(tenant.logo_url)
+    header_left = [
+        Paragraph(_clean_text(tenant.legal_name or tenant.name), heading),
+        Paragraph(_tenant_details(tenant), muted),
+    ]
+    header_right = logo if logo is not None else Paragraph("Factura electronica", title)
+    header = Table([[header_left, header_right]], colWidths=[document.width * 0.62, document.width * 0.38])
+    header.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ]
+        )
+    )
+
+    meta = Table(
+        [
+            [
+                [
+                    Paragraph("Factura electronica", title),
+                    Paragraph(f"Presupuesto {_clean_text(quote.number)}", normal),
+                    Paragraph(f"Fecha {_format_date(quote.issued_at or quote.created_at)}", normal),
+                ],
+                [
+                    Paragraph("Cliente", heading),
+                    Paragraph(_clean_text(client.name), normal),
+                    Paragraph(_client_details(client), muted),
+                ],
+            ]
+        ],
+        colWidths=[document.width * 0.45, document.width * 0.55],
+    )
+    meta.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
 
     story = [
-        Paragraph("Presupuesto", title),
-        Paragraph(_clean_text(tenant.legal_name or tenant.name), heading),
-        Paragraph(_tenant_details(tenant), normal),
-        Spacer(1, 8 * mm),
-        Paragraph(f"Numero: {_clean_text(quote.number)}", normal),
-        Paragraph(f"Fecha: {_format_date(quote.issued_at or quote.created_at)}", normal),
-        Paragraph(f"Cliente: {_clean_text(client.name)}", normal),
-        Paragraph(_client_details(client), normal),
-        Spacer(1, 8 * mm),
+        header,
+        Spacer(1, 5 * mm),
+        meta,
+        Spacer(1, 7 * mm),
     ]
 
     table_data = [
@@ -113,6 +180,10 @@ def build_quote_pdf(
         )
     )
     story.append(totals_table)
+    if quote.notes:
+        story.extend([Spacer(1, 6 * mm), Paragraph(_clean_text(quote.notes), muted)])
+    if tenant.invoice_notes:
+        story.extend([Spacer(1, 3 * mm), Paragraph(_clean_text(tenant.invoice_notes), muted)])
 
     document.build(story)
     return buffer.getvalue()
@@ -122,6 +193,15 @@ def _tenant_details(tenant: Tenant) -> str:
     details = []
     if tenant.tax_id:
         details.append(f"CUIT: {_clean_text(tenant.tax_id)}")
+    if tenant.address:
+        details.append(_clean_text(tenant.address))
+    contact = " · ".join(
+        _clean_text(value)
+        for value in [tenant.phone, tenant.email, tenant.website]
+        if value
+    )
+    if contact:
+        details.append(contact)
     return "<br/>".join(details)
 
 
@@ -164,3 +244,32 @@ def _clean_text(value: str) -> str:
         .replace(">", "&gt;")
         .replace("\n", "<br/>")
     )
+
+
+def _logo_image(logo_url: str | None) -> Image | None:
+    if not logo_url or not logo_url.startswith("data:image/"):
+        return None
+
+    try:
+        header, encoded = logo_url.split(",", 1)
+    except ValueError:
+        return None
+
+    if ";base64" not in header:
+        return None
+
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+
+    try:
+        logo = Image(BytesIO(image_bytes))
+    except Exception:
+        return None
+    max_width = 46 * mm
+    max_height = 24 * mm
+    scale = min(max_width / logo.imageWidth, max_height / logo.imageHeight, 1)
+    logo.drawWidth = logo.imageWidth * scale
+    logo.drawHeight = logo.imageHeight * scale
+    return logo

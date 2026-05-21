@@ -19,6 +19,51 @@ export type ClientPayload = {
   notes?: string | null;
 };
 
+export type TenantProfile = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  tax_id: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  logo_url: string | null;
+  invoice_notes: string | null;
+  default_tax_rate: string;
+};
+
+export type TenantProfilePayload = {
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  logo_url?: string | null;
+  invoice_notes?: string | null;
+  default_tax_rate?: string | null;
+};
+
+export type TenantChangeRequest = {
+  id: string;
+  tenant_id: string;
+  requested_by_user_id: string;
+  status: string;
+  current_name: string | null;
+  current_legal_name: string | null;
+  current_tax_id: string | null;
+  proposed_name: string | null;
+  proposed_legal_name: string | null;
+  proposed_tax_id: string | null;
+  reason: string | null;
+};
+
+export type TenantChangeRequestPayload = {
+  proposed_name?: string | null;
+  proposed_legal_name?: string | null;
+  proposed_tax_id?: string | null;
+  reason?: string | null;
+};
+
 export type ClientServiceRecord = {
   id: string;
   client_id: string;
@@ -85,6 +130,7 @@ export type Quote = {
   title: string | null;
   notes: string | null;
   valid_until: string | null;
+  created_at: string;
   subtotal: string;
   discount_total: string;
   tax_total: string;
@@ -150,6 +196,24 @@ async function request<TResponse>(
 export const apiClient = {
   login(payload: LoginRequest) {
     return request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  getTenantProfile() {
+    return request<TenantProfile>('/admin/tenants/me');
+  },
+  updateTenantProfile(payload: TenantProfilePayload) {
+    return request<TenantProfile>('/admin/tenants/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  listTenantChangeRequests() {
+    return request<{ items: TenantChangeRequest[] }>('/admin/tenants/me/change-requests');
+  },
+  createTenantChangeRequest(payload: TenantChangeRequestPayload) {
+    return request<TenantChangeRequest>('/admin/tenants/me/change-requests', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

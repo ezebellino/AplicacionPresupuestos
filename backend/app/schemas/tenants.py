@@ -24,7 +24,50 @@ class TenantRead(BaseModel):
     name: str
     legal_name: str | None
     tax_id: str | None
+    address: str | None
+    phone: str | None
+    email: str | None
+    website: str | None
+    logo_url: str | None
+    invoice_notes: str | None
     default_tax_rate: Decimal
+
+
+class TenantProfileUpdate(BaseModel):
+    address: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    website: str | None = None
+    logo_url: str | None = None
+    invoice_notes: str | None = None
+    default_tax_rate: TaxRate | None = None
+
+
+class TenantChangeRequestCreate(BaseModel):
+    proposed_name: str | None = None
+    proposed_legal_name: str | None = None
+    proposed_tax_id: str | None = None
+    reason: str | None = None
+
+
+class TenantChangeRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    requested_by_user_id: UUID
+    status: str
+    current_name: str | None
+    current_legal_name: str | None
+    current_tax_id: str | None
+    proposed_name: str | None
+    proposed_legal_name: str | None
+    proposed_tax_id: str | None
+    reason: str | None
+
+
+class TenantChangeRequestList(BaseModel):
+    items: list[TenantChangeRequestRead]
 
 
 class TenantAdminRead(BaseModel):

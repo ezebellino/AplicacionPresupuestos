@@ -94,6 +94,8 @@ export type PlatformTenantMembershipPayment = {
   paid_at: string;
   months_covered: number;
   amount: string | null;
+  quote_id: string | null;
+  quote_number: string | null;
   notes: string | null;
 };
 
@@ -200,6 +202,11 @@ export type Quote = {
   total: string;
   issued_at: string | null;
   items: QuoteItem[];
+};
+
+export type QuoteShareLink = {
+  token: string;
+  url: string;
 };
 
 export type QuotePayload = {
@@ -429,5 +436,10 @@ export const apiClient = {
     }
 
     return response.blob();
+  },
+  createQuoteShareLink(id: string) {
+    return request<QuoteShareLink>(`/quotes/${id}/share-link`, {
+      method: 'POST',
+    });
   },
 };

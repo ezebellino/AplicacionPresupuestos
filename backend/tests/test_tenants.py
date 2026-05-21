@@ -164,6 +164,20 @@ def test_platform_admin_can_create_account_from_signup_request(api_context) -> N
     assert created_membership["membership_status"] == "active"
     assert created_membership["membership_due_date"] is not None
 
+    service = client.post(
+        "/cost-items",
+        headers=platform_headers,
+        json={
+            "category": "services",
+            "name": "Cobro Trimestral",
+            "description": "Plan trimestral FacturEasy",
+            "unit": "servicio",
+            "unit_cost": "14250.00",
+        },
+    )
+
+    assert service.status_code == 201
+
     paid = client.post(
         f"/admin/tenants/platform/memberships/{created_membership['id']}/paid",
         headers=platform_headers,
@@ -175,7 +189,20 @@ def test_platform_admin_can_create_account_from_signup_request(api_context) -> N
     assert paid.json()["membership_last_payment_at"] is not None
     assert paid.json()["payments"][0]["months_covered"] == 3
     assert paid.json()["payments"][0]["amount"] == "90000.00"
+    assert paid.json()["payments"][0]["quote_number"] is not None
     assert paid.json()["payments"][0]["notes"] == "Pago trimestral"
+
+    clients = client.get("/clients", headers=platform_headers)
+    assert clients.status_code == 200
+    assert any(item["name"] == "DM Refrigeracion" for item in clients.json()["items"])
+
+    quotes = client.get("/quotes", headers=platform_headers)
+    assert quotes.status_code == 200
+    generated_quote = next(
+        item for item in quotes.json()["items"] if item["number"] == paid.json()["payments"][0]["quote_number"]
+    )
+    assert generated_quote["status"] == "issued"
+    assert generated_quote["client_id"] is not None
 
     login_response = client.post(
         "/auth/login",

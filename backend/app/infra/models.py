@@ -141,6 +141,8 @@ class TenantMembershipPayment(TimestampMixin, Base):
     paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
     months_covered: Mapped[int] = mapped_column(nullable=False, default=1)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    quote_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    quote_number: Mapped[str | None] = mapped_column(String(50))
     notes: Mapped[str | None] = mapped_column(Text)
 
     tenant: Mapped[Tenant] = relationship(back_populates="membership_payments")

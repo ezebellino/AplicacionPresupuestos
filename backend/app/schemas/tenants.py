@@ -126,6 +126,8 @@ class PlatformTenantMembershipPaymentRead(BaseModel):
     paid_at: datetime
     months_covered: int
     amount: Decimal | None
+    quote_id: UUID | None
+    quote_number: str | None
     notes: str | None
 
 

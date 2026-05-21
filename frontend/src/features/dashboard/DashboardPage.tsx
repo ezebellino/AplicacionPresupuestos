@@ -745,6 +745,33 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
+  const sendQuoteByEmail = async (quote: Quote) => {
+    const client = clients.find((currentClient) => currentClient.id === quote.client_id);
+    const companyName = companyProfile?.legal_name || companyProfile?.name || 'FacturEasy';
+    const greeting = buildGreetingByBuenosAiresTime();
+    const subject = `Presupuesto ${quote.number} - ${companyName}`;
+
+    try {
+      const shareLink = await apiClient.createQuoteShareLink(quote.id);
+      const body = [
+        `${greeting}${client?.name ? ` ${client.name}` : ''},`,
+        '',
+        `Te compartimos el presupuesto ${quote.number} de ${companyName}.`,
+        `Total: ${formatMoney(quote.total)}`,
+        '',
+        `PDF: ${shareLink.url}`,
+      ].join('\n');
+      openMailTo(client?.email ?? '', subject, body);
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo preparar el email',
+        text: 'Verifica que el backend este activo y vuelve a intentar.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
+  };
+
   const navigationItems: Array<{ label: string; view: View }> = [
     { label: 'Resumen', view: 'summary' },
     { label: 'Clientes', view: 'clients' },
@@ -961,6 +988,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onEdit={editCost}
             onFormChange={setCostForm}
             onSubmit={handleCostSubmit}
+            showOperationPresets={currentUser?.role !== 'platform_admin'}
           />
         ) : null}
 
@@ -1013,10 +1041,24 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               setIsSaving(true);
               try {
                 const updated = await apiClient.markPlatformMembershipPaid(membership.id, payload);
+                const [clientsResponse, quotesResponse] = await Promise.all([
+                  apiClient.listClients(),
+                  apiClient.listQuotes(),
+                ]);
                 setPlatformMemberships((current) =>
                   current.map((item) => (item.id === updated.id ? updated : item)),
                 );
-                showSuccessToast('Pago registrado');
+                setClients(clientsResponse.items);
+                setQuotes(quotesResponse.items);
+                const latestPayment = updated.payments[0] ?? null;
+                if (latestPayment?.quote_id) {
+                  setSelectedQuoteId(latestPayment.quote_id);
+                }
+                showSuccessToast(
+                  latestPayment?.quote_number
+                    ? `Pago registrado con presupuesto ${latestPayment.quote_number}`
+                    : 'Pago registrado',
+                );
               } finally {
                 setIsSaving(false);
               }
@@ -1082,6 +1124,42 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               } finally {
                 setIsSaving(false);
               }
+            }}
+            onSendMembershipQuoteByEmail={async (payment) => {
+              if (!payment.quote_id) {
+                return;
+              }
+
+              const quote = quotes.find((item) => item.id === payment.quote_id);
+              if (!quote) {
+                await Swal.fire({
+                  title: 'Presupuesto no disponible',
+                  text: 'Recarga la pantalla para sincronizar el presupuesto generado.',
+                  icon: 'info',
+                  confirmButtonText: 'Cerrar',
+                });
+                return;
+              }
+
+              await sendQuoteByEmail(quote);
+            }}
+            onSendMembershipQuoteByWhatsApp={async (payment) => {
+              if (!payment.quote_id) {
+                return;
+              }
+
+              const quote = quotes.find((item) => item.id === payment.quote_id);
+              if (!quote) {
+                await Swal.fire({
+                  title: 'Presupuesto no disponible',
+                  text: 'Recarga la pantalla para sincronizar el presupuesto generado.',
+                  icon: 'info',
+                  confirmButtonText: 'Cerrar',
+                });
+                return;
+              }
+
+              await sendInvoiceByWhatsApp(quote);
             }}
             signupRequests={platformSignupRequests}
           />
@@ -1438,6 +1516,7 @@ function CostsView({
   onEdit,
   onFormChange,
   onSubmit,
+  showOperationPresets,
 }: {
   costItems: CostItem[];
   editingCostId: string | null;
@@ -1448,6 +1527,7 @@ function CostsView({
   onEdit: (item: CostItem) => void;
   onFormChange: (form: CostForm) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  showOperationPresets: boolean;
 }) {
   const [search, setSearch] = useState('');
   const filteredCostItems = costItems.filter((item) => {
@@ -1463,18 +1543,20 @@ function CostsView({
             Catalogo de operaciones que se cobran en cada presupuesto.
           </p>
         </div>
-        <div style={styles.presetGrid} aria-label="Operaciones frecuentes">
-          {serviceOperationPresets.map((operation) => (
-            <button
-              key={operation}
-              onClick={() => onFormChange({ ...form, category: 'services', name: operation })}
-              style={form.name === operation ? styles.filterChipActive : styles.filterChip}
-              type="button"
-            >
-              {operation}
-            </button>
-          ))}
-        </div>
+        {showOperationPresets ? (
+          <div style={styles.presetGrid} aria-label="Operaciones frecuentes">
+            {serviceOperationPresets.map((operation) => (
+              <button
+                key={operation}
+                onClick={() => onFormChange({ ...form, category: 'services', name: operation })}
+                style={form.name === operation ? styles.filterChipActive : styles.filterChip}
+                type="button"
+              >
+                {operation}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <Field label="Operacion" required value={form.name} onChange={(name) => onFormChange({ ...form, category: 'services', name })} />
         <Field
           label="Importe"
@@ -2350,6 +2432,8 @@ function PlatformAdminView({
   onMarkSignupContacted,
   onRejectFiscalChange,
   onRejectSignup,
+  onSendMembershipQuoteByEmail,
+  onSendMembershipQuoteByWhatsApp,
   signupRequests,
 }: {
   changeRequests: TenantChangeRequest[];
@@ -2364,6 +2448,8 @@ function PlatformAdminView({
   onMarkSignupContacted: (request: TenantSignupRequest) => void;
   onRejectFiscalChange: (request: TenantChangeRequest) => void;
   onRejectSignup: (request: TenantSignupRequest) => void;
+  onSendMembershipQuoteByEmail: (payment: PlatformTenantMembership['payments'][number]) => void;
+  onSendMembershipQuoteByWhatsApp: (payment: PlatformTenantMembership['payments'][number]) => void;
   signupRequests: TenantSignupRequest[];
 }) {
   const pendingSignupRequests = signupRequests.filter((request) => request.status === 'pending');
@@ -2558,10 +2644,31 @@ function PlatformAdminView({
                   {membership.payments.length > 0 ? (
                     <div style={styles.membershipPaymentList}>
                       {membership.payments.slice(0, 4).map((payment) => (
-                        <span key={payment.id} style={styles.membershipPaymentChip}>
-                          {formatMonthsCovered(payment.months_covered)} - {formatDate(payment.paid_at)}
-                          {payment.amount ? ` - ${formatMoney(payment.amount)}` : ''}
-                        </span>
+                        <div key={payment.id} style={styles.membershipPaymentRow}>
+                          <span style={styles.membershipPaymentChip}>
+                            {formatMonthsCovered(payment.months_covered)} - {formatDate(payment.paid_at)}
+                            {payment.amount ? ` - ${formatMoney(payment.amount)}` : ''}
+                            {payment.quote_number ? ` - ${payment.quote_number}` : ''}
+                          </span>
+                          {payment.quote_id ? (
+                            <div style={styles.membershipPaymentActions}>
+                              <button
+                                onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
+                                style={styles.whatsAppButton}
+                                type="button"
+                              >
+                                WhatsApp
+                              </button>
+                              <button
+                                onClick={() => onSendMembershipQuoteByEmail(payment)}
+                                style={styles.secondaryButton}
+                                type="button"
+                              >
+                                Email
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       ))}
                     </div>
                   ) : null}
@@ -2839,6 +2946,10 @@ function buildWhatsAppInvoiceMessage({
     .join(' ');
 }
 
+function buildGreetingByBuenosAiresTime(date = new Date()): string {
+  return buenosAiresGreeting(date);
+}
+
 function buenosAiresGreeting(date = new Date()): string {
   const timeParts = new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
@@ -2988,6 +3099,11 @@ function openWhatsAppMessage(phone: string, message: string): void {
     : `https://wa.me/?text=${encodeURIComponent(message)}`;
 
   window.open(target, '_blank', 'noopener,noreferrer');
+}
+
+function openMailTo(email: string, subject: string, body: string): void {
+  const target = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = target;
 }
 
 function matchesSearch(values: Array<string | null>, search: string): boolean {
@@ -4219,9 +4335,15 @@ const styles = {
   },
   membershipPaymentList: {
     display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    marginTop: '4px',
+  },
+  membershipPaymentRow: {
+    alignItems: 'center',
+    display: 'flex',
     flexWrap: 'wrap',
     gap: '8px',
-    marginTop: '4px',
   },
   membershipPaymentChip: {
     background: 'var(--panel-subtle)',
@@ -4231,6 +4353,11 @@ const styles = {
     display: 'inline-flex',
     fontSize: '12px',
     padding: '5px 9px',
+  },
+  membershipPaymentActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
   },
   totals: {
     alignItems: 'center',

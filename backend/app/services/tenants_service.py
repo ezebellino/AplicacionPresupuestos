@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
 from app.infra.models import (
+    Client,
+    CostItem,
     Tenant,
     TenantChangeRequest,
     TenantMembershipPayment,
@@ -16,6 +19,7 @@ from app.infra.models import (
     User,
     utc_now,
 )
+from app.schemas.quotes import QuoteCreate, QuoteItemCreate
 from app.schemas.tenants import (
     PlatformMembershipPaymentCreate,
     PlatformReviewUpdate,
@@ -24,6 +28,7 @@ from app.schemas.tenants import (
     TenantSignupApprove,
     TenantSignupRequestCreate,
 )
+from app.services.quotes_service import add_quote_item, create_quote, issue_quote
 from app.services.notification_service import notify_platform
 
 
@@ -103,6 +108,7 @@ def list_platform_memberships(db: Session) -> list[Tenant]:
 
 def mark_tenant_membership_paid(
     db: Session,
+    platform_admin: User,
     tenant_id,
     payload: PlatformMembershipPaymentCreate,
 ) -> Tenant | None:
@@ -114,6 +120,36 @@ def mark_tenant_membership_paid(
 
     if tenant is None:
         return None
+
+    billing_client = _ensure_platform_billing_client(db, platform_admin.tenant_id, tenant)
+    cost_item = _find_membership_cost_item(db, platform_admin.tenant_id, payload.months_covered)
+    if cost_item is None:
+        raise ValueError("membership billing item not found")
+
+    quote = create_quote(
+        db,
+        platform_admin.tenant_id,
+        QuoteCreate(
+            client_id=billing_client.id,
+            title=cost_item.name,
+            notes=f"Membresia FacturEasy - {format_membership_cycle(payload.months_covered)}",
+        ),
+    )
+    if quote is None:
+        raise ValueError("could not create membership quote")
+
+    item = add_quote_item(
+        db,
+        platform_admin.tenant,
+        quote.id,
+        QuoteItemCreate(source_cost_item_id=cost_item.id, quantity=Decimal("1.00")),
+    )
+    if item is None:
+        raise ValueError("could not add membership quote item")
+
+    quote = issue_quote(db, platform_admin.tenant_id, quote.id)
+    if quote is None:
+        raise ValueError("could not issue membership quote")
 
     today = utc_now().date()
     paid_at = utc_now()
@@ -129,7 +165,9 @@ def mark_tenant_membership_paid(
         tenant=tenant,
         paid_at=paid_at,
         months_covered=payload.months_covered,
-        amount=Decimal(payload.amount) if payload.amount is not None else None,
+        amount=payload.amount,
+        quote_id=quote.id,
+        quote_number=quote.number,
         notes=_clean(payload.notes),
     )
     db.add(payment)
@@ -328,6 +366,8 @@ def approve_tenant_signup_request(
 
     tenant = Tenant(
         name=request.company_name,
+        email=request.email.lower(),
+        phone=request.phone,
         membership_due_date=utc_now().date() + timedelta(days=30),
         membership_status="active",
     )
@@ -365,3 +405,67 @@ def _clean(value: str | None) -> str | None:
 
     stripped = value.strip()
     return stripped or None
+
+
+def _ensure_platform_billing_client(db: Session, platform_tenant_id: UUID, tenant: Tenant) -> Client:
+    client = db.scalar(
+        select(Client).where(
+            Client.tenant_id == platform_tenant_id,
+            Client.name == tenant.name,
+        )
+    )
+    if client is None:
+        client = Client(
+            tenant_id=platform_tenant_id,
+            name=tenant.name,
+            document=tenant.tax_id,
+            email=tenant.email,
+            phone=tenant.phone,
+            address=tenant.address,
+            notes="Cliente SaaS generado automaticamente desde plataforma.",
+        )
+        db.add(client)
+        db.flush()
+        return client
+
+    if tenant.tax_id and not client.document:
+        client.document = tenant.tax_id
+    if tenant.email and not client.email:
+        client.email = tenant.email
+    if tenant.phone and not client.phone:
+        client.phone = tenant.phone
+    if tenant.address and not client.address:
+        client.address = tenant.address
+    return client
+
+
+def _find_membership_cost_item(db: Session, platform_tenant_id: UUID, months_covered: int) -> CostItem | None:
+    expected_token = {
+        1: "mensual",
+        3: "trimestral",
+        6: "semestral",
+        12: "anual",
+    }[months_covered]
+    items = list(
+        db.scalars(
+            select(CostItem).where(
+                CostItem.tenant_id == platform_tenant_id,
+                CostItem.is_active.is_(True),
+            )
+        )
+    )
+    for item in items:
+        normalized = item.name.strip().lower()
+        if expected_token in normalized:
+            return item
+    return None
+
+
+def format_membership_cycle(months_covered: int) -> str:
+    labels = {
+        1: "mensual",
+        3: "trimestral",
+        6: "semestral",
+        12: "anual",
+    }
+    return labels.get(months_covered, f"{months_covered} meses")

@@ -1,6 +1,7 @@
 #!/bin/sh
 set -e
 
+python -m app.scripts.prepare_alembic_version_table
 python -m alembic upgrade head
 
 if [ -n "${PLATFORM_BOOTSTRAP_EMAIL:-}" ]; then

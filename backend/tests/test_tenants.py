@@ -155,6 +155,24 @@ def test_platform_admin_can_create_account_from_signup_request(api_context) -> N
     assert approved.json()["created_tenant_id"] is not None
     assert approved.json()["created_admin_email"] == "dm@test.com"
 
+    memberships = client.get("/admin/tenants/platform/memberships", headers=platform_headers)
+
+    assert memberships.status_code == 200
+    created_membership = next(
+        item for item in memberships.json()["items"] if item["id"] == approved.json()["created_tenant_id"]
+    )
+    assert created_membership["membership_status"] == "active"
+    assert created_membership["membership_due_date"] is not None
+
+    paid = client.post(
+        f"/admin/tenants/platform/memberships/{created_membership['id']}/paid",
+        headers=platform_headers,
+    )
+
+    assert paid.status_code == 200
+    assert paid.json()["membership_status"] == "active"
+    assert paid.json()["membership_last_payment_at"] is not None
+
     login_response = client.post(
         "/auth/login",
         json={"email": "dm@test.com", "password": "temporal-123"},

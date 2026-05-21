@@ -15,6 +15,7 @@ import {
   QuoteItemPayload,
   QuotePayload,
   QuoteStatus,
+  PlatformTenantMembership,
   TenantProfile,
   TenantChangeRequest,
   TenantSignupRequest,
@@ -178,6 +179,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [tenantChangeRequests, setTenantChangeRequests] = useState<TenantChangeRequest[]>([]);
   const [platformChangeRequests, setPlatformChangeRequests] = useState<TenantChangeRequest[]>([]);
   const [platformSignupRequests, setPlatformSignupRequests] = useState<TenantSignupRequest[]>([]);
+  const [platformMemberships, setPlatformMemberships] = useState<PlatformTenantMembership[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
@@ -232,12 +234,15 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         return quotesResponse.items[0]?.id ?? null;
       });
       if (userResponse.role === 'platform_admin') {
-        const [signupRequests, changeRequests] = await Promise.all([
+        const [signupRequests, changeRequests, memberships] = await Promise.all([
           apiClient.listPlatformSignupRequests(),
           apiClient.listPlatformChangeRequests(),
+          apiClient.listPlatformMemberships(),
         ]);
         setPlatformSignupRequests(signupRequests.items);
         setPlatformChangeRequests(changeRequests.items);
+        setPlatformMemberships(memberships.items);
+        setActiveView((current) => (current === 'summary' || current === 'company' ? 'platform' : current));
       }
     } catch {
       setLoadError('No pude cargar los datos. Revisá que el backend esté activo y que tu sesión siga vigente.');
@@ -746,10 +751,11 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     { label: 'Servicios', view: 'costs' },
     { label: 'Presupuestos', view: 'quotes' },
     { label: 'Tesoreria', view: 'treasury' },
-    { label: 'Empresa', view: 'company' },
   ];
   if (currentUser?.role === 'platform_admin') {
     navigationItems.push({ label: 'Plataforma', view: 'platform' });
+  } else {
+    navigationItems.push({ label: 'Empresa', view: 'company' });
   }
   const bottomNavigationItems = navigationItems.filter((item) =>
     ['summary', 'clients', 'quotes', 'treasury'].includes(item.view),
@@ -1002,6 +1008,19 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           <PlatformAdminView
             changeRequests={platformChangeRequests}
             isSaving={isSaving}
+            memberships={platformMemberships}
+            onMarkMembershipPaid={async (membership) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.markPlatformMembershipPaid(membership.id);
+                setPlatformMemberships((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                showSuccessToast('Membresia rehabilitada');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
             onApproveSignup={async (request, adminPassword) => {
               setIsSaving(true);
               try {
@@ -1009,6 +1028,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 setPlatformSignupRequests((current) =>
                   current.map((item) => (item.id === updated.id ? updated : item)),
                 );
+                const memberships = await apiClient.listPlatformMemberships();
+                setPlatformMemberships(memberships.items);
                 showSuccessToast('Cuenta creada');
               } finally {
                 setIsSaving(false);
@@ -2185,10 +2206,10 @@ function TreasuryView({
 
         <section style={styles.gridTwo}>
           <ChartPanel
-            emptyText="Todavia no hay servicios aceptados."
-            rows={smartTreasury.services}
-            title="Servicios mas vendidos"
-            valueFormatter={(value) => `${value.toFixed(0)} ventas`}
+            emptyText="Todavia no hay pagos aceptados."
+            rows={smartTreasury.membershipsByMonth}
+            title="Membresias cobradas por mes"
+            valueFormatter={(value) => `${value.toFixed(0)} pagos`}
           />
           <ChartPanel
             emptyText="Todavia no hay facturacion aceptada."
@@ -2322,8 +2343,10 @@ function TreasuryView({
 function PlatformAdminView({
   changeRequests,
   isSaving,
+  memberships,
   onApproveFiscalChange,
   onApproveSignup,
+  onMarkMembershipPaid,
   onMarkSignupContacted,
   onRejectFiscalChange,
   onRejectSignup,
@@ -2331,27 +2354,59 @@ function PlatformAdminView({
 }: {
   changeRequests: TenantChangeRequest[];
   isSaving: boolean;
+  memberships: PlatformTenantMembership[];
   onApproveFiscalChange: (request: TenantChangeRequest) => void;
   onApproveSignup: (request: TenantSignupRequest, adminPassword: string) => void;
+  onMarkMembershipPaid: (membership: PlatformTenantMembership) => void;
   onMarkSignupContacted: (request: TenantSignupRequest) => void;
   onRejectFiscalChange: (request: TenantChangeRequest) => void;
   onRejectSignup: (request: TenantSignupRequest) => void;
   signupRequests: TenantSignupRequest[];
 }) {
+  const pendingSignupRequests = signupRequests.filter((request) => request.status === 'pending');
+  const pendingChangeRequests = changeRequests.filter((request) => request.status === 'pending');
+  const signupCounts = countByStatus(signupRequests);
+  const changeCounts = countByStatus(changeRequests);
+  const expiredMemberships = memberships.filter((membership) => membership.membership_status === 'expired');
+  const activeMemberships = memberships.filter((membership) => membership.membership_status === 'active');
+
   return (
-    <section style={styles.gridTwo}>
-      <section style={styles.tablePanel}>
+    <>
+      <section style={styles.metrics} aria-label="Estado de plataforma">
+        <article style={styles.metricCard}>
+          <p style={styles.metricLabel}>Altas pendientes</p>
+          <strong style={styles.metricValue}>{pendingSignupRequests.length}</strong>
+        </article>
+        <article style={styles.metricCard}>
+          <p style={styles.metricLabel}>Cambios pendientes</p>
+          <strong style={styles.metricValue}>{pendingChangeRequests.length}</strong>
+        </article>
+        <article style={styles.metricCard}>
+          <p style={styles.metricLabel}>Membresias activas</p>
+          <strong style={styles.metricValue}>{activeMemberships.length}</strong>
+        </article>
+        <article style={styles.metricCard}>
+          <p style={styles.metricLabel}>Membresias vencidas</p>
+          <strong style={styles.metricValue}>{expiredMemberships.length}</strong>
+        </article>
+      </section>
+
+      <section style={styles.gridTwo}>
+        <section style={styles.tablePanel}>
         <div style={styles.panelHeader}>
           <div>
             <h2 style={styles.panelTitle}>Solicitudes de alta</h2>
-            <p style={styles.panelSubtitle}>Leads que quieren contratar FacturEasy.</p>
+            <p style={styles.panelSubtitle}>
+              Pendientes: {signupCounts.pending ?? 0} | Contactadas: {signupCounts.contacted ?? 0} | Aprobadas:{' '}
+              {signupCounts.approved ?? 0} | Rechazadas: {signupCounts.rejected ?? 0}
+            </p>
           </div>
         </div>
-        {signupRequests.length === 0 ? (
-          <p style={styles.emptyState}>No hay solicitudes de alta.</p>
+        {pendingSignupRequests.length === 0 ? (
+          <p style={styles.emptyState}>No hay solicitudes de alta pendientes.</p>
         ) : (
           <div style={styles.clientList}>
-            {signupRequests.map((request) => (
+            {pendingSignupRequests.map((request) => (
               <article key={request.id} style={styles.serviceRecord}>
                 <div style={styles.historyRecordHeader}>
                   <div style={styles.clientIdentity}>
@@ -2422,14 +2477,17 @@ function PlatformAdminView({
         <div style={styles.panelHeader}>
           <div>
             <h2 style={styles.panelTitle}>Cambios fiscales</h2>
-            <p style={styles.panelSubtitle}>Solicitudes de cambio de empresa, razon social o CUIT.</p>
+            <p style={styles.panelSubtitle}>
+              Pendientes: {changeCounts.pending ?? 0} | Aprobadas: {changeCounts.approved ?? 0} | Rechazadas:{' '}
+              {changeCounts.rejected ?? 0}
+            </p>
           </div>
         </div>
-        {changeRequests.length === 0 ? (
+        {pendingChangeRequests.length === 0 ? (
           <p style={styles.emptyState}>No hay cambios fiscales pendientes.</p>
         ) : (
           <div style={styles.clientList}>
-            {changeRequests.map((request) => (
+            {pendingChangeRequests.map((request) => (
               <article key={request.id} style={styles.serviceRecord}>
                 <div style={styles.historyRecordHeader}>
                   <div style={styles.clientIdentity}>
@@ -2470,7 +2528,53 @@ function PlatformAdminView({
           </div>
         )}
       </section>
-    </section>
+      </section>
+
+      <section style={styles.tablePanel}>
+        <div style={styles.panelHeader}>
+          <div>
+            <h2 style={styles.panelTitle}>Membresias SaaS</h2>
+            <p style={styles.panelSubtitle}>Vencimiento mensual y rehabilitacion al registrar pago.</p>
+          </div>
+        </div>
+        {memberships.length === 0 ? (
+          <p style={styles.emptyState}>Todavia no hay empresas con membresia.</p>
+        ) : (
+          <div style={styles.clientList}>
+            {memberships.map((membership) => (
+              <article key={membership.id} style={styles.treasuryMovementRow}>
+                <div style={styles.clientIdentity}>
+                  <strong>{membership.name}</strong>
+                  <span style={styles.mutedText}>
+                    Vence: {membership.membership_due_date ? formatDate(membership.membership_due_date) : 'Sin fecha'}
+                  </span>
+                  <span style={styles.mutedText}>
+                    Ultimo pago:{' '}
+                    {membership.membership_last_payment_at ? formatDate(membership.membership_last_payment_at) : 'Sin registro'}
+                  </span>
+                </div>
+                <span
+                  style={{
+                    ...styles.statusBadge,
+                    ...(membership.membership_status === 'active' ? styles.activeMembershipBadge : styles.expiredMembershipBadge),
+                  }}
+                >
+                  {membership.membership_status === 'active' ? 'Activa' : 'Vencida'}
+                </span>
+                <button
+                  disabled={isSaving}
+                  onClick={() => onMarkMembershipPaid(membership)}
+                  style={styles.primaryButton}
+                  type="button"
+                >
+                  Registrar pago
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
@@ -2865,25 +2969,6 @@ function buildMonthlyTreasuryRows(quotes: Quote[]): string[][] {
 }
 
 function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
-  const serviceTotals = acceptedQuotes.reduce<Record<string, { count: number; total: number }>>((totals, quote) => {
-    quote.items.forEach((item) => {
-      const current = totals[item.name] ?? { count: 0, total: 0 };
-      totals[item.name] = {
-        count: current.count + Number(item.quantity),
-        total: current.total + Number(item.line_total),
-      };
-    });
-
-    return totals;
-  }, {});
-  const services = Object.entries(serviceTotals)
-    .map(([label, value]) => ({
-      label,
-      secondary: formatMoney(value.total),
-      value: value.count,
-    }))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 5);
   const monthlyTotals = acceptedQuotes.reduce<Record<string, number>>((totals, quote) => {
     const date = new Date(quote.issued_at ?? quote.created_at);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -2894,43 +2979,61 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
     .map(([label, value]) => ({ label: formatMonth(label), value }))
     .sort((left, right) => right.value - left.value)
     .slice(0, 6);
+  const monthlyCounts = acceptedQuotes.reduce<Record<string, number>>((totals, quote) => {
+    const date = new Date(quote.issued_at ?? quote.created_at);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    totals[key] = (totals[key] ?? 0) + 1;
+    return totals;
+  }, {});
+  const membershipsByMonth = Object.entries(monthlyCounts)
+    .map(([label, value]) => ({ label: formatMonth(label), value }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 6);
   const totalAccepted = sumQuotes(acceptedQuotes);
   const averageTicket = acceptedQuotes.length ? totalAccepted / acceptedQuotes.length : 0;
   const conversionRate = allQuotes.length ? (acceptedQuotes.length / allQuotes.length) * 100 : 0;
-  const topService = services[0];
   const topMonth = months[0];
   const pendingValue = sumQuotes(allQuotes, 'issued');
+  const acceptedCount = acceptedQuotes.length;
+  const projectedMonthlyRevenue = averageTicket * acceptedCount;
 
   return {
     cards: [
-      { label: 'Servicio lider', value: topService?.label ?? 'Sin datos' },
-      { label: 'Mejor mes', value: topMonth?.label ?? 'Sin datos' },
-      { label: 'Ticket promedio', value: formatMoney(averageTicket) },
+      { label: 'Membresias pagas', value: String(acceptedCount) },
+      { label: 'Ingreso mensual estimado', value: formatMoney(projectedMonthlyRevenue) },
+      { label: 'Pago promedio', value: formatMoney(averageTicket) },
       { label: 'Conversion', value: `${conversionRate.toFixed(0)}%` },
     ],
     insights: [
       {
-        title: 'Foco comercial',
-        text: topService
-          ? `${topService.label} es el servicio con mayor cantidad de ventas. Conviene destacarlo en la carga rapida y revisar su precio periodicamente.`
-          : 'Cuando haya presupuestos aceptados, aca se va a mostrar el servicio con mejor traccion.',
+        title: 'Membresia recurrente',
+        text: acceptedCount
+          ? `Hay ${acceptedCount} pagos aceptados registrados. La prioridad es sostener vencimientos mensuales y rehabilitar el acceso cuando el pago ingresa.`
+          : 'Cuando registres pagos aceptados, aca se va a leer la caja recurrente de membresias.',
       },
       {
-        title: 'Temporada fuerte',
+        title: 'Mes mas fuerte',
         text: topMonth
           ? `${topMonth.label} concentra la mayor facturacion aceptada con ${formatMoney(topMonth.value)}. Puede servir para planificar stock, agenda y disponibilidad.`
-          : 'Todavia no hay meses con facturacion aceptada suficiente para detectar estacionalidad.',
+          : 'Todavia no hay meses con facturacion aceptada suficiente para detectar tendencia.',
       },
       {
-        title: 'Caja por cerrar',
+        title: 'Caja pendiente',
         text: pendingValue > 0
           ? `Hay ${formatMoney(pendingValue)} en presupuestos emitidos pendientes de aceptacion. Es el primer lugar donde conviene hacer seguimiento.`
           : 'No hay monto emitido pendiente. La tesoreria actual no muestra caja inmediata por cerrar.',
       },
     ],
+    membershipsByMonth,
     months,
-    services,
   };
+}
+
+function countByStatus<T extends { status: string }>(items: T[]) {
+  return items.reduce<Record<string, number>>((totals, item) => {
+    totals[item.status] = (totals[item.status] ?? 0) + 1;
+    return totals;
+  }, {});
 }
 
 function formatMonth(value: string): string {
@@ -4172,6 +4275,14 @@ const styles = {
     color: 'var(--success)',
   },
   statusRejected: {
+    background: 'var(--danger-bg)',
+    color: 'var(--danger)',
+  },
+  activeMembershipBadge: {
+    background: 'var(--success-bg)',
+    color: 'var(--success)',
+  },
+  expiredMembershipBadge: {
     background: 'var(--danger-bg)',
     color: 'var(--danger)',
   },

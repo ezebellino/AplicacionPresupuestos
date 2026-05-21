@@ -30,6 +30,10 @@ export type TenantProfile = {
   website: string | null;
   logo_url: string | null;
   invoice_notes: string | null;
+  membership_status: string;
+  membership_due_date: string | null;
+  membership_last_payment_at: string | null;
+  membership_monthly_fee: string | null;
   default_tax_rate: string;
 };
 
@@ -69,6 +73,19 @@ export type TenantSignupRequest = {
   review_notes: string | null;
   created_tenant_id: string | null;
   created_admin_email: string | null;
+};
+
+export type PlatformTenantMembership = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  tax_id: string | null;
+  email: string | null;
+  phone: string | null;
+  membership_status: string;
+  membership_due_date: string | null;
+  membership_last_payment_at: string | null;
+  membership_monthly_fee: string | null;
 };
 
 export type TenantSignupRequestPayload = {
@@ -292,6 +309,15 @@ export const apiClient = {
     return request<TenantChangeRequest>(`/admin/tenants/platform/change-requests/${id}/reject`, {
       method: 'POST',
       body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  listPlatformMemberships() {
+    return request<{ items: PlatformTenantMembership[] }>('/admin/tenants/platform/memberships');
+  },
+  markPlatformMembershipPaid(id: string) {
+    return request<PlatformTenantMembership>(`/admin/tenants/platform/memberships/${id}/paid`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
   listClients() {

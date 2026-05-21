@@ -13,6 +13,8 @@ from app.schemas.tenants import (
     TenantChangeRequestList,
     TenantChangeRequestRead,
     PlatformReviewUpdate,
+    PlatformTenantMembershipList,
+    PlatformTenantMembershipRead,
     TenantCreate,
     TenantCreated,
     TenantProfileUpdate,
@@ -28,9 +30,11 @@ from app.services.tenants_service import (
     create_tenant_change_request,
     create_tenant_signup_request,
     create_tenant_with_admin,
+    list_platform_memberships,
     list_platform_tenant_change_requests,
     list_tenant_signup_requests,
     list_tenant_change_requests,
+    mark_tenant_membership_paid,
     reject_tenant_change_request,
     update_tenant_signup_request_status,
 )
@@ -208,6 +212,31 @@ def list_platform_change_requests(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     return {"items": list_platform_tenant_change_requests(db)}
+
+
+@router.get("/platform/memberships", response_model=PlatformTenantMembershipList)
+def list_platform_tenant_memberships(
+    _platform_admin: Annotated[User, Depends(require_platform_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, object]:
+    return {"items": list_platform_memberships(db)}
+
+
+@router.post(
+    "/platform/memberships/{tenant_id}/paid",
+    response_model=PlatformTenantMembershipRead,
+)
+def mark_platform_tenant_membership_paid(
+    tenant_id: UUID,
+    _platform_admin: Annotated[User, Depends(require_platform_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> object:
+    tenant = mark_tenant_membership_paid(db, tenant_id)
+
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    return tenant
 
 
 @router.post(

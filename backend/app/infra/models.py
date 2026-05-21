@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     and_,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -59,6 +60,10 @@ class Tenant(TimestampMixin, Base):
     website: Mapped[str | None] = mapped_column(String(255))
     logo_url: Mapped[str | None] = mapped_column(String(1000))
     invoice_notes: Mapped[str | None] = mapped_column(Text)
+    membership_status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    membership_due_date: Mapped[date | None] = mapped_column(Date)
+    membership_last_payment_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    membership_monthly_fee: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     default_tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("21.00")
     )

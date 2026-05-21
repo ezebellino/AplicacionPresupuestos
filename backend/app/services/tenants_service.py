@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -20,6 +22,8 @@ def create_tenant_with_admin(db: Session, payload: TenantCreate) -> tuple[Tenant
         legal_name=payload.legal_name,
         tax_id=payload.tax_id,
         default_tax_rate=payload.default_tax_rate,
+        membership_due_date=utc_now().date() + timedelta(days=30),
+        membership_status="active",
     )
     admin = User(
         tenant=tenant,
@@ -59,6 +63,40 @@ def list_platform_tenant_change_requests(db: Session) -> list[TenantChangeReques
             select(TenantChangeRequest).order_by(TenantChangeRequest.created_at.desc())
         )
     )
+
+
+def list_platform_memberships(db: Session) -> list[Tenant]:
+    tenants = list(db.scalars(select(Tenant).order_by(Tenant.name.asc())))
+    today = utc_now().date()
+    changed = False
+
+    for tenant in tenants:
+        if tenant.membership_due_date and tenant.membership_due_date < today and tenant.membership_status == "active":
+            tenant.membership_status = "expired"
+            changed = True
+
+    if changed:
+        db.commit()
+
+    return tenants
+
+
+def mark_tenant_membership_paid(db: Session, tenant_id) -> Tenant | None:
+    tenant = db.get(Tenant, tenant_id)
+
+    if tenant is None:
+        return None
+
+    today = utc_now().date()
+    base_date = tenant.membership_due_date if tenant.membership_due_date and tenant.membership_due_date > today else today
+    tenant.membership_due_date = base_date + timedelta(days=30)
+    tenant.membership_last_payment_at = utc_now()
+    tenant.membership_status = "active"
+
+    db.commit()
+    db.refresh(tenant)
+
+    return tenant
 
 
 def approve_tenant_change_request(
@@ -245,7 +283,11 @@ def approve_tenant_signup_request(
     if request.status != "pending":
         raise ValueError("request is not pending")
 
-    tenant = Tenant(name=request.company_name)
+    tenant = Tenant(
+        name=request.company_name,
+        membership_due_date=utc_now().date() + timedelta(days=30),
+        membership_status="active",
+    )
     admin = User(
         tenant=tenant,
         email=request.email.lower(),

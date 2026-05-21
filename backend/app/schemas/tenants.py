@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
@@ -30,6 +31,10 @@ class TenantRead(BaseModel):
     website: str | None
     logo_url: str | None
     invoice_notes: str | None
+    membership_status: str
+    membership_due_date: date | None
+    membership_last_payment_at: datetime | None
+    membership_monthly_fee: Decimal | None
     default_tax_rate: Decimal
 
 
@@ -106,6 +111,25 @@ class TenantSignupRequestRead(BaseModel):
 
 class TenantSignupRequestList(BaseModel):
     items: list[TenantSignupRequestRead]
+
+
+class PlatformTenantMembershipRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    legal_name: str | None
+    tax_id: str | None
+    email: str | None
+    phone: str | None
+    membership_status: str
+    membership_due_date: date | None
+    membership_last_payment_at: datetime | None
+    membership_monthly_fee: Decimal | None
+
+
+class PlatformTenantMembershipList(BaseModel):
+    items: list[PlatformTenantMembershipRead]
 
 
 class TenantAdminRead(BaseModel):

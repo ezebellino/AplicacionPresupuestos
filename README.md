@@ -84,6 +84,27 @@ El rol `platform_admin` habilita la vista `Plataforma` dentro del dashboard. Des
 - Solicitudes públicas de alta SaaS enviadas desde el login.
 - Solicitudes de cambio fiscal enviadas por empresas existentes.
 
-Para el primer despliegue, crear una empresa interna de plataforma y promover su usuario admin actualizando `users.role = 'platform_admin'` en la base de datos. Luego ese usuario puede revisar solicitudes desde la UI. La creación efectiva de cuentas nuevas sigue siendo manual y controlada por el administrador de plataforma.
+Para el primer despliegue, crear o promover el usuario de plataforma con:
+
+```powershell
+cd backend
+py -3 -m app.scripts.ensure_platform_admin --email presupuestos@zeqebellino.com --password TU_CLAVE_SEGURA
+```
+
+Luego cargar o sincronizar los 4 servicios de membresia del tenant plataforma:
+
+```powershell
+cd backend
+py -3 -m app.scripts.ensure_platform_membership_services --email presupuestos@zeqebellino.com
+```
+
+Ese script deja listos estos importes:
+
+- `Cobro Mensual`: `$ 5.000,00`
+- `Cobro Trimestral`: `$ 14.250,00`
+- `Cobro Semestral`: `$ 27.000,00`
+- `Cobro Anual`: `$ 51.000,00`
+
+Con eso, al registrar un pago desde `Plataforma`, FacturEasy genera automaticamente el cliente SaaS y el presupuesto correspondiente.
  
 Si se configuran las variables SMTP, cada solicitud publica de alta y cada solicitud de cambio fiscal tambien envian un email al `PLATFORM_NOTIFICATION_EMAIL`. Si SMTP no esta configurado, la solicitud se guarda igual y queda disponible en el panel `Plataforma`.

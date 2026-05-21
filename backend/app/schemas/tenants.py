@@ -74,6 +74,11 @@ class PlatformReviewUpdate(BaseModel):
     review_notes: str | None = None
 
 
+class TenantSignupApprove(BaseModel):
+    admin_password: str = Field(min_length=8)
+    review_notes: str | None = None
+
+
 class TenantSignupRequestCreate(BaseModel):
     company_name: str
     contact_name: str
@@ -95,6 +100,8 @@ class TenantSignupRequestRead(BaseModel):
     message: str | None
     status: str
     review_notes: str | None
+    created_tenant_id: UUID | None = None
+    created_admin_email: str | None = None
 
 
 class TenantSignupRequestList(BaseModel):

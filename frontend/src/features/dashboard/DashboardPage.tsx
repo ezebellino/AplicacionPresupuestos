@@ -977,6 +977,18 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           <PlatformAdminView
             changeRequests={platformChangeRequests}
             isSaving={isSaving}
+            onApproveSignup={async (request, adminPassword) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.approvePlatformSignupRequest(request.id, adminPassword);
+                setPlatformSignupRequests((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                showSuccessToast('Cuenta creada');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
             onApproveFiscalChange={async (request) => {
               setIsSaving(true);
               try {
@@ -2286,6 +2298,7 @@ function PlatformAdminView({
   changeRequests,
   isSaving,
   onApproveFiscalChange,
+  onApproveSignup,
   onMarkSignupContacted,
   onRejectFiscalChange,
   onRejectSignup,
@@ -2294,6 +2307,7 @@ function PlatformAdminView({
   changeRequests: TenantChangeRequest[];
   isSaving: boolean;
   onApproveFiscalChange: (request: TenantChangeRequest) => void;
+  onApproveSignup: (request: TenantSignupRequest, adminPassword: string) => void;
   onMarkSignupContacted: (request: TenantSignupRequest) => void;
   onRejectFiscalChange: (request: TenantChangeRequest) => void;
   onRejectSignup: (request: TenantSignupRequest) => void;
@@ -2325,7 +2339,37 @@ function PlatformAdminView({
                   <span style={styles.categoryBadge}>{request.status}</span>
                 </div>
                 {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
+                {request.created_admin_email ? (
+                  <p style={styles.serviceDescription}>Cuenta creada: {request.created_admin_email}</p>
+                ) : null}
                 <div style={styles.actions}>
+                  <button
+                    disabled={isSaving || request.status !== 'pending'}
+                    onClick={async () => {
+                      const result = await Swal.fire({
+                        title: 'Crear cuenta',
+                        text: `Defini una contrasena temporal para ${request.email}.`,
+                        input: 'text',
+                        inputAttributes: {
+                          autocomplete: 'new-password',
+                        },
+                        inputPlaceholder: 'Contrasena temporal',
+                        showCancelButton: true,
+                        confirmButtonText: 'Crear cuenta',
+                        cancelButtonText: 'Cancelar',
+                        inputValidator: (value) =>
+                          value && value.length >= 8 ? null : 'La contrasena debe tener al menos 8 caracteres.',
+                      });
+
+                      if (result.isConfirmed && typeof result.value === 'string') {
+                        onApproveSignup(request, result.value);
+                      }
+                    }}
+                    style={styles.primaryButton}
+                    type="button"
+                  >
+                    Crear cuenta
+                  </button>
                   <button
                     disabled={isSaving || request.status !== 'pending'}
                     onClick={() => onMarkSignupContacted(request)}

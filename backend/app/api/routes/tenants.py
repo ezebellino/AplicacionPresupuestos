@@ -17,12 +17,14 @@ from app.schemas.tenants import (
     TenantCreated,
     TenantProfileUpdate,
     TenantRead,
+    TenantSignupApprove,
     TenantSignupRequestCreate,
     TenantSignupRequestList,
     TenantSignupRequestRead,
 )
 from app.services.tenants_service import (
     approve_tenant_change_request,
+    approve_tenant_signup_request,
     create_tenant_change_request,
     create_tenant_signup_request,
     create_tenant_with_admin,
@@ -126,6 +128,30 @@ def list_platform_signup_requests(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     return {"items": list_tenant_signup_requests(db)}
+
+
+@router.post(
+    "/platform/signup-requests/{request_id}/approve",
+    response_model=TenantSignupRequestRead,
+)
+def approve_platform_signup_request(
+    request_id: UUID,
+    payload: TenantSignupApprove,
+    platform_admin: Annotated[User, Depends(require_platform_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> object:
+    try:
+        request = approve_tenant_signup_request(db, platform_admin, request_id, payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    if request is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    return request
 
 
 @router.post(

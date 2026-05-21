@@ -67,6 +67,8 @@ export type TenantSignupRequest = {
   message: string | null;
   status: string;
   review_notes: string | null;
+  created_tenant_id: string | null;
+  created_admin_email: string | null;
 };
 
 export type TenantSignupRequestPayload = {
@@ -258,6 +260,12 @@ export const apiClient = {
   },
   listPlatformSignupRequests() {
     return request<{ items: TenantSignupRequest[] }>('/admin/tenants/platform/signup-requests');
+  },
+  approvePlatformSignupRequest(id: string, adminPassword: string, reviewNotes?: string | null) {
+    return request<TenantSignupRequest>(`/admin/tenants/platform/signup-requests/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ admin_password: adminPassword, review_notes: reviewNotes ?? null }),
+    });
   },
   markPlatformSignupRequestContacted(id: string, reviewNotes?: string | null) {
     return request<TenantSignupRequest>(`/admin/tenants/platform/signup-requests/${id}/contacted`, {

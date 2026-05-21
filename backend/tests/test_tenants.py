@@ -120,6 +120,49 @@ def test_public_signup_request_and_platform_review(api_context) -> None:
     assert contacted.json()["status"] == "contacted"
 
 
+def test_platform_admin_can_create_account_from_signup_request(api_context) -> None:
+    client, SessionLocal = api_context
+    platform_headers = create_tenant_and_login(
+        client,
+        name="FacturEasy",
+        email="platform@factureasy.test",
+    )
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "platform@factureasy.test"))
+        assert user is not None
+        user.role = "platform_admin"
+        db.commit()
+
+    signup = client.post(
+        "/admin/tenants/signup-requests",
+        json={
+            "company_name": "DM Refrigeracion",
+            "contact_name": "Diego",
+            "email": "dm@test.com",
+            "phone": "3515550101",
+        },
+    )
+
+    approved = client.post(
+        f"/admin/tenants/platform/signup-requests/{signup.json()['id']}/approve",
+        headers=platform_headers,
+        json={"admin_password": "temporal-123"},
+    )
+
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+    assert approved.json()["created_tenant_id"] is not None
+    assert approved.json()["created_admin_email"] == "dm@test.com"
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "dm@test.com", "password": "temporal-123"},
+    )
+
+    assert login_response.status_code == 200
+
+
 def test_platform_admin_can_approve_fiscal_change_request(api_context) -> None:
     client, SessionLocal = api_context
     tenant_headers = create_tenant_and_login(

@@ -8,6 +8,7 @@ from app.schemas.tenants import (
     PlatformReviewUpdate,
     TenantChangeRequestCreate,
     TenantCreate,
+    TenantSignupApprove,
     TenantSignupRequestCreate,
 )
 from app.services.notification_service import notify_platform
@@ -225,6 +226,49 @@ def update_tenant_signup_request_status(
     request.reviewed_by_user_id = reviewer.id
     request.review_notes = _clean(payload.review_notes)
     db.commit()
+    db.refresh(request)
+
+    return request
+
+
+def approve_tenant_signup_request(
+    db: Session,
+    reviewer: User,
+    request_id,
+    payload: TenantSignupApprove,
+) -> TenantSignupRequest | None:
+    request = db.get(TenantSignupRequest, request_id)
+
+    if request is None:
+        return None
+
+    if request.status != "pending":
+        raise ValueError("request is not pending")
+
+    tenant = Tenant(name=request.company_name)
+    admin = User(
+        tenant=tenant,
+        email=request.email.lower(),
+        password_hash=hash_password(payload.admin_password),
+        role="admin",
+    )
+    db.add(tenant)
+    db.add(admin)
+
+    try:
+        db.flush()
+
+        request.status = "approved"
+        request.reviewed_at = utc_now()
+        request.reviewed_by_user_id = reviewer.id
+        request.review_notes = _clean(payload.review_notes)
+        request.created_tenant_id = tenant.id
+        request.created_admin_email = admin.email
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("admin email already exists") from None
+
     db.refresh(request)
 
     return request

@@ -167,11 +167,15 @@ def test_platform_admin_can_create_account_from_signup_request(api_context) -> N
     paid = client.post(
         f"/admin/tenants/platform/memberships/{created_membership['id']}/paid",
         headers=platform_headers,
+        json={"months_covered": 3, "amount": "90000.00", "notes": "Pago trimestral"},
     )
 
     assert paid.status_code == 200
     assert paid.json()["membership_status"] == "active"
     assert paid.json()["membership_last_payment_at"] is not None
+    assert paid.json()["payments"][0]["months_covered"] == 3
+    assert paid.json()["payments"][0]["amount"] == "90000.00"
+    assert paid.json()["payments"][0]["notes"] == "Pago trimestral"
 
     login_response = client.post(
         "/auth/login",

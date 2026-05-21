@@ -79,6 +79,12 @@ class PlatformReviewUpdate(BaseModel):
     review_notes: str | None = None
 
 
+class PlatformMembershipPaymentCreate(BaseModel):
+    months_covered: int = Field(ge=1, le=12)
+    amount: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = None
+
+
 class TenantSignupApprove(BaseModel):
     admin_password: str = Field(min_length=8)
     review_notes: str | None = None
@@ -113,6 +119,16 @@ class TenantSignupRequestList(BaseModel):
     items: list[TenantSignupRequestRead]
 
 
+class PlatformTenantMembershipPaymentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    paid_at: datetime
+    months_covered: int
+    amount: Decimal | None
+    notes: str | None
+
+
 class PlatformTenantMembershipRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -126,6 +142,10 @@ class PlatformTenantMembershipRead(BaseModel):
     membership_due_date: date | None
     membership_last_payment_at: datetime | None
     membership_monthly_fee: Decimal | None
+    payments: list[PlatformTenantMembershipPaymentRead] = Field(
+        default_factory=list,
+        validation_alias="membership_payments",
+    )
 
 
 class PlatformTenantMembershipList(BaseModel):

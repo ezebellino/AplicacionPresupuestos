@@ -1,12 +1,23 @@
 from datetime import timedelta
 
+from decimal import Decimal
+
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
-from app.infra.models import Tenant, TenantChangeRequest, TenantSignupRequest, User, utc_now
+from app.infra.models import (
+    Tenant,
+    TenantChangeRequest,
+    TenantMembershipPayment,
+    TenantSignupRequest,
+    User,
+    utc_now,
+)
 from app.schemas.tenants import (
+    PlatformMembershipPaymentCreate,
     PlatformReviewUpdate,
     TenantChangeRequestCreate,
     TenantCreate,
@@ -66,7 +77,16 @@ def list_platform_tenant_change_requests(db: Session) -> list[TenantChangeReques
 
 
 def list_platform_memberships(db: Session) -> list[Tenant]:
-    tenants = list(db.scalars(select(Tenant).order_by(Tenant.name.asc())))
+    tenants = list(
+        db.scalars(
+            select(Tenant)
+            .options(selectinload(Tenant.membership_payments))
+            .join(User)
+            .where(User.role != "platform_admin")
+            .distinct()
+            .order_by(Tenant.name.asc())
+        )
+    )
     today = utc_now().date()
     changed = False
 
@@ -81,22 +101,45 @@ def list_platform_memberships(db: Session) -> list[Tenant]:
     return tenants
 
 
-def mark_tenant_membership_paid(db: Session, tenant_id) -> Tenant | None:
-    tenant = db.get(Tenant, tenant_id)
+def mark_tenant_membership_paid(
+    db: Session,
+    tenant_id,
+    payload: PlatformMembershipPaymentCreate,
+) -> Tenant | None:
+    tenant = db.scalar(
+        select(Tenant)
+        .options(selectinload(Tenant.membership_payments))
+        .where(Tenant.id == tenant_id)
+    )
 
     if tenant is None:
         return None
 
     today = utc_now().date()
-    base_date = tenant.membership_due_date if tenant.membership_due_date and tenant.membership_due_date > today else today
-    tenant.membership_due_date = base_date + timedelta(days=30)
-    tenant.membership_last_payment_at = utc_now()
+    paid_at = utc_now()
+    base_date = (
+        tenant.membership_due_date
+        if tenant.membership_due_date and tenant.membership_due_date > today
+        else today
+    )
+    tenant.membership_due_date = base_date + timedelta(days=30 * payload.months_covered)
+    tenant.membership_last_payment_at = paid_at
     tenant.membership_status = "active"
+    payment = TenantMembershipPayment(
+        tenant=tenant,
+        paid_at=paid_at,
+        months_covered=payload.months_covered,
+        amount=Decimal(payload.amount) if payload.amount is not None else None,
+        notes=_clean(payload.notes),
+    )
+    db.add(payment)
 
     db.commit()
-    db.refresh(tenant)
-
-    return tenant
+    return db.scalar(
+        select(Tenant)
+        .options(selectinload(Tenant.membership_payments))
+        .where(Tenant.id == tenant_id)
+    )
 
 
 def approve_tenant_change_request(

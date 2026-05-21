@@ -13,6 +13,7 @@ from app.schemas.tenants import (
     TenantChangeRequestList,
     TenantChangeRequestRead,
     PlatformReviewUpdate,
+    PlatformMembershipPaymentCreate,
     PlatformTenantMembershipList,
     PlatformTenantMembershipRead,
     TenantCreate,
@@ -228,10 +229,11 @@ def list_platform_tenant_memberships(
 )
 def mark_platform_tenant_membership_paid(
     tenant_id: UUID,
+    payload: PlatformMembershipPaymentCreate,
     _platform_admin: Annotated[User, Depends(require_platform_admin)],
     db: Annotated[Session, Depends(get_db)],
 ) -> object:
-    tenant = mark_tenant_membership_paid(db, tenant_id)
+    tenant = mark_tenant_membership_paid(db, tenant_id, payload)
 
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")

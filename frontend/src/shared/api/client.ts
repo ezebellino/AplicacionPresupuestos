@@ -86,6 +86,21 @@ export type PlatformTenantMembership = {
   membership_due_date: string | null;
   membership_last_payment_at: string | null;
   membership_monthly_fee: string | null;
+  payments: PlatformTenantMembershipPayment[];
+};
+
+export type PlatformTenantMembershipPayment = {
+  id: string;
+  paid_at: string;
+  months_covered: number;
+  amount: string | null;
+  notes: string | null;
+};
+
+export type PlatformMembershipPaymentPayload = {
+  months_covered: number;
+  amount?: string | null;
+  notes?: string | null;
 };
 
 export type TenantSignupRequestPayload = {
@@ -314,10 +329,10 @@ export const apiClient = {
   listPlatformMemberships() {
     return request<{ items: PlatformTenantMembership[] }>('/admin/tenants/platform/memberships');
   },
-  markPlatformMembershipPaid(id: string) {
+  markPlatformMembershipPaid(id: string, payload: PlatformMembershipPaymentPayload) {
     return request<PlatformTenantMembership>(`/admin/tenants/platform/memberships/${id}/paid`, {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload),
     });
   },
   listClients() {

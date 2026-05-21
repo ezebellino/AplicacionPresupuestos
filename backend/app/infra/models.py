@@ -69,6 +69,10 @@ class Tenant(TimestampMixin, Base):
     )
 
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
+    membership_payments: Mapped[list["TenantMembershipPayment"]] = relationship(
+        back_populates="tenant",
+        order_by=lambda: TenantMembershipPayment.paid_at.desc(),
+    )
     clients: Mapped[list["Client"]] = relationship(back_populates="tenant")
     client_service_records: Mapped[list["ClientServiceRecord"]] = relationship(
         back_populates="tenant"
@@ -125,6 +129,21 @@ class TenantSignupRequest(TimestampMixin, Base):
         Uuid(as_uuid=True), ForeignKey("users.id")
     )
     review_notes: Mapped[str | None] = mapped_column(Text)
+
+
+class TenantMembershipPayment(TimestampMixin, Base):
+    __tablename__ = "tenant_membership_payments"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    months_covered: Mapped[int] = mapped_column(nullable=False, default=1)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    tenant: Mapped[Tenant] = relationship(back_populates="membership_payments")
 
 
 class User(TimestampMixin, Base):

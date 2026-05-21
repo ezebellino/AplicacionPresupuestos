@@ -1009,14 +1009,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             changeRequests={platformChangeRequests}
             isSaving={isSaving}
             memberships={platformMemberships}
-            onMarkMembershipPaid={async (membership) => {
+            onMarkMembershipPaid={async (membership, payload) => {
               setIsSaving(true);
               try {
-                const updated = await apiClient.markPlatformMembershipPaid(membership.id);
+                const updated = await apiClient.markPlatformMembershipPaid(membership.id, payload);
                 setPlatformMemberships((current) =>
                   current.map((item) => (item.id === updated.id ? updated : item)),
                 );
-                showSuccessToast('Membresia rehabilitada');
+                showSuccessToast('Pago registrado');
               } finally {
                 setIsSaving(false);
               }
@@ -2357,7 +2357,10 @@ function PlatformAdminView({
   memberships: PlatformTenantMembership[];
   onApproveFiscalChange: (request: TenantChangeRequest) => void;
   onApproveSignup: (request: TenantSignupRequest, adminPassword: string) => void;
-  onMarkMembershipPaid: (membership: PlatformTenantMembership) => void;
+  onMarkMembershipPaid: (
+    membership: PlatformTenantMembership,
+    payload: { months_covered: number; amount?: string | null; notes?: string | null },
+  ) => void;
   onMarkSignupContacted: (request: TenantSignupRequest) => void;
   onRejectFiscalChange: (request: TenantChangeRequest) => void;
   onRejectSignup: (request: TenantSignupRequest) => void;
@@ -2552,6 +2555,16 @@ function PlatformAdminView({
                     Ultimo pago:{' '}
                     {membership.membership_last_payment_at ? formatDate(membership.membership_last_payment_at) : 'Sin registro'}
                   </span>
+                  {membership.payments.length > 0 ? (
+                    <div style={styles.membershipPaymentList}>
+                      {membership.payments.slice(0, 4).map((payment) => (
+                        <span key={payment.id} style={styles.membershipPaymentChip}>
+                          {formatMonthsCovered(payment.months_covered)} - {formatDate(payment.paid_at)}
+                          {payment.amount ? ` - ${formatMoney(payment.amount)}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 <span
                   style={{
@@ -2563,7 +2576,63 @@ function PlatformAdminView({
                 </span>
                 <button
                   disabled={isSaving}
-                  onClick={() => onMarkMembershipPaid(membership)}
+                  onClick={async () => {
+                    const result = await Swal.fire({
+                      title: `Registrar pago de ${membership.name}`,
+                      html: `
+                        <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+                          <span>Periodo</span>
+                          <select id="membership-months" class="swal2-input" style="margin:0;">
+                            <option value="1">Mensual</option>
+                            <option value="3">Trimestral</option>
+                            <option value="6">Semestral</option>
+                            <option value="12">Anual</option>
+                          </select>
+                        </label>
+                        <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+                          <span>Monto total</span>
+                          <input id="membership-amount" class="swal2-input" style="margin:0;" placeholder="Opcional" />
+                        </label>
+                        <label style="display:grid;gap:6px;text-align:left;">
+                          <span>Nota</span>
+                          <input id="membership-notes" class="swal2-input" style="margin:0;" placeholder="Pago trimestral, transferencia, etc." />
+                        </label>
+                      `,
+                      focusConfirm: false,
+                      preConfirm: () => {
+                        const monthsValue =
+                          (document.getElementById('membership-months') as HTMLSelectElement | null)?.value ?? '1';
+                        const amountValue =
+                          (document.getElementById('membership-amount') as HTMLInputElement | null)?.value.trim() ?? '';
+                        const notesValue =
+                          (document.getElementById('membership-notes') as HTMLInputElement | null)?.value.trim() ?? '';
+                        const monthsCovered = Number(monthsValue);
+
+                        if (![1, 3, 6, 12].includes(monthsCovered)) {
+                          Swal.showValidationMessage('Elegi un periodo valido.');
+                          return undefined;
+                        }
+
+                        if (amountValue && Number.isNaN(Number(amountValue))) {
+                          Swal.showValidationMessage('El monto debe ser numerico.');
+                          return undefined;
+                        }
+
+                        return {
+                          amount: amountValue || null,
+                          months_covered: monthsCovered,
+                          notes: notesValue || null,
+                        };
+                      },
+                      showCancelButton: true,
+                      confirmButtonText: 'Registrar pago',
+                      cancelButtonText: 'Cancelar',
+                    });
+
+                    if (result.isConfirmed && result.value) {
+                      onMarkMembershipPaid(membership, result.value);
+                    }
+                  }}
                   style={styles.primaryButton}
                   type="button"
                 >
@@ -3034,6 +3103,26 @@ function countByStatus<T extends { status: string }>(items: T[]) {
     totals[item.status] = (totals[item.status] ?? 0) + 1;
     return totals;
   }, {});
+}
+
+function formatMonthsCovered(value: number): string {
+  if (value === 1) {
+    return 'Mensual';
+  }
+
+  if (value === 3) {
+    return 'Trimestral';
+  }
+
+  if (value === 6) {
+    return 'Semestral';
+  }
+
+  if (value === 12) {
+    return 'Anual';
+  }
+
+  return `${value} meses`;
 }
 
 function formatMonth(value: string): string {
@@ -4127,6 +4216,21 @@ const styles = {
   mutedText: {
     color: 'var(--muted)',
     fontSize: '13px',
+  },
+  membershipPaymentList: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginTop: '4px',
+  },
+  membershipPaymentChip: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '999px',
+    color: 'var(--muted)',
+    display: 'inline-flex',
+    fontSize: '12px',
+    padding: '5px 9px',
   },
   totals: {
     alignItems: 'center',

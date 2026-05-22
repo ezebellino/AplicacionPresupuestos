@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const runtimeApiUrl =
+  typeof window !== 'undefined' ? window.__FACTUREASY_CONFIG__?.VITE_API_URL : undefined;
+const API_URL = runtimeApiUrl || import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export type Client = {
   id: string;

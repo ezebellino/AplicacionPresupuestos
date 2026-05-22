@@ -23,6 +23,10 @@ const contentTypes = {
   '.webp': 'image/webp',
 };
 
+function escapeForScript(value) {
+  return JSON.stringify(value ?? '').slice(1, -1);
+}
+
 function sendFile(response, filePath) {
   const extension = path.extname(filePath).toLowerCase();
   response.writeHead(200, {
@@ -30,6 +34,22 @@ function sendFile(response, filePath) {
     'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
   });
   createReadStream(filePath).pipe(response);
+}
+
+async function sendIndex(response) {
+  if (!existsSync(indexPath)) {
+    response.writeHead(500).end('Build output not found');
+    return;
+  }
+
+  const apiUrl = process.env.VITE_API_URL ?? '';
+  const html = await readFile(indexPath, 'utf-8');
+  const configuredHtml = html.replace('__FACTUREASY_API_URL__', escapeForScript(apiUrl));
+  response.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-cache',
+  });
+  response.end(configuredHtml);
 }
 
 const server = http.createServer(async (request, response) => {
@@ -44,25 +64,18 @@ const server = http.createServer(async (request, response) => {
 
   try {
     const fileStats = await stat(requestedPath);
-    if (fileStats.isFile()) {
+    if (fileStats.isFile() && normalizedPath !== '/index.html') {
       sendFile(response, requestedPath);
       return;
     }
   } catch {
-    // SPA fallback below.
+    if (path.extname(normalizedPath)) {
+      response.writeHead(404).end('Not found');
+      return;
+    }
   }
 
-  if (!existsSync(indexPath)) {
-    response.writeHead(500).end('Build output not found');
-    return;
-  }
-
-  const html = await readFile(indexPath);
-  response.writeHead(200, {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': 'no-cache',
-  });
-  response.end(html);
+  await sendIndex(response);
 });
 
 server.listen(port, '0.0.0.0', () => {

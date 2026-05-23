@@ -275,10 +275,10 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
     const payload: ClientPayload = compactPayload(clientForm);
 
-    if (!payload.name) {
+    if (!payload.name || !payload.phone || !payload.address) {
       await Swal.fire({
-        title: 'Falta el nombre',
-        text: 'El cliente necesita un nombre para poder guardarse.',
+        title: 'Faltan datos del cliente',
+        text: 'Para guardar un cliente completa nombre, telefono y direccion.',
         icon: 'warning',
         confirmButtonText: 'Cerrar',
       });
@@ -1327,8 +1327,8 @@ function ClientsView({
           <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
           <Field label="CUIT/DNI" value={form.document} onChange={(document) => onFormChange({ ...form, document })} />
           <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
-          <Field label="Telefono" value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
-          <Field label="Direccion" value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
+          <Field label="Telefono" required value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
+          <Field label="Direccion" required value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
           <label style={styles.label}>
             Notas
             <textarea

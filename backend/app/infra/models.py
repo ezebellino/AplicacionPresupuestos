@@ -58,7 +58,7 @@ class Tenant(TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(100))
     email: Mapped[str | None] = mapped_column(String(255))
     website: Mapped[str | None] = mapped_column(String(255))
-    logo_url: Mapped[str | None] = mapped_column(String(1000))
+    logo_url: Mapped[str | None] = mapped_column(Text)
     invoice_notes: Mapped[str | None] = mapped_column(Text)
     membership_status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
     membership_due_date: Mapped[date | None] = mapped_column(Date)

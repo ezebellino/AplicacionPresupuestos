@@ -30,6 +30,32 @@ def test_tenant_profile_update_does_not_accept_fiscal_fields(api_context) -> Non
     assert response.json()["address"] == "Salta 123"
 
 
+def test_tenant_profile_update_accepts_large_embedded_logo(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="DM Refrigeracion",
+        email="admin-logo@dm.test",
+    )
+
+    logo_payload = "data:image/png;base64," + ("A" * 6000)
+
+    response = client.patch(
+        "/admin/tenants/me",
+        headers=headers,
+        json={
+            "phone": "2245476329",
+            "email": "walteroscardomecq@hotmail.com",
+            "invoice_notes": "Gracias por confiar en nuestro Trabajo!",
+            "default_tax_rate": "0.00",
+            "logo_url": logo_payload,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["logo_url"] == logo_payload
+
+
 def test_tenant_admin_can_create_fiscal_change_request(api_context) -> None:
     client, _ = api_context
     headers = create_tenant_and_login(

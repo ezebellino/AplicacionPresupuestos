@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardPage } from './DashboardPage';
 
+let currentRole: 'admin' | 'platform_admin' = 'admin';
+
 function setViewportWidth(width: number) {
   Object.defineProperty(window, 'innerWidth', {
     configurable: true,
@@ -15,8 +17,13 @@ function setViewportWidth(width: number) {
   window.dispatchEvent(new Event('resize'));
 }
 
+function mockPlatformAdminSession() {
+  currentRole = 'platform_admin';
+}
+
 describe('DashboardPage', () => {
   beforeEach(() => {
+    currentRole = 'admin';
     setViewportWidth(1024);
     localStorage.setItem('auth_token', 'test-token');
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:factura');
@@ -31,7 +38,7 @@ describe('DashboardPage', () => {
                 id: 'user-1',
                 tenant_id: 'tenant-1',
                 email: 'admin@empresa.test',
-                role: 'admin',
+                role: currentRole,
                 tenant: {
                   id: 'tenant-1',
                   name: 'Empresa Demo',
@@ -390,6 +397,36 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Perfil de empresa' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Menu movil')).not.toBeInTheDocument();
+  });
+
+  it('shows a topbar Perfil action for platform admins', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: 'Perfil' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Empresa' })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Perfil' }));
+
+    expect(await screen.findByRole('heading', { name: 'Perfil de plataforma' })).toBeInTheDocument();
+    expect(screen.getByText(/datos institucionales de factureasy/i)).toBeInTheDocument();
+  });
+
+  it('includes Perfil in the mobile drawer for platform admins', async () => {
+    const user = userEvent.setup();
+    setViewportWidth(390);
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Abrir menu' }));
+    const mobileMenu = screen.getByLabelText('Menu movil');
+
+    expect(within(mobileMenu).getByRole('button', { name: 'Perfil' })).toBeInTheDocument();
   });
 
   it('offers the six service operation presets', async () => {

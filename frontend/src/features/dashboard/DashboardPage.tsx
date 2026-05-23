@@ -784,12 +784,20 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   } else {
     navigationItems.push({ label: 'Empresa', view: 'company' });
   }
+  const platformAccountActions =
+    currentUser?.role === 'platform_admin'
+      ? [{ label: 'Perfil', view: 'company' as View }]
+      : [];
   const bottomNavigationItems = navigationItems.filter((item) =>
     ['summary', 'clients', 'quotes', 'treasury'].includes(item.view),
   );
   const mobileDrawerNavigationItems = navigationItems.filter((item) =>
     ['costs', 'company', 'platform'].includes(item.view),
   );
+  const mobileDrawerAccountItems =
+    currentUser?.role === 'platform_admin'
+      ? [{ label: 'Perfil', view: 'company' as View }]
+      : [];
   const shouldHideSidebarText = isSidebarCollapsed && !isCompactLayout;
   const currentViewLabel = navigationItems.find((item) => item.view === activeView)?.label ?? 'Resumen';
   const goToView = (view: View) => {
@@ -840,6 +848,16 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 </div>
                 <nav style={styles.mobileDrawerNav}>
                   {mobileDrawerNavigationItems.map((item) => (
+                    <button
+                      key={item.view}
+                      onClick={() => goToView(item.view)}
+                      style={{ ...navStyle(activeView === item.view), ...styles.mobileDrawerNavButton }}
+                      type="button"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                  {mobileDrawerAccountItems.map((item) => (
                     <button
                       key={item.view}
                       onClick={() => goToView(item.view)}
@@ -923,6 +941,16 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             <p style={styles.subtitle}>Clientes, catalogo de servicios y facturacion aislados por empresa.</p>
           </div>
           <div style={styles.topbarActions}>
+            {platformAccountActions.map((item) => (
+              <button
+                key={item.view}
+                onClick={() => goToView(item.view)}
+                style={activeView === item.view ? styles.secondaryButtonActive : styles.secondaryButton}
+                type="button"
+              >
+                {item.label}
+              </button>
+            ))}
             <button
               onClick={toggleTheme}
               style={styles.secondaryButton}
@@ -1024,6 +1052,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             form={companyProfileForm}
             isSaving={isSaving}
             legalChangeForm={tenantLegalChangeForm}
+            mode={currentUser?.role === 'platform_admin' ? 'platform' : 'tenant'}
             onFormChange={setCompanyProfileForm}
             onLegalChangeFormChange={setTenantLegalChangeForm}
             onLegalChangeSubmit={handleTenantLegalChangeSubmit}
@@ -1959,6 +1988,7 @@ function CompanyProfileView({
   form,
   isSaving,
   legalChangeForm,
+  mode,
   onFormChange,
   onLegalChangeFormChange,
   onLegalChangeSubmit,
@@ -1968,6 +1998,7 @@ function CompanyProfileView({
   form: CompanyProfileForm;
   isSaving: boolean;
   legalChangeForm: TenantLegalChangeForm;
+  mode: 'tenant' | 'platform';
   onFormChange: (form: CompanyProfileForm) => void;
   onLegalChangeFormChange: (form: TenantLegalChangeForm) => void;
   onLegalChangeSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -1976,22 +2007,27 @@ function CompanyProfileView({
 }) {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const hasLocalLogo = form.logo_url.startsWith('data:image/');
+  const isPlatformProfile = mode === 'platform';
+  const profileTitle = isPlatformProfile ? 'Perfil de plataforma' : 'Perfil de empresa';
+  const profileSubtitle = isPlatformProfile
+    ? 'Datos institucionales de FacturEasy para facturacion, branding y vista previa.'
+    : 'Estos datos son opcionales y se usan para presupuestos, facturas e impresiones.';
+  const lockedPanelTitle = isPlatformProfile ? 'Datos institucionales' : 'Datos fiscales bloqueados';
+  const lockedPanelSubtitle = isPlatformProfile
+    ? 'Configura la identidad visible de la plataforma para PDF, facturas y comunicaciones.'
+    : 'Nombre, razon social y CUIT solo cambian con solicitud para evitar uso indebido de empresas.';
 
   return (
     <section style={styles.profileGrid}>
       <form onSubmit={onSubmit} style={styles.formPanel}>
         <div>
-          <h2 style={styles.panelTitle}>Perfil de empresa</h2>
-          <p style={styles.panelSubtitle}>
-            Estos datos son opcionales y se usan para presupuestos, facturas e impresiones.
-          </p>
+          <h2 style={styles.panelTitle}>{profileTitle}</h2>
+          <p style={styles.panelSubtitle}>{profileSubtitle}</p>
         </div>
         <section style={styles.lockedFiscalPanel}>
           <div>
-            <strong>Datos fiscales bloqueados</strong>
-            <p style={styles.panelSubtitle}>
-              Nombre, razon social y CUIT solo cambian con solicitud para evitar uso indebido de empresas.
-            </p>
+            <strong>{lockedPanelTitle}</strong>
+            <p style={styles.panelSubtitle}>{lockedPanelSubtitle}</p>
           </div>
           <div style={styles.lockedFiscalGrid}>
             <span>Empresa: {form.name || 'Sin cargar'}</span>
@@ -2108,62 +2144,64 @@ function CompanyProfileView({
         </button>
       </form>
 
-      <form onSubmit={onLegalChangeSubmit} style={styles.formPanel}>
-        <div>
-          <h2 style={styles.panelTitle}>Solicitar cambio fiscal</h2>
-          <p style={styles.panelSubtitle}>
-            La solicitud queda pendiente hasta que un administrador de plataforma la revise.
-          </p>
-        </div>
-        <Field
-          label="Nuevo nombre de empresa"
-          value={legalChangeForm.proposed_name}
-          onChange={(proposedName) => onLegalChangeFormChange({ ...legalChangeForm, proposed_name: proposedName })}
-        />
-        <Field
-          label="Nueva razon social"
-          value={legalChangeForm.proposed_legal_name}
-          onChange={(proposedLegalName) =>
-            onLegalChangeFormChange({ ...legalChangeForm, proposed_legal_name: proposedLegalName })
-          }
-        />
-        <Field
-          label="Nuevo CUIT"
-          value={legalChangeForm.proposed_tax_id}
-          onChange={(proposedTaxId) => onLegalChangeFormChange({ ...legalChangeForm, proposed_tax_id: proposedTaxId })}
-        />
-        <label style={styles.label}>
-          Motivo
-          <textarea
-            onChange={(event) => onLegalChangeFormChange({ ...legalChangeForm, reason: event.target.value })}
-            rows={3}
-            style={styles.textarea}
-            value={legalChangeForm.reason}
-          />
-        </label>
-        <button disabled={isSaving} style={styles.secondaryButton} type="submit">
-          Enviar solicitud
-        </button>
-        {requests.length > 0 ? (
-          <div style={styles.serviceList}>
-            <strong>Solicitudes recientes</strong>
-            {requests.slice(0, 3).map((request) => (
-              <article key={request.id} style={styles.serviceRecord}>
-                <span style={styles.categoryBadge}>{request.status}</span>
-                <span style={styles.mutedText}>
-                  {[
-                    request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
-                    request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
-                    request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' | ')}
-                </span>
-              </article>
-            ))}
+      {isPlatformProfile ? null : (
+        <form onSubmit={onLegalChangeSubmit} style={styles.formPanel}>
+          <div>
+            <h2 style={styles.panelTitle}>Solicitar cambio fiscal</h2>
+            <p style={styles.panelSubtitle}>
+              La solicitud queda pendiente hasta que un administrador de plataforma la revise.
+            </p>
           </div>
-        ) : null}
-      </form>
+          <Field
+            label="Nuevo nombre de empresa"
+            value={legalChangeForm.proposed_name}
+            onChange={(proposedName) => onLegalChangeFormChange({ ...legalChangeForm, proposed_name: proposedName })}
+          />
+          <Field
+            label="Nueva razon social"
+            value={legalChangeForm.proposed_legal_name}
+            onChange={(proposedLegalName) =>
+              onLegalChangeFormChange({ ...legalChangeForm, proposed_legal_name: proposedLegalName })
+            }
+          />
+          <Field
+            label="Nuevo CUIT"
+            value={legalChangeForm.proposed_tax_id}
+            onChange={(proposedTaxId) => onLegalChangeFormChange({ ...legalChangeForm, proposed_tax_id: proposedTaxId })}
+          />
+          <label style={styles.label}>
+            Motivo
+            <textarea
+              onChange={(event) => onLegalChangeFormChange({ ...legalChangeForm, reason: event.target.value })}
+              rows={3}
+              style={styles.textarea}
+              value={legalChangeForm.reason}
+            />
+          </label>
+          <button disabled={isSaving} style={styles.secondaryButton} type="submit">
+            Enviar solicitud
+          </button>
+          {requests.length > 0 ? (
+            <div style={styles.serviceList}>
+              <strong>Solicitudes recientes</strong>
+              {requests.slice(0, 3).map((request) => (
+                <article key={request.id} style={styles.serviceRecord}>
+                  <span style={styles.categoryBadge}>{request.status}</span>
+                  <span style={styles.mutedText}>
+                    {[
+                      request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
+                      request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
+                      request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' | ')}
+                  </span>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </form>
+      )}
 
       <section style={styles.tablePanel} aria-labelledby="profile-preview-title">
         <div style={styles.panelHeader}>
@@ -3731,6 +3769,16 @@ const styles = {
   secondaryButton: {
     background: 'var(--panel-bg)',
     border: '1px solid var(--border)',
+    borderRadius: '6px',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 700,
+    padding: '10px 14px',
+  },
+  secondaryButtonActive: {
+    background: 'var(--accent-soft)',
+    border: '1px solid var(--accent)',
     borderRadius: '6px',
     color: 'var(--text)',
     cursor: 'pointer',

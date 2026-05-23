@@ -29,6 +29,24 @@ Este bloque no incluye:
 - cambios de navegacion para usuarios empresa;
 - nuevos permisos o nuevos roles.
 
+## Consideracion Adicional A Futuro Cercano
+
+Aunque no forma parte del Bloque 1 de `Perfil`, el rol `platform_admin` necesitara un flujo mas fluido para enviar la factura mensual de suscripcion a cada empresa cliente por WhatsApp.
+
+La decision de producto aprobada para ese flujo es:
+
+- el telefono de la empresa cliente debe poder usarse como destino de WhatsApp;
+- la aplicacion debe asumir `+54` por defecto para Argentina;
+- el codigo de pais debe seguir siendo editable por si una empresa usa otro destino;
+- el numero debe normalizarse a formato internacional para construir el enlace de WhatsApp;
+- el flujo buscado es "semi automatico": abrir el chat correcto y dejar listo el mensaje para que el operador solo tenga que enviar.
+
+Esto impacta despues en:
+
+- alta y edicion de clientes tipo empresa dentro del tenant plataforma;
+- validacion y normalizacion del telefono;
+- boton de envio de factura de suscripcion desde membresias o presupuesto asociado.
+
 ## Decisiones De UX
 
 ### Navegacion

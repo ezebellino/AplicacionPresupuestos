@@ -5,24 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/build.mjs",
     "start": "node server.mjs",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
-    "tailwindcss": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "sweetalert2": "latest"
+    "sweetalert2": "latest",
+    "tailwindcss": "latest",
+    "typescript": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
     "@testing-library/user-event": "latest",
+    "@types/node": "^25.9.1",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "jsdom": "latest",

@@ -29,6 +29,29 @@ type DashboardPageProps = {
 
 type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' | 'platform';
 
+type PlatformNotification =
+  | {
+      id: string;
+      kind: 'signup';
+      title: string;
+      description: string;
+      actionLabel: 'Revisar solicitud';
+    }
+  | {
+      id: string;
+      kind: 'change_request';
+      title: string;
+      description: string;
+      actionLabel: 'Ver cambio';
+    }
+  | {
+      id: string;
+      kind: 'membership';
+      title: string;
+      description: string;
+      actionLabel: 'Registrar pago';
+    };
+
 const NAV_SHORTCUTS: Record<View, string> = {
   clients: 'CL',
   company: 'EM',
@@ -171,6 +194,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('theme') !== 'light');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientServiceRecords, setClientServiceRecords] = useState<ClientServiceRecord[]>([]);
@@ -788,6 +812,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     currentUser?.role === 'platform_admin'
       ? [{ label: 'Perfil', view: 'company' as View }]
       : [];
+  const platformNotifications =
+    currentUser?.role === 'platform_admin'
+      ? buildPlatformNotifications(platformSignupRequests, platformChangeRequests, platformMemberships)
+      : [];
+  const pendingNotificationCount = platformNotifications.length;
+  const signupNotifications = platformNotifications.filter((item) => item.kind === 'signup');
+  const changeNotifications = platformNotifications.filter((item) => item.kind === 'change_request');
+  const membershipNotifications = platformNotifications.filter((item) => item.kind === 'membership');
   const bottomNavigationItems = navigationItems.filter((item) =>
     ['summary', 'clients', 'quotes', 'treasury'].includes(item.view),
   );
@@ -802,6 +834,11 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const currentViewLabel = navigationItems.find((item) => item.view === activeView)?.label ?? 'Resumen';
   const goToView = (view: View) => {
     setActiveView(view);
+    setIsMobileMenuOpen(false);
+  };
+  const openPlatformNotifications = () => {
+    setActiveView('platform');
+    setIsNotificationsOpen(false);
     setIsMobileMenuOpen(false);
   };
 
@@ -823,6 +860,18 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 <span style={styles.mobileCurrentView}>{currentViewLabel}</span>
               </div>
             </div>
+            <div style={styles.mobileHeaderActions}>
+              {currentUser?.role === 'platform_admin' ? (
+                <button
+                  aria-label="Notificaciones"
+                  onClick={() => setIsNotificationsOpen((current) => !current)}
+                  style={styles.notificationButton}
+                  type="button"
+                >
+                  <span aria-hidden="true" style={styles.notificationGlyph}>N</span>
+                  {pendingNotificationCount > 0 ? <span style={styles.notificationBadge}>{pendingNotificationCount}</span> : null}
+                </button>
+              ) : null}
             <button
               aria-label="Abrir menu"
               onClick={() => setIsMobileMenuOpen(true)}
@@ -831,6 +880,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             >
               <span style={styles.hamburgerGlyph}>Menu</span>
             </button>
+            </div>
           </header>
           {isMobileMenuOpen ? (
             <div onClick={() => setIsMobileMenuOpen(false)} style={styles.mobileDrawerOverlay}>
@@ -941,6 +991,17 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             <p style={styles.subtitle}>Clientes, catalogo de servicios y facturacion aislados por empresa.</p>
           </div>
           <div style={styles.topbarActions}>
+            {currentUser?.role === 'platform_admin' ? (
+              <button
+                aria-label="Notificaciones"
+                onClick={() => setIsNotificationsOpen((current) => !current)}
+                style={styles.notificationButton}
+                type="button"
+              >
+                <span aria-hidden="true" style={styles.notificationGlyph}>N</span>
+                {pendingNotificationCount > 0 ? <span style={styles.notificationBadge}>{pendingNotificationCount}</span> : null}
+              </button>
+            ) : null}
             {platformAccountActions.map((item) => (
               <button
                 key={item.view}
@@ -965,6 +1026,65 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         </header>
 
         {loadError ? <p style={styles.errorBanner}>{loadError}</p> : null}
+
+        {isNotificationsOpen && currentUser?.role === 'platform_admin' ? (
+          <aside style={styles.notificationPanel} aria-label="Panel de notificaciones">
+            <div style={styles.panelHeaderCompact}>
+              <h2 style={styles.panelTitle}>Pendientes de plataforma</h2>
+              <button
+                aria-label="Cerrar notificaciones"
+                onClick={() => setIsNotificationsOpen(false)}
+                style={styles.sidebarToggle}
+                type="button"
+              >
+                X
+              </button>
+            </div>
+            {signupNotifications.length > 0 ? (
+              <section style={styles.notificationSection}>
+                <strong>Altas pendientes</strong>
+                {signupNotifications.map((item) => (
+                  <article key={item.id} style={styles.notificationItem}>
+                    <strong>{item.title}</strong>
+                    <span style={styles.mutedText}>{item.description}</span>
+                    <button onClick={openPlatformNotifications} style={styles.linkButton} type="button">
+                      {item.actionLabel}
+                    </button>
+                  </article>
+                ))}
+              </section>
+            ) : null}
+            {changeNotifications.length > 0 ? (
+              <section style={styles.notificationSection}>
+                <strong>Cambios fiscales</strong>
+                {changeNotifications.map((item) => (
+                  <article key={item.id} style={styles.notificationItem}>
+                    <strong>{item.title}</strong>
+                    <span style={styles.mutedText}>{item.description}</span>
+                    <button onClick={openPlatformNotifications} style={styles.linkButton} type="button">
+                      {item.actionLabel}
+                    </button>
+                  </article>
+                ))}
+              </section>
+            ) : null}
+            {membershipNotifications.length > 0 ? (
+              <section style={styles.notificationSection}>
+                <strong>Membresias por vencer o vencidas</strong>
+                {membershipNotifications.map((item) => (
+                  <article key={item.id} style={styles.notificationItem}>
+                    <strong>{item.title}</strong>
+                    <span style={styles.mutedText}>{item.description}</span>
+                    <button onClick={openPlatformNotifications} style={styles.linkButton} type="button">
+                      {item.actionLabel}
+                    </button>
+                  </article>
+                ))}
+              </section>
+            ) : null}
+            {pendingNotificationCount === 0 ? <p style={styles.compactEmpty}>No hay pendientes operativos.</p> : null}
+          </aside>
+        ) : null}
 
         {activeView === 'summary' ? (
           <SummaryView
@@ -3308,6 +3428,66 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
+function daysUntilDate(dateValue: string, now = new Date()): number {
+  const target = new Date(`${dateValue}T00:00:00`);
+  const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((target.getTime() - current.getTime()) / 86400000);
+}
+
+function buildPlatformNotifications(
+  signupRequests: TenantSignupRequest[],
+  changeRequests: TenantChangeRequest[],
+  memberships: PlatformTenantMembership[],
+  now = new Date(),
+): PlatformNotification[] {
+  const signupItems = signupRequests
+    .filter((request) => request.status === 'pending')
+    .map((request) => ({
+      id: `signup-${request.id}`,
+      kind: 'signup' as const,
+      title: request.company_name,
+      description: `${request.contact_name} - ${request.phone}`,
+      actionLabel: 'Revisar solicitud' as const,
+    }));
+
+  const changeItems = changeRequests
+    .filter((request) => request.status === 'pending')
+    .map((request) => ({
+      id: `change-${request.id}`,
+      kind: 'change_request' as const,
+      title: request.current_name ?? 'Cambio fiscal pendiente',
+      description: request.reason ?? 'Pendiente de revision',
+      actionLabel: 'Ver cambio' as const,
+    }));
+
+  const membershipItems = memberships
+    .filter((membership) => {
+      if (!membership.membership_due_date) {
+        return false;
+      }
+
+      return daysUntilDate(membership.membership_due_date, now) <= 3;
+    })
+    .map((membership) => {
+      const days = membership.membership_due_date
+        ? daysUntilDate(membership.membership_due_date, now)
+        : null;
+
+      return {
+        id: `membership-${membership.id}`,
+        kind: 'membership' as const,
+        title: membership.name,
+        description:
+          days !== null && days < 0
+            ? 'Membresia vencida'
+            : `Vence en ${days} dia${days === 1 ? '' : 's'}`,
+        actionLabel: 'Registrar pago' as const,
+      };
+    });
+
+  return [...signupItems, ...changeItems, ...membershipItems];
+}
+
 function navStyle(isActive: boolean): React.CSSProperties {
   return isActive ? styles.navActive : styles.navItem;
 }
@@ -3462,6 +3642,11 @@ const styles = {
     display: 'grid',
     gap: '2px',
     minWidth: 0,
+  },
+  mobileHeaderActions: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: '8px',
   },
   mobileCurrentView: {
     color: 'var(--muted)',
@@ -3706,6 +3891,57 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '10px',
+  },
+  notificationButton: {
+    alignItems: 'center',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '999px',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    gap: '8px',
+    minHeight: '40px',
+    padding: '8px 12px',
+    position: 'relative',
+  },
+  notificationGlyph: {
+    fontSize: '12px',
+    fontWeight: 800,
+    lineHeight: 1,
+  },
+  notificationBadge: {
+    alignItems: 'center',
+    background: 'var(--accent)',
+    borderRadius: '999px',
+    color: 'var(--accent-contrast)',
+    display: 'inline-flex',
+    fontSize: '12px',
+    fontWeight: 800,
+    justifyContent: 'center',
+    minWidth: '22px',
+    padding: '2px 6px',
+  },
+  notificationPanel: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '10px',
+    display: 'grid',
+    gap: '14px',
+    marginBottom: '18px',
+    padding: '16px',
+  },
+  notificationSection: {
+    display: 'grid',
+    gap: '10px',
+  },
+  notificationItem: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '6px',
+    padding: '12px',
   },
   title: {
     fontSize: '28px',

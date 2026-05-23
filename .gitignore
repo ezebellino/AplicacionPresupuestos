@@ -7,3 +7,7 @@ dist/
 .vite/
 *.tsbuildinfo
 *.db
+.env
+.env.*
+!.env.example
+*.log

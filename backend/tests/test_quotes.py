@@ -74,6 +74,7 @@ def test_create_draft_quote_and_add_historical_cost_item(api_context) -> None:
     assert quote["status"] == "draft"
     assert quote["client_id"] == tenant_client["id"]
     assert quote["number"] == "Q-000001"
+    assert quote["created_at"] is not None
     assert quote["subtotal"] == "0.00"
     assert quote["tax_total"] == "0.00"
     assert quote["discount_total"] == "0.00"
@@ -326,6 +327,72 @@ def test_quote_patch_rejects_explicit_null_client_id(api_context) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_tenant_admin_can_read_and_update_company_profile(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-profile@acme.test",
+    )
+
+    profile = client.get("/admin/tenants/me", headers=headers)
+    assert profile.status_code == 200
+    assert profile.json()["name"] == "Acme Clima"
+    assert profile.json()["address"] is None
+
+    updated = client.patch(
+        "/admin/tenants/me",
+        headers=headers,
+        json={
+            "legal_name": "Acme Clima SRL",
+            "tax_id": "30-12345678-9",
+            "address": "Av. Siempre Viva 742",
+            "phone": "+54 351 555 0101",
+            "email": "administracion@acme.test",
+            "website": "https://acme.test",
+            "logo_url": "https://acme.test/logo.png",
+            "invoice_notes": "Gracias por confiar en nosotros.",
+            "default_tax_rate": "10.50",
+        },
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["legal_name"] is None
+    assert updated.json()["tax_id"] is None
+    assert updated.json()["address"] == "Av. Siempre Viva 742"
+    assert updated.json()["phone"] == "+54 351 555 0101"
+    assert updated.json()["email"] == "administracion@acme.test"
+    assert updated.json()["website"] == "https://acme.test"
+    assert updated.json()["logo_url"] == "https://acme.test/logo.png"
+    assert updated.json()["invoice_notes"] == "Gracias por confiar en nosotros."
+    assert updated.json()["default_tax_rate"] == "10.50"
+
+
+def test_quote_share_link_serves_public_pdf(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-share@acme.test",
+    )
+    tenant_client = create_client(client, headers, name="Cliente WhatsApp")
+    cost_item = create_cost_item(client, headers, name="Instalacion")
+    quote = create_quote(client, headers, tenant_client["id"])
+    add_quote_item(client, headers, quote["id"], cost_item["id"], quantity="1.00")
+
+    share_link = client.post(f"/quotes/{quote['id']}/share-link", headers=headers)
+
+    assert share_link.status_code == 200
+    payload = share_link.json()
+    assert payload["token"]
+    assert payload["url"].endswith(f"/quotes/public/{payload['token']}/pdf")
+
+    public_pdf = client.get(f"/quotes/public/{payload['token']}/pdf")
+    assert public_pdf.status_code == 200
+    assert public_pdf.headers["content-type"] == "application/pdf"
+    assert public_pdf.content.startswith(b"%PDF")
 
 
 def test_quote_item_patch_rejects_explicit_null_required_fields(api_context) -> None:

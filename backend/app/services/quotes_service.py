@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+from secrets import token_urlsafe
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -44,6 +45,7 @@ def serialize_quote(quote: Quote) -> QuoteRead:
             "title": quote.title,
             "notes": quote.notes,
             "valid_until": quote.valid_until,
+            "created_at": quote.created_at,
             "subtotal": quote.subtotal,
             "discount_total": quote.discount_total,
             "tax_total": quote.tax_total,
@@ -74,6 +76,35 @@ def get_quote(db: Session, tenant_id: UUID, quote_id: UUID) -> Quote | None:
             Quote.id == quote_id,
         )
     )
+
+
+def get_quote_by_share_token(db: Session, share_token: str) -> Quote | None:
+    return db.scalar(select(Quote).where(Quote.public_share_token == share_token))
+
+
+def ensure_quote_share_token(db: Session, tenant_id: UUID, quote_id: UUID) -> Quote | None:
+    quote = get_quote(db, tenant_id, quote_id)
+
+    if quote is None:
+        return None
+    if quote.public_share_token:
+        return quote
+
+    for _ in range(3):
+        quote.public_share_token = token_urlsafe(32)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            quote = get_quote(db, tenant_id, quote_id)
+            if quote is None:
+                return None
+            continue
+
+        db.refresh(quote)
+        return quote
+
+    raise QuoteConflictError("Could not create quote share token")
 
 
 def create_quote(db: Session, tenant_id: UUID, payload: QuoteCreate) -> Quote | None:

@@ -6,7 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.infra.models import User
+from app.schemas.client_service_records import (
+    ClientServiceRecordCreate,
+    ClientServiceRecordList,
+    ClientServiceRecordRead,
+)
 from app.schemas.clients import ClientCreate, ClientList, ClientRead, ClientUpdate
+from app.services.client_service_records_service import (
+    create_client_service_record,
+    list_client_service_records,
+)
 from app.services.clients_service import (
     create_client,
     delete_client,
@@ -48,6 +57,44 @@ def get_current_tenant_client(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
 
     return client
+
+
+@router.get("/{client_id}/service-records", response_model=ClientServiceRecordList)
+def list_current_tenant_client_service_records(
+    client_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, object]:
+    records = list_client_service_records(db, current_user.tenant_id, client_id)
+
+    if records is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    return {"items": records}
+
+
+@router.post(
+    "/{client_id}/service-records",
+    response_model=ClientServiceRecordRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_current_tenant_client_service_record(
+    client_id: UUID,
+    payload: ClientServiceRecordCreate,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    record = create_client_service_record(
+        db,
+        current_user.tenant_id,
+        client_id,
+        payload,
+    )
+
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+
+    return record
 
 
 @router.patch("/{client_id}", response_model=ClientRead)

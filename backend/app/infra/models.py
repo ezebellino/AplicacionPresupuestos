@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     and_,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -53,14 +54,98 @@ class Tenant(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     legal_name: Mapped[str | None] = mapped_column(String(255))
     tax_id: Mapped[str | None] = mapped_column(String(64))
+    address: Mapped[str | None] = mapped_column(String(500))
+    phone: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(255))
+    website: Mapped[str | None] = mapped_column(String(255))
+    logo_url: Mapped[str | None] = mapped_column(Text)
+    invoice_notes: Mapped[str | None] = mapped_column(Text)
+    membership_status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
+    membership_due_date: Mapped[date | None] = mapped_column(Date)
+    membership_last_payment_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    membership_monthly_fee: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     default_tax_rate: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("21.00")
     )
 
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
+    membership_payments: Mapped[list["TenantMembershipPayment"]] = relationship(
+        back_populates="tenant",
+        order_by=lambda: TenantMembershipPayment.paid_at.desc(),
+    )
     clients: Mapped[list["Client"]] = relationship(back_populates="tenant")
+    client_service_records: Mapped[list["ClientServiceRecord"]] = relationship(
+        back_populates="tenant"
+    )
     cost_items: Mapped[list["CostItem"]] = relationship(back_populates="tenant")
     quotes: Mapped[list["Quote"]] = relationship(back_populates="tenant")
+    change_requests: Mapped[list["TenantChangeRequest"]] = relationship(
+        back_populates="tenant"
+    )
+
+
+class TenantChangeRequest(TimestampMixin, Base):
+    __tablename__ = "tenant_change_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    current_name: Mapped[str | None] = mapped_column(String(255))
+    current_legal_name: Mapped[str | None] = mapped_column(String(255))
+    current_tax_id: Mapped[str | None] = mapped_column(String(64))
+    proposed_name: Mapped[str | None] = mapped_column(String(255))
+    proposed_legal_name: Mapped[str | None] = mapped_column(String(255))
+    proposed_tax_id: Mapped[str | None] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id")
+    )
+    review_notes: Mapped[str | None] = mapped_column(Text)
+
+    tenant: Mapped[Tenant] = relationship(back_populates="change_requests")
+
+
+class TenantSignupRequest(TimestampMixin, Base):
+    __tablename__ = "tenant_signup_requests"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    contact_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    phone: Mapped[str] = mapped_column(String(100), nullable=False)
+    business_type: Mapped[str | None] = mapped_column(String(255))
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    created_tenant_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"))
+    created_admin_email: Mapped[str | None] = mapped_column(String(255))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id")
+    )
+    review_notes: Mapped[str | None] = mapped_column(Text)
+
+
+class TenantMembershipPayment(TimestampMixin, Base):
+    __tablename__ = "tenant_membership_payments"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    months_covered: Mapped[int] = mapped_column(nullable=False, default=1)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    quote_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    quote_number: Mapped[str | None] = mapped_column(String(50))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    tenant: Mapped[Tenant] = relationship(back_populates="membership_payments")
 
 
 class User(TimestampMixin, Base):
@@ -92,6 +177,7 @@ class Client(TimestampMixin, Base):
     phone: Mapped[str | None] = mapped_column(String(100))
     address: Mapped[str | None] = mapped_column(String(500))
     notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="clients")
     quotes: Mapped[list["Quote"]] = relationship(
@@ -99,6 +185,43 @@ class Client(TimestampMixin, Base):
         primaryjoin=lambda: and_(
             Client.id == foreign(Quote.client_id),
             Client.tenant_id == Quote.tenant_id,
+        ),
+    )
+    service_records: Mapped[list["ClientServiceRecord"]] = relationship(
+        back_populates="client",
+        primaryjoin=lambda: and_(
+            Client.id == foreign(ClientServiceRecord.client_id),
+            Client.tenant_id == ClientServiceRecord.tenant_id,
+        ),
+    )
+
+
+class ClientServiceRecord(TimestampMixin, Base):
+    __tablename__ = "client_service_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["client_id", "tenant_id"],
+            ["clients.id", "clients.tenant_id"],
+            name="fk_client_service_records_client_tenant",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    client_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
+    performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+
+    tenant: Mapped[Tenant] = relationship(back_populates="client_service_records")
+    client: Mapped[Client] = relationship(
+        back_populates="service_records",
+        primaryjoin=lambda: and_(
+            foreign(ClientServiceRecord.client_id) == Client.id,
+            ClientServiceRecord.tenant_id == Client.tenant_id,
         ),
     )
 
@@ -168,6 +291,7 @@ class Quote(TimestampMixin, Base):
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    public_share_token: Mapped[str | None] = mapped_column(String(96), unique=True, index=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="quotes")
     client: Mapped[Client] = relationship(

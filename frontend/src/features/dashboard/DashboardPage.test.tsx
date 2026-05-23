@@ -1,16 +1,127 @@
 import '@testing-library/jest-dom/vitest';
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardPage } from './DashboardPage';
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    writable: true,
+    value: width,
+  });
+  window.dispatchEvent(new Event('resize'));
+}
+
 describe('DashboardPage', () => {
   beforeEach(() => {
+    setViewportWidth(1024);
     localStorage.setItem('auth_token', 'test-token');
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:factura');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     vi.stubGlobal(
       'fetch',
-      vi.fn((url: string) => {
+      vi.fn((url: string, options?: RequestInit) => {
+        if (url.endsWith('/auth/me')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: 'user-1',
+                tenant_id: 'tenant-1',
+                email: 'admin@empresa.test',
+                role: 'admin',
+                tenant: {
+                  id: 'tenant-1',
+                  name: 'Empresa Demo',
+                  legal_name: null,
+                  tax_id: null,
+                  address: null,
+                  phone: null,
+                  email: null,
+                  website: null,
+                  logo_url: null,
+                  invoice_notes: null,
+                  default_tax_rate: '21.00',
+                },
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
+        if (url.endsWith('/admin/tenants/me')) {
+          if (options?.method === 'PATCH') {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  id: 'tenant-1',
+                  name: 'Empresa Demo',
+                  legal_name: 'Empresa Demo SRL',
+                  tax_id: '30-123',
+                  address: 'Av. Siempre Viva 742',
+                  phone: '+54 351 555 0101',
+                  email: 'admin@empresa.test',
+                  website: null,
+                  logo_url: null,
+                  invoice_notes: null,
+                  default_tax_rate: '21.00',
+                }),
+                { status: 200 },
+              ),
+            );
+          }
+
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: 'tenant-1',
+                name: 'Empresa Demo',
+                legal_name: null,
+                tax_id: null,
+                address: null,
+                phone: null,
+                email: null,
+                website: null,
+                logo_url: null,
+                invoice_notes: null,
+                default_tax_rate: '21.00',
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
+        if (url.endsWith('/admin/tenants/me/change-requests') && options?.method === 'POST') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                id: 'request-1',
+                tenant_id: 'tenant-1',
+                requested_by_user_id: 'user-1',
+                status: 'pending',
+                current_name: 'Empresa Demo',
+                current_legal_name: null,
+                current_tax_id: null,
+                proposed_name: 'Empresa Nueva',
+                proposed_legal_name: null,
+                proposed_tax_id: null,
+                reason: 'Cambio comercial',
+              }),
+              { status: 201 },
+            ),
+          );
+        }
+
+        if (url.endsWith('/admin/tenants/me/change-requests')) {
+          return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+        }
+
+        if (url.endsWith('/clients/client-1') && options?.method === 'DELETE') {
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+
         if (url.endsWith('/clients')) {
           return Promise.resolve(
             new Response(
@@ -21,9 +132,29 @@ describe('DashboardPage', () => {
                     name: 'Acme Clima',
                     document: '30-123',
                     email: 'admin@acme.test',
-                    phone: null,
+                    phone: '+54 9 351 555 0101',
                     address: null,
                     notes: null,
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
+        if (url.endsWith('/clients/client-1/service-records')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: 'service-1',
+                    client_id: 'client-1',
+                    performed_at: '2026-05-14T10:30:00',
+                    title: 'Mantenimiento preventivo',
+                    description: 'Limpieza de filtros',
+                    amount: '125000.00',
                   },
                 ],
               }),
@@ -39,10 +170,10 @@ describe('DashboardPage', () => {
                 items: [
                   {
                     id: 'cost-1',
-                    category: 'equipment',
-                    name: 'Equipo split 3000 frigorias',
+                    category: 'services',
+                    name: 'Instalacion',
                     description: null,
-                    unit: 'unidad',
+                    unit: 'servicio',
                     unit_cost: '450000.00',
                     tax_rate: null,
                     effective_tax_rate: '21.00',
@@ -64,16 +195,34 @@ describe('DashboardPage', () => {
                     id: 'quote-1',
                     client_id: 'client-1',
                     number: 'Q-000001',
-                    status: 'draft',
+                    status: 'accepted',
                     title: 'Instalacion',
                     notes: null,
                     valid_until: null,
+                    created_at: '2026-05-14T10:00:00',
                     subtotal: '0.00',
                     discount_total: '0.00',
                     tax_total: '0.00',
-                    total: '0.00',
-                    issued_at: null,
-                    items: [],
+                    total: '121000.00',
+                    issued_at: '2026-05-14T11:00:00',
+                    items: [
+                      {
+                        id: 'quote-item-1',
+                        source_cost_item_id: 'cost-1',
+                        category: 'services',
+                        name: 'Instalacion',
+                        description: null,
+                        unit: 'servicio',
+                        quantity: '1.00',
+                        unit_price: '100000.00',
+                        tax_rate: '21.00',
+                        discount_amount: '0.00',
+                        line_subtotal: '100000.00',
+                        line_tax: '21000.00',
+                        line_total: '121000.00',
+                        position: 1,
+                      },
+                    ],
                   },
                 ],
               }),
@@ -82,13 +231,19 @@ describe('DashboardPage', () => {
           );
         }
 
+        if (url.endsWith('/quotes/quote-1/pdf')) {
+          return Promise.resolve(new Response(new Blob(['pdf'], { type: 'application/pdf' }), { status: 200 }));
+        }
+
         return Promise.resolve(new Response(null, { status: 404 }));
       }),
     );
   });
 
   afterEach(() => {
+    setViewportWidth(1024);
     localStorage.clear();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -98,9 +253,215 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('heading', { name: 'Panel operativo' })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('Costos activos')).toBeInTheDocument();
-      expect(screen.getByText('Equipos')).toBeInTheDocument();
+      expect(screen.getByText('Servicios activos')).toBeInTheDocument();
+      expect(screen.getAllByText('Servicios').length).toBeGreaterThan(0);
       expect(screen.getByText('Presupuestos recientes')).toBeInTheDocument();
     });
+  });
+
+  it('searches services and shows quote progress badges', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Servicios' }));
+    await waitFor(() => expect(screen.getAllByText('Instalacion').length).toBeGreaterThan(0));
+
+    await user.type(screen.getByPlaceholderText('Instalación, mantenimiento o desinstalación'), 'sin resultados');
+
+    expect(screen.getByText('No hay servicios para esa busqueda.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+
+    expect(screen.getByLabelText('Progreso del presupuesto')).toBeInTheDocument();
+    expect(screen.getAllByText('Aceptado').length).toBeGreaterThan(0);
+  });
+
+  it('opens a client service history from the clients table', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    await waitFor(() => expect(screen.getByText('Acme Clima')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Historial' }));
+
+    expect(await screen.findByText('Historial de Acme Clima')).toBeInTheDocument();
+    expect(screen.getAllByText('Instalacion').length).toBeGreaterThan(0);
+    expect(screen.getByText('Mantenimiento preventivo')).toBeInTheDocument();
+  });
+
+  it('shows treasury metrics from accepted quotes', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+
+    expect(await screen.findByText('Facturado aceptado')).toBeInTheDocument();
+    expect(screen.getAllByText('$ 121.000,00').length).toBeGreaterThan(0);
+    expect(screen.getByText('Facturacion por mes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enviar PDF por WhatsApp' })).toBeInTheDocument();
+  });
+
+  it('opens smart treasury with charts and insights', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+    await user.click(await screen.findByRole('button', { name: 'Tesoreria inteligente' }));
+
+    expect(screen.getByRole('heading', { name: 'Tesoreria inteligente' })).toBeInTheDocument();
+    expect(screen.getByText('Membresias cobradas por mes')).toBeInTheDocument();
+    expect(screen.getByText('Meses mas facturados')).toBeInTheDocument();
+    expect(screen.getByText('Reporte inteligente')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Volver a tesoreria' })).toBeInTheDocument();
+  });
+
+  it('opens whatsapp with a prefilled invoice message', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+    await user.click(await screen.findByRole('button', { name: 'Enviar PDF por WhatsApp' }));
+
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining('https://wa.me/5493515550101'),
+        '_blank',
+        'noopener,noreferrer',
+      );
+    });
+    expect(openSpy.mock.calls.at(-1)?.[0]).toContain('Q-000001');
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/quotes/quote-1/pdf'),
+      expect.objectContaining({ headers: expect.any(Headers) }),
+    );
+    openSpy.mockRestore();
+  });
+
+  it('toggles from cyberpunk dark mode to light mode', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Modo claro' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Modo claro' }));
+
+    expect(screen.getByRole('button', { name: 'Dark mode' })).toBeInTheDocument();
+  });
+
+  it('can collapse the sidebar navigation', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Minimizar menu' }));
+
+    expect(screen.getByRole('button', { name: 'Expandir menu' })).toBeInTheDocument();
+  });
+
+  it('uses the mobile drawer and bottom navigation on compact screens', async () => {
+    const user = userEvent.setup();
+    setViewportWidth(390);
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Abrir menu' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Accesos rapidos' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Minimizar menu' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Abrir menu' }));
+    const mobileMenu = screen.getByLabelText('Menu movil');
+
+    expect(within(mobileMenu).queryByRole('button', { name: 'Resumen' })).not.toBeInTheDocument();
+    expect(within(mobileMenu).queryByRole('button', { name: 'Clientes' })).not.toBeInTheDocument();
+    expect(within(mobileMenu).queryByRole('button', { name: 'Presupuestos' })).not.toBeInTheDocument();
+    expect(within(mobileMenu).queryByRole('button', { name: 'Tesoreria' })).not.toBeInTheDocument();
+    expect(within(mobileMenu).getByRole('button', { name: 'Servicios' })).toBeInTheDocument();
+    expect(within(mobileMenu).getByRole('button', { name: 'Empresa' })).toBeInTheDocument();
+
+    await user.click(within(mobileMenu).getByRole('button', { name: 'Empresa' }));
+
+    expect(await screen.findByRole('heading', { name: 'Perfil de empresa' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Menu movil')).not.toBeInTheDocument();
+  });
+
+  it('offers the six service operation presets', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Servicios' }));
+
+    expect(await screen.findByRole('button', { name: 'Instalación' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mantenimiento' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Carga de Gas' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reparación' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mano de Obra' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Desinstalación' })).toBeInTheDocument();
+  });
+
+  it('shows client actions without relying on a clipped table column', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+
+    expect(await screen.findByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Historial' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();
+  });
+
+  it('opens the company profile settings', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Empresa' }));
+
+    expect(await screen.findByRole('heading', { name: 'Perfil de empresa' })).toBeInTheDocument();
+    expect(screen.getByText('Empresa: Empresa Demo')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Solicitar cambio fiscal' })).toBeInTheDocument();
+    expect(screen.getByText('Vista PDF')).toBeInTheDocument();
+    expect(screen.getByLabelText('Vista previa PDF de factura')).toBeInTheDocument();
+  });
+
+  it('creates a tenant fiscal change request from company settings', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Empresa' }));
+    await user.type(await screen.findByLabelText('Nuevo nombre de empresa'), 'Empresa Nueva');
+    await user.click(screen.getByRole('button', { name: 'Enviar solicitud' }));
+
+    expect(await screen.findByText('pending')).toBeInTheDocument();
+    expect(screen.getByText('Empresa: Empresa Nueva')).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/admin/tenants/me/change-requests'),
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('keeps the new quote form hidden until requested', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await waitFor(() => expect(screen.getAllByText('Q-000001').length).toBeGreaterThan(0));
+
+    expect(screen.queryByRole('button', { name: 'Crear borrador' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Nuevo presupuesto' }));
+
+    expect(screen.getByRole('button', { name: 'Crear borrador' })).toBeInTheDocument();
   });
 });

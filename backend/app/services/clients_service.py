@@ -11,7 +11,7 @@ def list_clients(db: Session, tenant_id: UUID) -> list[Client]:
     return list(
         db.scalars(
             select(Client)
-            .where(Client.tenant_id == tenant_id)
+            .where(Client.tenant_id == tenant_id, Client.is_active.is_(True))
             .order_by(Client.created_at, Client.id)
         )
     )
@@ -29,7 +29,11 @@ def create_client(db: Session, tenant_id: UUID, payload: ClientCreate) -> Client
 
 def get_client(db: Session, tenant_id: UUID, client_id: UUID) -> Client | None:
     return db.scalar(
-        select(Client).where(Client.tenant_id == tenant_id, Client.id == client_id)
+        select(Client).where(
+            Client.tenant_id == tenant_id,
+            Client.id == client_id,
+            Client.is_active.is_(True),
+        )
     )
 
 
@@ -59,7 +63,7 @@ def delete_client(db: Session, tenant_id: UUID, client_id: UUID) -> bool:
     if client is None:
         return False
 
-    db.delete(client)
+    client.is_active = False
     db.commit()
 
     return True

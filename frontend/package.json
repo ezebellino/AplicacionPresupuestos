@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "start": "node server.mjs",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit"
   },

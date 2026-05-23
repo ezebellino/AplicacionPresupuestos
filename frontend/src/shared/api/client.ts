@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const runtimeApiUrl =
+  typeof window !== 'undefined' ? window.__FACTUREASY_CONFIG__?.VITE_API_URL : undefined;
+const API_URL = runtimeApiUrl || import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export type Client = {
   id: string;
@@ -17,6 +19,132 @@ export type ClientPayload = {
   phone?: string | null;
   address?: string | null;
   notes?: string | null;
+};
+
+export type TenantProfile = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  tax_id: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  logo_url: string | null;
+  invoice_notes: string | null;
+  membership_status: string;
+  membership_due_date: string | null;
+  membership_last_payment_at: string | null;
+  membership_monthly_fee: string | null;
+  default_tax_rate: string;
+};
+
+export type TenantProfilePayload = {
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  logo_url?: string | null;
+  invoice_notes?: string | null;
+  default_tax_rate?: string | null;
+};
+
+export type TenantChangeRequest = {
+  id: string;
+  tenant_id: string;
+  requested_by_user_id: string;
+  status: string;
+  current_name: string | null;
+  current_legal_name: string | null;
+  current_tax_id: string | null;
+  proposed_name: string | null;
+  proposed_legal_name: string | null;
+  proposed_tax_id: string | null;
+  reason: string | null;
+};
+
+export type TenantSignupRequest = {
+  id: string;
+  company_name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  business_type: string | null;
+  message: string | null;
+  status: string;
+  review_notes: string | null;
+  created_tenant_id: string | null;
+  created_admin_email: string | null;
+};
+
+export type PlatformTenantMembership = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  tax_id: string | null;
+  email: string | null;
+  phone: string | null;
+  membership_status: string;
+  membership_due_date: string | null;
+  membership_last_payment_at: string | null;
+  membership_monthly_fee: string | null;
+  payments: PlatformTenantMembershipPayment[];
+};
+
+export type PlatformTenantMembershipPayment = {
+  id: string;
+  paid_at: string;
+  months_covered: number;
+  amount: string | null;
+  quote_id: string | null;
+  quote_number: string | null;
+  notes: string | null;
+};
+
+export type PlatformMembershipPaymentPayload = {
+  months_covered: number;
+  amount?: string | null;
+  notes?: string | null;
+};
+
+export type TenantSignupRequestPayload = {
+  company_name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  business_type?: string | null;
+  message?: string | null;
+};
+
+export type TenantChangeRequestPayload = {
+  proposed_name?: string | null;
+  proposed_legal_name?: string | null;
+  proposed_tax_id?: string | null;
+  reason?: string | null;
+};
+
+export type CurrentUser = {
+  id: string;
+  tenant_id: string;
+  email: string;
+  role: string;
+  tenant: TenantProfile;
+};
+
+export type ClientServiceRecord = {
+  id: string;
+  client_id: string;
+  performed_at: string;
+  title: string;
+  description: string | null;
+  amount: string | null;
+};
+
+export type ClientServiceRecordPayload = {
+  performed_at: string;
+  title: string;
+  description?: string | null;
+  amount?: string | null;
 };
 
 export type CostCategory = 'equipment' | 'materials' | 'labor' | 'services';
@@ -69,12 +197,18 @@ export type Quote = {
   title: string | null;
   notes: string | null;
   valid_until: string | null;
+  created_at: string;
   subtotal: string;
   discount_total: string;
   tax_total: string;
   total: string;
   issued_at: string | null;
   items: QuoteItem[];
+};
+
+export type QuoteShareLink = {
+  token: string;
+  url: string;
 };
 
 export type QuotePayload = {
@@ -138,6 +272,78 @@ export const apiClient = {
       body: JSON.stringify(payload),
     });
   },
+  getCurrentUser() {
+    return request<CurrentUser>('/auth/me');
+  },
+  createTenantSignupRequest(payload: TenantSignupRequestPayload) {
+    return request<TenantSignupRequest>('/admin/tenants/signup-requests', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  getTenantProfile() {
+    return request<TenantProfile>('/admin/tenants/me');
+  },
+  updateTenantProfile(payload: TenantProfilePayload) {
+    return request<TenantProfile>('/admin/tenants/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  listTenantChangeRequests() {
+    return request<{ items: TenantChangeRequest[] }>('/admin/tenants/me/change-requests');
+  },
+  createTenantChangeRequest(payload: TenantChangeRequestPayload) {
+    return request<TenantChangeRequest>('/admin/tenants/me/change-requests', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  listPlatformSignupRequests() {
+    return request<{ items: TenantSignupRequest[] }>('/admin/tenants/platform/signup-requests');
+  },
+  approvePlatformSignupRequest(id: string, adminPassword: string, reviewNotes?: string | null) {
+    return request<TenantSignupRequest>(`/admin/tenants/platform/signup-requests/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ admin_password: adminPassword, review_notes: reviewNotes ?? null }),
+    });
+  },
+  markPlatformSignupRequestContacted(id: string, reviewNotes?: string | null) {
+    return request<TenantSignupRequest>(`/admin/tenants/platform/signup-requests/${id}/contacted`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  rejectPlatformSignupRequest(id: string, reviewNotes?: string | null) {
+    return request<TenantSignupRequest>(`/admin/tenants/platform/signup-requests/${id}/rejected`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  listPlatformChangeRequests() {
+    return request<{ items: TenantChangeRequest[] }>('/admin/tenants/platform/change-requests');
+  },
+  approvePlatformChangeRequest(id: string, reviewNotes?: string | null) {
+    return request<TenantChangeRequest>(`/admin/tenants/platform/change-requests/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  rejectPlatformChangeRequest(id: string, reviewNotes?: string | null) {
+    return request<TenantChangeRequest>(`/admin/tenants/platform/change-requests/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ review_notes: reviewNotes ?? null }),
+    });
+  },
+  listPlatformMemberships() {
+    return request<{ items: PlatformTenantMembership[] }>('/admin/tenants/platform/memberships');
+  },
+  markPlatformMembershipPaid(id: string, payload: PlatformMembershipPaymentPayload) {
+    return request<PlatformTenantMembership>(`/admin/tenants/platform/memberships/${id}/paid`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
   listClients() {
     return request<{ items: Client[] }>('/clients');
   },
@@ -156,6 +362,15 @@ export const apiClient = {
   deleteClient(id: string) {
     return request<void>(`/clients/${id}`, {
       method: 'DELETE',
+    });
+  },
+  listClientServiceRecords(clientId: string) {
+    return request<{ items: ClientServiceRecord[] }>(`/clients/${clientId}/service-records`);
+  },
+  createClientServiceRecord(clientId: string, payload: ClientServiceRecordPayload) {
+    return request<ClientServiceRecord>(`/clients/${clientId}/service-records`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
   listCostItems(category?: CostCategory) {
@@ -223,5 +438,10 @@ export const apiClient = {
     }
 
     return response.blob();
+  },
+  createQuoteShareLink(id: string) {
+    return request<QuoteShareLink>(`/quotes/${id}/share-link`, {
+      method: 'POST',
+    });
   },
 };

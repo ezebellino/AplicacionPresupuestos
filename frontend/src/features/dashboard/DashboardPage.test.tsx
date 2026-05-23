@@ -21,11 +21,20 @@ function mockPlatformAdminSession() {
   currentRole = 'platform_admin';
 }
 
+function isoDateWithOffset(daysOffset: number) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + daysOffset);
+  return date.toISOString().slice(0, 10);
+}
+
 describe('DashboardPage', () => {
   beforeEach(() => {
     currentRole = 'admin';
     setViewportWidth(1024);
     localStorage.setItem('auth_token', 'test-token');
+    const expiredMembershipDate = isoDateWithOffset(-2);
+    const upcomingMembershipDate = isoDateWithOffset(3);
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:factura');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     vi.stubGlobal(
@@ -123,6 +132,94 @@ describe('DashboardPage', () => {
 
         if (url.endsWith('/admin/tenants/me/change-requests')) {
           return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
+        }
+
+        if (url.endsWith('/admin/tenants/platform/signup-requests')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: 'signup-1',
+                    company_name: 'AUBASA',
+                    contact_name: 'Dario Lopez',
+                    email: 'dario@test.com',
+                    phone: '2245505050',
+                    business_type: 'Infraestructura',
+                    message: null,
+                    status: 'pending',
+                    review_notes: null,
+                    created_tenant_id: null,
+                    created_admin_email: null,
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
+        if (url.endsWith('/admin/tenants/platform/change-requests')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: 'change-1',
+                    tenant_id: 'tenant-customer-1',
+                    requested_by_user_id: 'user-customer-1',
+                    status: 'pending',
+                    current_name: 'DM Refrigeracion',
+                    current_legal_name: null,
+                    current_tax_id: null,
+                    proposed_name: 'DM Refrigeracion SRL',
+                    proposed_legal_name: null,
+                    proposed_tax_id: null,
+                    reason: 'Alta fiscal',
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
+        if (url.endsWith('/admin/tenants/platform/memberships')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: 'tenant-customer-1',
+                    name: 'DM Refrigeracion',
+                    legal_name: null,
+                    tax_id: null,
+                    email: 'dm@test.com',
+                    phone: '5492245476329',
+                    membership_status: 'expired',
+                    membership_due_date: expiredMembershipDate,
+                    membership_last_payment_at: null,
+                    membership_monthly_fee: '5000.00',
+                    payments: [],
+                  },
+                  {
+                    id: 'tenant-customer-2',
+                    name: 'AUBASA',
+                    legal_name: null,
+                    tax_id: null,
+                    email: 'aubasa@test.com',
+                    phone: '5492245476330',
+                    membership_status: 'active',
+                    membership_due_date: upcomingMembershipDate,
+                    membership_last_payment_at: null,
+                    membership_monthly_fee: '5000.00',
+                    payments: [],
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
         }
 
         if (url.endsWith('/clients/client-1') && options?.method === 'DELETE') {
@@ -414,6 +511,43 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Perfil de plataforma' })).toBeInTheDocument();
     expect(screen.getByText(/datos institucionales de factureasy/i)).toBeInTheDocument();
+  });
+
+  it('shows a total pending notifications badge for platform admins', async () => {
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    expect(await screen.findByRole('button', { name: 'Notificaciones' })).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+  });
+
+  it('opens the notifications panel with grouped pending items', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Notificaciones' }));
+    const notificationsPanel = screen.getByLabelText('Panel de notificaciones');
+
+    expect(screen.getByRole('heading', { name: 'Pendientes de plataforma' })).toBeInTheDocument();
+    expect(within(notificationsPanel).getByText('Altas pendientes')).toBeInTheDocument();
+    expect(within(notificationsPanel).getByText('Cambios fiscales')).toBeInTheDocument();
+    expect(within(notificationsPanel).getByText('Membresias por vencer o vencidas')).toBeInTheDocument();
+  });
+
+  it('navigates to Plataforma from a notification action', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Perfil' }));
+    await user.click(screen.getByRole('button', { name: 'Notificaciones' }));
+    await user.click(screen.getByRole('button', { name: 'Revisar solicitud' }));
+
+    expect(await screen.findByRole('heading', { name: 'Solicitudes de alta' })).toBeInTheDocument();
   });
 
   it('includes Perfil in the mobile drawer for platform admins', async () => {

@@ -152,6 +152,19 @@ describe('DashboardPage', () => {
                     created_tenant_id: null,
                     created_admin_email: null,
                   },
+                  {
+                    id: 'signup-2',
+                    company_name: 'Test Empresa',
+                    contact_name: 'Tester',
+                    email: 'tester@example.com',
+                    phone: '3515550000',
+                    business_type: 'Prueba',
+                    message: 'Consulta inicial',
+                    status: 'rejected',
+                    review_notes: 'Fuera de alcance',
+                    created_tenant_id: null,
+                    created_admin_email: null,
+                  },
                 ],
               }),
               { status: 200 },
@@ -177,6 +190,19 @@ describe('DashboardPage', () => {
                     proposed_tax_id: null,
                     reason: 'Alta fiscal',
                   },
+                  {
+                    id: 'change-2',
+                    tenant_id: 'tenant-customer-2',
+                    requested_by_user_id: 'user-customer-2',
+                    status: 'approved',
+                    current_name: 'AUBASA',
+                    current_legal_name: null,
+                    current_tax_id: null,
+                    proposed_name: 'AUBASA SA',
+                    proposed_legal_name: 'Autopistas de Buenos Aires SA',
+                    proposed_tax_id: '30-99999999-9',
+                    reason: 'Actualizacion societaria',
+                  },
                 ],
               }),
               { status: 200 },
@@ -198,9 +224,19 @@ describe('DashboardPage', () => {
                     phone: '5492245476329',
                     membership_status: 'expired',
                     membership_due_date: expiredMembershipDate,
-                    membership_last_payment_at: null,
+                    membership_last_payment_at: '2026-05-01',
                     membership_monthly_fee: '5000.00',
-                    payments: [],
+                    payments: [
+                      {
+                        id: 'payment-1',
+                        paid_at: '2026-05-01',
+                        months_covered: 1,
+                        amount: '5000.00',
+                        quote_id: 'quote-1',
+                        quote_number: 'Q-000001',
+                        notes: 'Pago mensual',
+                      },
+                    ],
                   },
                   {
                     id: 'tenant-customer-2',
@@ -211,9 +247,19 @@ describe('DashboardPage', () => {
                     phone: '5492245476330',
                     membership_status: 'active',
                     membership_due_date: upcomingMembershipDate,
-                    membership_last_payment_at: null,
+                    membership_last_payment_at: '2026-04-15',
                     membership_monthly_fee: '5000.00',
-                    payments: [],
+                    payments: [
+                      {
+                        id: 'payment-2',
+                        paid_at: '2026-04-15',
+                        months_covered: 3,
+                        amount: '14250.00',
+                        quote_id: 'quote-2',
+                        quote_number: 'Q-000002',
+                        notes: 'Pago trimestral',
+                      },
+                    ],
                   },
                 ],
               }),
@@ -630,6 +676,49 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('AUBASA')).not.toBeInTheDocument();
   });
 
+  it('switches Solicitudes to Historial and shows resolved records', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Solicitudes (1)' }));
+    await user.click(screen.getByRole('button', { name: 'Historial' }));
+
+    expect(await screen.findByText('Test Empresa')).toBeInTheDocument();
+    expect(screen.getByText('rejected')).toBeInTheDocument();
+  });
+
+  it('shows resolved fiscal changes in Historial mode', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Cambios fiscales (1)' }));
+    await user.click(screen.getByRole('button', { name: 'Historial' }));
+
+    expect(await screen.findByText('AUBASA')).toBeInTheDocument();
+    expect(screen.getByText('approved')).toBeInTheDocument();
+  });
+
+  it('switches Membresias to Historial and shows payment records', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Membresias (2)' }));
+    await user.click(screen.getByRole('button', { name: 'Historial' }));
+
+    expect(await screen.findByText('Q-000001')).toBeInTheDocument();
+    expect(screen.getByText(/Pago mensual/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pago trimestral/i)).toBeInTheDocument();
+  });
+
   it('renders a compact platform selector on mobile', async () => {
     const user = userEvent.setup();
     setViewportWidth(390);
@@ -641,6 +730,20 @@ describe('DashboardPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
 
     expect(await screen.findByLabelText('Seccion de plataforma')).toBeInTheDocument();
+  });
+
+  it('keeps history controls usable on mobile platform sections', async () => {
+    const user = userEvent.setup();
+    setViewportWidth(390);
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Abrir menu' }));
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.selectOptions(await screen.findByLabelText('Seccion de plataforma'), 'memberships');
+
+    expect(await screen.findByRole('button', { name: 'Historial' })).toBeInTheDocument();
   });
 
   it('includes Perfil in the mobile drawer for platform admins', async () => {

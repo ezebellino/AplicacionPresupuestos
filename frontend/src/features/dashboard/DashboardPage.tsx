@@ -2627,7 +2627,9 @@ function PlatformAdminView({
   signupRequests: TenantSignupRequest[];
 }) {
   const pendingSignupRequests = signupRequests.filter((request) => request.status === 'pending');
+  const historicalSignupRequests = signupRequests.filter((request) => request.status !== 'pending');
   const pendingChangeRequests = changeRequests.filter((request) => request.status === 'pending');
+  const historicalChangeRequests = changeRequests.filter((request) => request.status !== 'pending');
   const dueSoonMemberships = memberships.filter((membership) => {
     if (!membership.membership_due_date) {
       return false;
@@ -2648,7 +2650,10 @@ function PlatformAdminView({
     (total, membership) => total + Number(membership.membership_monthly_fee ?? 0),
     0,
   );
+  const [signupViewMode, setSignupViewMode] = useState<'pending' | 'history'>('pending');
+  const [changeViewMode, setChangeViewMode] = useState<'pending' | 'history'>('pending');
   const [membershipFilter, setMembershipFilter] = useState<MembershipFilter>('all');
+  const [membershipViewMode, setMembershipViewMode] = useState<'pending' | 'history'>('pending');
   const membershipCounts = {
     active: activeMemberships.filter((membership) => {
       if (!membership.membership_due_date) {
@@ -2677,12 +2682,34 @@ function PlatformAdminView({
 
     return true;
   });
+  const membershipPaymentHistory = memberships
+    .flatMap((membership) =>
+      membership.payments.map((payment) => ({
+        membership,
+        payment,
+      })),
+    )
+    .sort((left, right) => right.payment.paid_at.localeCompare(left.payment.paid_at));
   const platformSections: Array<{ id: PlatformSection; label: string }> = [
     { id: 'overview', label: 'Resumen' },
     { id: 'signups', label: `Solicitudes (${pendingSignupRequests.length})` },
     { id: 'changes', label: `Cambios fiscales (${pendingChangeRequests.length})` },
     { id: 'memberships', label: `Membresias (${expiredMemberships.length + dueSoonMemberships.length})` },
   ];
+
+  useEffect(() => {
+    if (activeSection === 'signups') {
+      setSignupViewMode('pending');
+    }
+
+    if (activeSection === 'changes') {
+      setChangeViewMode('pending');
+    }
+
+    if (activeSection === 'memberships') {
+      setMembershipViewMode('pending');
+    }
+  }, [activeSection]);
 
   return (
     <>
@@ -2826,9 +2853,31 @@ function PlatformAdminView({
                 <p style={styles.panelSubtitle}>Solo pendientes en la vista principal. Las resueltas quedan fuera del flujo diario.</p>
               </div>
             </div>
-            {pendingSignupRequests.length === 0 ? (
+            <div style={styles.platformFilterBar}>
+              <button
+                aria-pressed={signupViewMode === 'pending'}
+                onClick={() => setSignupViewMode('pending')}
+                style={signupViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Pendientes
+              </button>
+              <button
+                aria-pressed={signupViewMode === 'history'}
+                onClick={() => setSignupViewMode('history')}
+                style={signupViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Historial
+              </button>
+            </div>
+            {signupViewMode === 'pending' && pendingSignupRequests.length === 0 ? (
               <p style={styles.emptyState}>No hay solicitudes de alta pendientes.</p>
-            ) : (
+            ) : null}
+            {signupViewMode === 'history' && historicalSignupRequests.length === 0 ? (
+              <p style={styles.emptyState}>Todavia no hay historial de solicitudes resueltas.</p>
+            ) : null}
+            {signupViewMode === 'pending' ? (
               <div style={styles.clientList}>
                 {pendingSignupRequests.map((request) => (
                   <article key={request.id} style={styles.serviceRecord}>
@@ -2894,7 +2943,27 @@ function PlatformAdminView({
                   </article>
                 ))}
               </div>
-            )}
+            ) : null}
+            {signupViewMode === 'history' ? (
+              <div style={styles.clientList}>
+                {historicalSignupRequests.map((request) => (
+                  <article key={request.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{request.company_name}</strong>
+                        <span style={styles.mutedText}>
+                          {request.contact_name} - {request.email} - {request.phone}
+                        </span>
+                        {request.business_type ? <span style={styles.mutedText}>{request.business_type}</span> : null}
+                      </div>
+                      <span style={styles.categoryBadge}>{request.status}</span>
+                    </div>
+                    {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
+                    {request.review_notes ? <p style={styles.serviceDescription}>Nota: {request.review_notes}</p> : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -2906,9 +2975,31 @@ function PlatformAdminView({
                 <p style={styles.panelSubtitle}>Solo pendientes en la vista principal. El historico se deja fuera del trabajo del dia.</p>
               </div>
             </div>
-            {pendingChangeRequests.length === 0 ? (
+            <div style={styles.platformFilterBar}>
+              <button
+                aria-pressed={changeViewMode === 'pending'}
+                onClick={() => setChangeViewMode('pending')}
+                style={changeViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Pendientes
+              </button>
+              <button
+                aria-pressed={changeViewMode === 'history'}
+                onClick={() => setChangeViewMode('history')}
+                style={changeViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Historial
+              </button>
+            </div>
+            {changeViewMode === 'pending' && pendingChangeRequests.length === 0 ? (
               <p style={styles.emptyState}>No hay cambios fiscales pendientes.</p>
-            ) : (
+            ) : null}
+            {changeViewMode === 'history' && historicalChangeRequests.length === 0 ? (
+              <p style={styles.emptyState}>Todavia no hay historial de cambios fiscales.</p>
+            ) : null}
+            {changeViewMode === 'pending' ? (
               <div style={styles.clientList}>
                 {pendingChangeRequests.map((request) => (
                   <article key={request.id} style={styles.serviceRecord}>
@@ -2949,7 +3040,31 @@ function PlatformAdminView({
                   </article>
                 ))}
               </div>
-            )}
+            ) : null}
+            {changeViewMode === 'history' ? (
+              <div style={styles.clientList}>
+                {historicalChangeRequests.map((request) => (
+                  <article key={request.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{request.current_name}</strong>
+                        <span style={styles.mutedText}>
+                          {[
+                            request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
+                            request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
+                            request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' | ')}
+                        </span>
+                      </div>
+                      <span style={styles.categoryBadge}>{request.status}</span>
+                    </div>
+                    {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -2961,26 +3076,52 @@ function PlatformAdminView({
                 <p style={styles.panelSubtitle}>Vencimiento mensual, filtros rapidos y seguimiento de cobro.</p>
               </div>
             </div>
-            <div style={styles.platformFilterBar}>
-              {[
-                { id: 'all' as const, label: 'Todas' },
-                { id: 'expired' as const, label: 'Vencidas' },
-                { id: 'due_soon' as const, label: 'Por vencer' },
-                { id: 'active' as const, label: 'Activas' },
-              ].map((filterOption) => (
+            <div style={styles.platformFilterStack}>
+              <div style={styles.platformFilterBar}>
                 <button
-                  key={filterOption.id}
-                  onClick={() => setMembershipFilter(filterOption.id)}
-                  style={membershipFilter === filterOption.id ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                  aria-pressed={membershipViewMode === 'pending'}
+                  onClick={() => setMembershipViewMode('pending')}
+                  style={membershipViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
                   type="button"
                 >
-                  {filterOption.label}
+                  Pendientes
                 </button>
-              ))}
+                <button
+                  aria-pressed={membershipViewMode === 'history'}
+                  onClick={() => setMembershipViewMode('history')}
+                  style={membershipViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                  type="button"
+                >
+                  Historial
+                </button>
+              </div>
+              {membershipViewMode === 'pending' ? (
+                <div style={styles.platformFilterBar}>
+                  {[
+                    { id: 'all' as const, label: 'Todas' },
+                    { id: 'expired' as const, label: 'Vencidas' },
+                    { id: 'due_soon' as const, label: 'Por vencer' },
+                    { id: 'active' as const, label: 'Activas' },
+                  ].map((filterOption) => (
+                    <button
+                      key={filterOption.id}
+                      onClick={() => setMembershipFilter(filterOption.id)}
+                      style={membershipFilter === filterOption.id ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                      type="button"
+                    >
+                      {filterOption.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </div>
-            {filteredMemberships.length === 0 ? (
+            {membershipViewMode === 'pending' && filteredMemberships.length === 0 ? (
               <p style={styles.emptyState}>No hay empresas con ese filtro operativo.</p>
-            ) : (
+            ) : null}
+            {membershipViewMode === 'history' && membershipPaymentHistory.length === 0 ? (
+              <p style={styles.emptyState}>Todavia no hay pagos registrados en el historial.</p>
+            ) : null}
+            {membershipViewMode === 'pending' ? (
               <div style={styles.clientList}>
                 {filteredMemberships.map((membership) => (
                   <article key={membership.id} style={isCompactLayout ? styles.platformMembershipCard : styles.treasuryMovementRow}>
@@ -3108,10 +3249,31 @@ function PlatformAdminView({
                     </span>
                   ) : null}
                 </div>
-              </article>
+                  </article>
                 ))}
               </div>
-            )}
+            ) : null}
+            {membershipViewMode === 'history' ? (
+              <div style={styles.clientList}>
+                {membershipPaymentHistory.map(({ membership, payment }) => (
+                  <article key={payment.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{membership.name}</strong>
+                        <span style={styles.mutedText}>
+                          {formatDate(payment.paid_at)} - {formatMonthsCovered(payment.months_covered)}
+                        </span>
+                      </div>
+                      <span style={styles.categoryBadge}>{payment.quote_number ?? 'Sin presupuesto'}</span>
+                    </div>
+                    <p style={styles.serviceDescription}>
+                      {payment.amount ? formatMoney(payment.amount) : 'Sin monto cargado'}
+                      {payment.notes ? ` | ${payment.notes}` : ''}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </section>
         ) : null}
       </section>
@@ -4226,6 +4388,10 @@ const styles = {
     flexWrap: 'wrap',
     gap: '8px',
     marginBottom: '14px',
+  },
+  platformFilterStack: {
+    display: 'grid',
+    gap: '4px',
   },
   platformFilterButton: {
     background: 'var(--panel-bg)',

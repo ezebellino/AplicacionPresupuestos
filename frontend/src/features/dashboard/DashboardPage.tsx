@@ -28,6 +28,8 @@ type DashboardPageProps = {
 };
 
 type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' | 'platform';
+type PlatformSection = 'overview' | 'signups' | 'changes' | 'memberships';
+type MembershipFilter = 'all' | 'expired' | 'due_soon' | 'active';
 
 type PlatformNotification =
   | {
@@ -195,6 +197,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [activePlatformSection, setActivePlatformSection] = useState<PlatformSection>('overview');
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientServiceRecords, setClientServiceRecords] = useState<ClientServiceRecord[]>([]);
@@ -834,10 +837,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const currentViewLabel = navigationItems.find((item) => item.view === activeView)?.label ?? 'Resumen';
   const goToView = (view: View) => {
     setActiveView(view);
+    if (view === 'platform') {
+      setActivePlatformSection('overview');
+    }
     setIsMobileMenuOpen(false);
   };
-  const openPlatformNotifications = () => {
+  const openPlatformNotifications = (section: PlatformSection) => {
     setActiveView('platform');
+    setActivePlatformSection(section);
     setIsNotificationsOpen(false);
     setIsMobileMenuOpen(false);
   };
@@ -1047,7 +1054,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                   <article key={item.id} style={styles.notificationItem}>
                     <strong>{item.title}</strong>
                     <span style={styles.mutedText}>{item.description}</span>
-                    <button onClick={openPlatformNotifications} style={styles.linkButton} type="button">
+                    <button onClick={() => openPlatformNotifications('signups')} style={styles.linkButton} type="button">
                       {item.actionLabel}
                     </button>
                   </article>
@@ -1061,7 +1068,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                   <article key={item.id} style={styles.notificationItem}>
                     <strong>{item.title}</strong>
                     <span style={styles.mutedText}>{item.description}</span>
-                    <button onClick={openPlatformNotifications} style={styles.linkButton} type="button">
+                    <button onClick={() => openPlatformNotifications('changes')} style={styles.linkButton} type="button">
                       {item.actionLabel}
                     </button>
                   </article>
@@ -1075,7 +1082,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                   <article key={item.id} style={styles.notificationItem}>
                     <strong>{item.title}</strong>
                     <span style={styles.mutedText}>{item.description}</span>
-                    <button onClick={openPlatformNotifications} style={styles.linkButton} type="button">
+                    <button onClick={() => openPlatformNotifications('memberships')} style={styles.linkButton} type="button">
                       {item.actionLabel}
                     </button>
                   </article>
@@ -1183,9 +1190,12 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
         {activeView === 'platform' && currentUser?.role === 'platform_admin' ? (
           <PlatformAdminView
+            activeSection={activePlatformSection}
             changeRequests={platformChangeRequests}
+            isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             memberships={platformMemberships}
+            onChangeSection={setActivePlatformSection}
             onMarkMembershipPaid={async (membership, payload) => {
               setIsSaving(true);
               try {
@@ -2581,9 +2591,12 @@ function TreasuryView({
 }
 
 function PlatformAdminView({
+  activeSection,
   changeRequests,
+  isCompactLayout,
   isSaving,
   memberships,
+  onChangeSection,
   onApproveFiscalChange,
   onApproveSignup,
   onMarkMembershipPaid,
@@ -2594,9 +2607,12 @@ function PlatformAdminView({
   onSendMembershipQuoteByWhatsApp,
   signupRequests,
 }: {
+  activeSection: PlatformSection;
   changeRequests: TenantChangeRequest[];
+  isCompactLayout: boolean;
   isSaving: boolean;
   memberships: PlatformTenantMembership[];
+  onChangeSection: (section: PlatformSection) => void;
   onApproveFiscalChange: (request: TenantChangeRequest) => void;
   onApproveSignup: (request: TenantSignupRequest, adminPassword: string) => void;
   onMarkMembershipPaid: (
@@ -2611,185 +2627,504 @@ function PlatformAdminView({
   signupRequests: TenantSignupRequest[];
 }) {
   const pendingSignupRequests = signupRequests.filter((request) => request.status === 'pending');
+  const historicalSignupRequests = signupRequests.filter((request) => request.status !== 'pending');
   const pendingChangeRequests = changeRequests.filter((request) => request.status === 'pending');
-  const signupCounts = countByStatus(signupRequests);
-  const changeCounts = countByStatus(changeRequests);
-  const expiredMemberships = memberships.filter((membership) => membership.membership_status === 'expired');
+  const historicalChangeRequests = changeRequests.filter((request) => request.status !== 'pending');
+  const dueSoonMemberships = memberships.filter((membership) => {
+    if (!membership.membership_due_date) {
+      return false;
+    }
+
+    const days = daysUntilDate(membership.membership_due_date);
+    return days >= 0 && days <= 3;
+  });
+  const expiredMemberships = memberships.filter((membership) => {
+    if (!membership.membership_due_date) {
+      return membership.membership_status === 'expired';
+    }
+
+    return daysUntilDate(membership.membership_due_date) < 0;
+  });
   const activeMemberships = memberships.filter((membership) => membership.membership_status === 'active');
+  const amountDueThisMonth = [...expiredMemberships, ...dueSoonMemberships].reduce(
+    (total, membership) => total + Number(membership.membership_monthly_fee ?? 0),
+    0,
+  );
+  const [signupViewMode, setSignupViewMode] = useState<'pending' | 'history'>('pending');
+  const [changeViewMode, setChangeViewMode] = useState<'pending' | 'history'>('pending');
+  const [membershipFilter, setMembershipFilter] = useState<MembershipFilter>('all');
+  const [membershipViewMode, setMembershipViewMode] = useState<'pending' | 'history'>('pending');
+  const membershipCounts = {
+    active: activeMemberships.filter((membership) => {
+      if (!membership.membership_due_date) {
+        return membership.membership_status === 'active';
+      }
+
+      return membership.membership_status === 'active' && daysUntilDate(membership.membership_due_date) > 3;
+    }).length,
+    dueSoon: dueSoonMemberships.length,
+    expired: expiredMemberships.length,
+  };
+  const filteredMemberships = memberships.filter((membership) => {
+    const days = membership.membership_due_date ? daysUntilDate(membership.membership_due_date) : null;
+
+    if (membershipFilter === 'expired') {
+      return days !== null ? days < 0 : membership.membership_status === 'expired';
+    }
+
+    if (membershipFilter === 'due_soon') {
+      return days !== null && days >= 0 && days <= 3;
+    }
+
+    if (membershipFilter === 'active') {
+      return membership.membership_status === 'active' && (days === null || days > 3);
+    }
+
+    return true;
+  });
+  const membershipPaymentHistory = memberships
+    .flatMap((membership) =>
+      membership.payments.map((payment) => ({
+        membership,
+        payment,
+      })),
+    )
+    .sort((left, right) => right.payment.paid_at.localeCompare(left.payment.paid_at));
+  const platformSections: Array<{ id: PlatformSection; label: string }> = [
+    { id: 'overview', label: 'Resumen' },
+    { id: 'signups', label: `Solicitudes (${pendingSignupRequests.length})` },
+    { id: 'changes', label: `Cambios fiscales (${pendingChangeRequests.length})` },
+    { id: 'memberships', label: `Membresias (${expiredMemberships.length + dueSoonMemberships.length})` },
+  ];
+
+  useEffect(() => {
+    if (activeSection === 'signups') {
+      setSignupViewMode('pending');
+    }
+
+    if (activeSection === 'changes') {
+      setChangeViewMode('pending');
+    }
+
+    if (activeSection === 'memberships') {
+      setMembershipViewMode('pending');
+    }
+  }, [activeSection]);
 
   return (
     <>
-      <section style={styles.metrics} aria-label="Estado de plataforma">
-        <article style={styles.metricCard}>
-          <p style={styles.metricLabel}>Altas pendientes</p>
-          <strong style={styles.metricValue}>{pendingSignupRequests.length}</strong>
-        </article>
-        <article style={styles.metricCard}>
-          <p style={styles.metricLabel}>Cambios pendientes</p>
-          <strong style={styles.metricValue}>{pendingChangeRequests.length}</strong>
-        </article>
-        <article style={styles.metricCard}>
-          <p style={styles.metricLabel}>Membresias activas</p>
-          <strong style={styles.metricValue}>{activeMemberships.length}</strong>
-        </article>
-        <article style={styles.metricCard}>
-          <p style={styles.metricLabel}>Membresias vencidas</p>
-          <strong style={styles.metricValue}>{expiredMemberships.length}</strong>
-        </article>
-      </section>
-
-      <section style={styles.gridTwo}>
-        <section style={styles.tablePanel}>
-        <div style={styles.panelHeader}>
+      <section style={styles.platformWorkspace}>
+        <header style={styles.platformWorkspaceHeader}>
           <div>
-            <h2 style={styles.panelTitle}>Solicitudes de alta</h2>
-            <p style={styles.panelSubtitle}>
-              Pendientes: {signupCounts.pending ?? 0} | Contactadas: {signupCounts.contacted ?? 0} | Aprobadas:{' '}
-              {signupCounts.approved ?? 0} | Rechazadas: {signupCounts.rejected ?? 0}
-            </p>
+            <h2 style={styles.panelTitle}>Centro de plataforma</h2>
+            <p style={styles.panelSubtitle}>Operacion primero, historico como acceso secundario.</p>
           </div>
-        </div>
-        {pendingSignupRequests.length === 0 ? (
-          <p style={styles.emptyState}>No hay solicitudes de alta pendientes.</p>
-        ) : (
-          <div style={styles.clientList}>
-            {pendingSignupRequests.map((request) => (
-              <article key={request.id} style={styles.serviceRecord}>
-                <div style={styles.historyRecordHeader}>
-                  <div style={styles.clientIdentity}>
-                    <strong>{request.company_name}</strong>
-                    <span style={styles.mutedText}>
-                      {request.contact_name} - {request.email} - {request.phone}
-                    </span>
-                    {request.business_type ? <span style={styles.mutedText}>{request.business_type}</span> : null}
-                  </div>
-                  <span style={styles.categoryBadge}>{request.status}</span>
-                </div>
-                {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
-                {request.created_admin_email ? (
-                  <p style={styles.serviceDescription}>Cuenta creada: {request.created_admin_email}</p>
-                ) : null}
-                <div style={styles.actions}>
-                  <button
-                    disabled={isSaving || request.status !== 'pending'}
-                    onClick={async () => {
-                      const result = await Swal.fire({
-                        title: 'Crear cuenta',
-                        text: `Defini una contrasena temporal para ${request.email}.`,
-                        input: 'text',
-                        inputAttributes: {
-                          autocomplete: 'new-password',
-                        },
-                        inputPlaceholder: 'Contrasena temporal',
-                        showCancelButton: true,
-                        confirmButtonText: 'Crear cuenta',
-                        cancelButtonText: 'Cancelar',
-                        inputValidator: (value) =>
-                          value && value.length >= 8 ? null : 'La contrasena debe tener al menos 8 caracteres.',
-                      });
+          {isCompactLayout ? (
+            <label style={{ ...styles.label, ...styles.platformSelectField }}>
+              <span>Seccion de plataforma</span>
+              <select
+                aria-label="Seccion de plataforma"
+                onChange={(event) => onChangeSection(event.target.value as PlatformSection)}
+                style={styles.input}
+                value={activeSection}
+              >
+                {platformSections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de plataforma">
+              {platformSections.map((section) => (
+                <button
+                  key={section.id}
+                  aria-pressed={activeSection === section.id}
+                  onClick={() => onChangeSection(section.id)}
+                  style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </header>
 
-                      if (result.isConfirmed && typeof result.value === 'string') {
-                        onApproveSignup(request, result.value);
-                      }
-                    }}
-                    style={styles.primaryButton}
-                    type="button"
-                  >
-                    Crear cuenta
-                  </button>
-                  <button
-                    disabled={isSaving || request.status !== 'pending'}
-                    onClick={() => onMarkSignupContacted(request)}
-                    style={styles.secondaryButton}
-                    type="button"
-                  >
-                    Contactada
-                  </button>
-                  <button
-                    disabled={isSaving || request.status !== 'pending'}
-                    onClick={() => onRejectSignup(request)}
-                    style={styles.dangerOutlineButton}
-                    type="button"
-                  >
-                    Rechazar
-                  </button>
-                </div>
+        {activeSection === 'overview' ? (
+          <>
+            <section style={styles.metrics} aria-label="Estado de plataforma">
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Solicitudes pendientes</p>
+                <strong style={styles.metricValue}>{pendingSignupRequests.length}</strong>
               </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section style={styles.tablePanel}>
-        <div style={styles.panelHeader}>
-          <div>
-            <h2 style={styles.panelTitle}>Cambios fiscales</h2>
-            <p style={styles.panelSubtitle}>
-              Pendientes: {changeCounts.pending ?? 0} | Aprobadas: {changeCounts.approved ?? 0} | Rechazadas:{' '}
-              {changeCounts.rejected ?? 0}
-            </p>
-          </div>
-        </div>
-        {pendingChangeRequests.length === 0 ? (
-          <p style={styles.emptyState}>No hay cambios fiscales pendientes.</p>
-        ) : (
-          <div style={styles.clientList}>
-            {pendingChangeRequests.map((request) => (
-              <article key={request.id} style={styles.serviceRecord}>
-                <div style={styles.historyRecordHeader}>
-                  <div style={styles.clientIdentity}>
-                    <strong>{request.current_name}</strong>
-                    <span style={styles.mutedText}>
-                      {[
-                        request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
-                        request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
-                        request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' | ')}
-                    </span>
-                  </div>
-                  <span style={styles.categoryBadge}>{request.status}</span>
-                </div>
-                {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : null}
-                <div style={styles.actions}>
-                  <button
-                    disabled={isSaving || request.status !== 'pending'}
-                    onClick={() => onApproveFiscalChange(request)}
-                    style={styles.primaryButton}
-                    type="button"
-                  >
-                    Aprobar
-                  </button>
-                  <button
-                    disabled={isSaving || request.status !== 'pending'}
-                    onClick={() => onRejectFiscalChange(request)}
-                    style={styles.dangerOutlineButton}
-                    type="button"
-                  >
-                    Rechazar
-                  </button>
-                </div>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Cambios fiscales pendientes</p>
+                <strong style={styles.metricValue}>{pendingChangeRequests.length}</strong>
               </article>
-            ))}
-          </div>
-        )}
-      </section>
-      </section>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Membresias activas</p>
+                <strong style={styles.metricValue}>{activeMemberships.length}</strong>
+              </article>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Membresias vencidas</p>
+                <strong style={styles.metricValue}>{expiredMemberships.length}</strong>
+              </article>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Vencen en 3 dias</p>
+                <strong style={styles.metricValue}>{dueSoonMemberships.length}</strong>
+              </article>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>A cobrar este mes</p>
+                <strong style={styles.metricValue}>{formatMoney(amountDueThisMonth)}</strong>
+              </article>
+            </section>
 
-      <section style={styles.tablePanel}>
-        <div style={styles.panelHeader}>
-          <div>
-            <h2 style={styles.panelTitle}>Membresias SaaS</h2>
-            <p style={styles.panelSubtitle}>Vencimiento mensual y rehabilitacion al registrar pago.</p>
-          </div>
-        </div>
-        {memberships.length === 0 ? (
-          <p style={styles.emptyState}>Todavia no hay empresas con membresia.</p>
-        ) : (
-          <div style={styles.clientList}>
-            {memberships.map((membership) => (
-              <article key={membership.id} style={styles.treasuryMovementRow}>
+            <section style={styles.tablePanel}>
+              <div style={styles.panelHeader}>
+                <div>
+                  <h2 style={styles.panelTitle}>Resumen de plataforma</h2>
+                  <p style={styles.panelSubtitle}>Pendientes reales, proximos vencimientos y caja operativa.</p>
+                </div>
+              </div>
+              <div style={styles.platformImmediateList}>
+                <div style={styles.platformImmediatePanel}>
+                  <h3 style={styles.platformImmediateTitle}>Atencion inmediata</h3>
+                  {pendingSignupRequests.length > 0 ? (
+                    <button onClick={() => onChangeSection('signups')} style={styles.platformImmediateItem} type="button">
+                      <strong>{pendingSignupRequests[0].company_name}</strong>
+                      <span style={styles.mutedText}>Nueva solicitud pendiente de revision.</span>
+                    </button>
+                  ) : null}
+                  {pendingChangeRequests.length > 0 ? (
+                    <button onClick={() => onChangeSection('changes')} style={styles.platformImmediateItem} type="button">
+                      <strong>{pendingChangeRequests[0].current_name ?? 'Cambio fiscal pendiente'}</strong>
+                      <span style={styles.mutedText}>Hay cambios fiscales esperando aprobacion.</span>
+                    </button>
+                  ) : null}
+                  {expiredMemberships.slice(0, 2).map((membership) => (
+                    <button
+                      key={`expired-${membership.id}`}
+                      onClick={() => {
+                        setMembershipFilter('expired');
+                        onChangeSection('memberships');
+                      }}
+                      style={styles.platformImmediateItem}
+                      type="button"
+                    >
+                      <strong>{membership.name}</strong>
+                      <span style={styles.mutedText}>Membresia vencida. Requiere registro de pago.</span>
+                    </button>
+                  ))}
+                  {dueSoonMemberships.slice(0, 2).map((membership) => (
+                    <button
+                      key={`due-soon-${membership.id}`}
+                      onClick={() => {
+                        setMembershipFilter('due_soon');
+                        onChangeSection('memberships');
+                      }}
+                      style={styles.platformImmediateItem}
+                      type="button"
+                    >
+                      <strong>{membership.name}</strong>
+                      <span style={styles.mutedText}>
+                        Vence el {membership.membership_due_date ? formatDate(membership.membership_due_date) : 'sin fecha'}.
+                      </span>
+                    </button>
+                  ))}
+                  {pendingSignupRequests.length === 0 &&
+                  pendingChangeRequests.length === 0 &&
+                  expiredMemberships.length === 0 &&
+                  dueSoonMemberships.length === 0 ? (
+                    <p style={styles.emptyState}>No hay pendientes operativos inmediatos.</p>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          </>
+        ) : null}
+
+        {activeSection === 'signups' ? (
+          <section style={styles.tablePanel}>
+            <div style={styles.panelHeader}>
+              <div>
+                <h2 style={styles.panelTitle}>Solicitudes de alta</h2>
+                <p style={styles.panelSubtitle}>Solo pendientes en la vista principal. Las resueltas quedan fuera del flujo diario.</p>
+              </div>
+            </div>
+            <div style={styles.platformFilterBar}>
+              <button
+                aria-pressed={signupViewMode === 'pending'}
+                onClick={() => setSignupViewMode('pending')}
+                style={signupViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Pendientes
+              </button>
+              <button
+                aria-pressed={signupViewMode === 'history'}
+                onClick={() => setSignupViewMode('history')}
+                style={signupViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Historial
+              </button>
+            </div>
+            {signupViewMode === 'pending' && pendingSignupRequests.length === 0 ? (
+              <p style={styles.emptyState}>No hay solicitudes de alta pendientes.</p>
+            ) : null}
+            {signupViewMode === 'history' && historicalSignupRequests.length === 0 ? (
+              <p style={styles.emptyState}>Todavia no hay historial de solicitudes resueltas.</p>
+            ) : null}
+            {signupViewMode === 'pending' ? (
+              <div style={styles.clientList}>
+                {pendingSignupRequests.map((request) => (
+                  <article key={request.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{request.company_name}</strong>
+                        <span style={styles.mutedText}>
+                          {request.contact_name} - {request.email} - {request.phone}
+                        </span>
+                        {request.business_type ? <span style={styles.mutedText}>{request.business_type}</span> : null}
+                      </div>
+                      <span style={styles.categoryBadge}>{request.status}</span>
+                    </div>
+                    {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
+                    {request.created_admin_email ? (
+                      <p style={styles.serviceDescription}>Cuenta creada: {request.created_admin_email}</p>
+                    ) : null}
+                    <div style={styles.actions}>
+                      <button
+                        disabled={isSaving || request.status !== 'pending'}
+                        onClick={async () => {
+                          const result = await Swal.fire({
+                            title: 'Crear cuenta',
+                            text: `Defini una contrasena temporal para ${request.email}.`,
+                            input: 'text',
+                            inputAttributes: {
+                              autocomplete: 'new-password',
+                            },
+                            inputPlaceholder: 'Contrasena temporal',
+                            showCancelButton: true,
+                            confirmButtonText: 'Crear cuenta',
+                            cancelButtonText: 'Cancelar',
+                            inputValidator: (value) =>
+                              value && value.length >= 8 ? null : 'La contrasena debe tener al menos 8 caracteres.',
+                          });
+
+                          if (result.isConfirmed && typeof result.value === 'string') {
+                            onApproveSignup(request, result.value);
+                          }
+                        }}
+                        style={styles.primaryButton}
+                        type="button"
+                      >
+                        Crear cuenta
+                      </button>
+                      <button
+                        disabled={isSaving || request.status !== 'pending'}
+                        onClick={() => onMarkSignupContacted(request)}
+                        style={styles.secondaryButton}
+                        type="button"
+                      >
+                        Contactada
+                      </button>
+                      <button
+                        disabled={isSaving || request.status !== 'pending'}
+                        onClick={() => onRejectSignup(request)}
+                        style={styles.dangerOutlineButton}
+                        type="button"
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            {signupViewMode === 'history' ? (
+              <div style={styles.clientList}>
+                {historicalSignupRequests.map((request) => (
+                  <article key={request.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{request.company_name}</strong>
+                        <span style={styles.mutedText}>
+                          {request.contact_name} - {request.email} - {request.phone}
+                        </span>
+                        {request.business_type ? <span style={styles.mutedText}>{request.business_type}</span> : null}
+                      </div>
+                      <span style={styles.categoryBadge}>{request.status}</span>
+                    </div>
+                    {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
+                    {request.review_notes ? <p style={styles.serviceDescription}>Nota: {request.review_notes}</p> : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {activeSection === 'changes' ? (
+          <section style={styles.tablePanel}>
+            <div style={styles.panelHeader}>
+              <div>
+                <h2 style={styles.panelTitle}>Cambios fiscales</h2>
+                <p style={styles.panelSubtitle}>Solo pendientes en la vista principal. El historico se deja fuera del trabajo del dia.</p>
+              </div>
+            </div>
+            <div style={styles.platformFilterBar}>
+              <button
+                aria-pressed={changeViewMode === 'pending'}
+                onClick={() => setChangeViewMode('pending')}
+                style={changeViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Pendientes
+              </button>
+              <button
+                aria-pressed={changeViewMode === 'history'}
+                onClick={() => setChangeViewMode('history')}
+                style={changeViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                Historial
+              </button>
+            </div>
+            {changeViewMode === 'pending' && pendingChangeRequests.length === 0 ? (
+              <p style={styles.emptyState}>No hay cambios fiscales pendientes.</p>
+            ) : null}
+            {changeViewMode === 'history' && historicalChangeRequests.length === 0 ? (
+              <p style={styles.emptyState}>Todavia no hay historial de cambios fiscales.</p>
+            ) : null}
+            {changeViewMode === 'pending' ? (
+              <div style={styles.clientList}>
+                {pendingChangeRequests.map((request) => (
+                  <article key={request.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{request.current_name}</strong>
+                        <span style={styles.mutedText}>
+                          {[
+                            request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
+                            request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
+                            request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' | ')}
+                        </span>
+                      </div>
+                      <span style={styles.categoryBadge}>{request.status}</span>
+                    </div>
+                    {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : null}
+                    <div style={styles.actions}>
+                      <button
+                        disabled={isSaving || request.status !== 'pending'}
+                        onClick={() => onApproveFiscalChange(request)}
+                        style={styles.primaryButton}
+                        type="button"
+                      >
+                        Aprobar
+                      </button>
+                      <button
+                        disabled={isSaving || request.status !== 'pending'}
+                        onClick={() => onRejectFiscalChange(request)}
+                        style={styles.dangerOutlineButton}
+                        type="button"
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            {changeViewMode === 'history' ? (
+              <div style={styles.clientList}>
+                {historicalChangeRequests.map((request) => (
+                  <article key={request.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{request.current_name}</strong>
+                        <span style={styles.mutedText}>
+                          {[
+                            request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
+                            request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
+                            request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' | ')}
+                        </span>
+                      </div>
+                      <span style={styles.categoryBadge}>{request.status}</span>
+                    </div>
+                    {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {activeSection === 'memberships' ? (
+          <section style={styles.tablePanel}>
+            <div style={styles.panelHeader}>
+              <div>
+                <h2 style={styles.panelTitle}>Membresias SaaS</h2>
+                <p style={styles.panelSubtitle}>Vencimiento mensual, filtros rapidos y seguimiento de cobro.</p>
+              </div>
+            </div>
+            <div style={styles.platformFilterStack}>
+              <div style={styles.platformFilterBar}>
+                <button
+                  aria-pressed={membershipViewMode === 'pending'}
+                  onClick={() => setMembershipViewMode('pending')}
+                  style={membershipViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                  type="button"
+                >
+                  Pendientes
+                </button>
+                <button
+                  aria-pressed={membershipViewMode === 'history'}
+                  onClick={() => setMembershipViewMode('history')}
+                  style={membershipViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                  type="button"
+                >
+                  Historial
+                </button>
+              </div>
+              {membershipViewMode === 'pending' ? (
+                <div style={styles.platformFilterBar}>
+                  {[
+                    { id: 'all' as const, label: 'Todas' },
+                    { id: 'expired' as const, label: 'Vencidas' },
+                    { id: 'due_soon' as const, label: 'Por vencer' },
+                    { id: 'active' as const, label: 'Activas' },
+                  ].map((filterOption) => (
+                    <button
+                      key={filterOption.id}
+                      onClick={() => setMembershipFilter(filterOption.id)}
+                      style={membershipFilter === filterOption.id ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                      type="button"
+                    >
+                      {filterOption.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            {membershipViewMode === 'pending' && filteredMemberships.length === 0 ? (
+              <p style={styles.emptyState}>No hay empresas con ese filtro operativo.</p>
+            ) : null}
+            {membershipViewMode === 'history' && membershipPaymentHistory.length === 0 ? (
+              <p style={styles.emptyState}>Todavia no hay pagos registrados en el historial.</p>
+            ) : null}
+            {membershipViewMode === 'pending' ? (
+              <div style={styles.clientList}>
+                {filteredMemberships.map((membership) => (
+                  <article key={membership.id} style={isCompactLayout ? styles.platformMembershipCard : styles.treasuryMovementRow}>
                 <div style={styles.clientIdentity}>
                   <strong>{membership.name}</strong>
                   <span style={styles.mutedText}>
@@ -2839,12 +3174,13 @@ function PlatformAdminView({
                 >
                   {membership.membership_status === 'active' ? 'Activa' : 'Vencida'}
                 </span>
-                <button
-                  disabled={isSaving}
-                  onClick={async () => {
-                    const result = await Swal.fire({
-                      title: `Registrar pago de ${membership.name}`,
-                      html: `
+                <div style={styles.platformMembershipActions}>
+                  <button
+                    disabled={isSaving}
+                    onClick={async () => {
+                      const result = await Swal.fire({
+                        title: `Registrar pago de ${membership.name}`,
+                        html: `
                         <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
                           <span>Periodo</span>
                           <select id="membership-months" class="swal2-input" style="margin:0;">
@@ -2888,25 +3224,58 @@ function PlatformAdminView({
                           months_covered: monthsCovered,
                           notes: notesValue || null,
                         };
-                      },
-                      showCancelButton: true,
-                      confirmButtonText: 'Registrar pago',
-                      cancelButtonText: 'Cancelar',
-                    });
+                        },
+                        showCancelButton: true,
+                        confirmButtonText: 'Registrar pago',
+                        cancelButtonText: 'Cancelar',
+                      });
 
-                    if (result.isConfirmed && result.value) {
-                      onMarkMembershipPaid(membership, result.value);
-                    }
-                  }}
-                  style={styles.primaryButton}
-                  type="button"
-                >
-                  Registrar pago
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
+                      if (result.isConfirmed && result.value) {
+                        onMarkMembershipPaid(membership, result.value);
+                      }
+                    }}
+                    style={styles.primaryButton}
+                    type="button"
+                  >
+                    Registrar pago
+                  </button>
+                  {!isCompactLayout ? (
+                    <span style={styles.platformMembershipMeta}>
+                      {membershipFilter === 'all'
+                        ? `Activas ${membershipCounts.active} | Por vencer ${membershipCounts.dueSoon} | Vencidas ${membershipCounts.expired}`
+                        : membership.membership_due_date
+                          ? `Vence ${formatDate(membership.membership_due_date)}`
+                          : 'Sin fecha'}
+                    </span>
+                  ) : null}
+                </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            {membershipViewMode === 'history' ? (
+              <div style={styles.clientList}>
+                {membershipPaymentHistory.map(({ membership, payment }) => (
+                  <article key={payment.id} style={styles.serviceRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{membership.name}</strong>
+                        <span style={styles.mutedText}>
+                          {formatDate(payment.paid_at)} - {formatMonthsCovered(payment.months_covered)}
+                        </span>
+                      </div>
+                      <span style={styles.categoryBadge}>{payment.quote_number ?? 'Sin presupuesto'}</span>
+                    </div>
+                    <p style={styles.serviceDescription}>
+                      {payment.amount ? formatMoney(payment.amount) : 'Sin monto cargado'}
+                      {payment.notes ? ` | ${payment.notes}` : ''}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
       </section>
     </>
   );
@@ -3851,7 +4220,7 @@ const styles = {
   },
   navMonogramActive: {
     background: 'var(--accent)',
-    borderColor: 'var(--accent)',
+    border: '1px solid var(--accent)',
     color: '#111827',
   },
   navMonogramCollapsed: {
@@ -3942,6 +4311,128 @@ const styles = {
     display: 'grid',
     gap: '6px',
     padding: '12px',
+  },
+  platformWorkspace: {
+    display: 'grid',
+    gap: '18px',
+  },
+  platformWorkspaceHeader: {
+    alignItems: 'flex-start',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '14px',
+    justifyContent: 'space-between',
+  },
+  platformSectionNav: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+  },
+  platformSectionButton: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '999px',
+    color: 'var(--muted)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 700,
+    minHeight: '38px',
+    padding: '8px 14px',
+  },
+  platformSectionButtonActive: {
+    background: 'var(--accent-soft)',
+    border: '1px solid var(--accent)',
+    borderRadius: '999px',
+    color: 'var(--accent)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 800,
+    minHeight: '38px',
+    padding: '8px 14px',
+  },
+  platformSelectField: {
+    display: 'grid',
+    gap: '6px',
+    minWidth: '220px',
+  },
+  platformImmediateList: {
+    display: 'grid',
+    gap: '16px',
+  },
+  platformImmediatePanel: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '10px',
+    padding: '16px',
+  },
+  platformImmediateTitle: {
+    fontSize: '18px',
+    margin: 0,
+  },
+  platformImmediateItem: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--text)',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '4px',
+    padding: '12px',
+    textAlign: 'left',
+  },
+  platformFilterBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginBottom: '14px',
+  },
+  platformFilterStack: {
+    display: 'grid',
+    gap: '4px',
+  },
+  platformFilterButton: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '999px',
+    color: 'var(--muted)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 700,
+    minHeight: '36px',
+    padding: '6px 12px',
+  },
+  platformFilterButtonActive: {
+    background: 'var(--accent-soft)',
+    border: '1px solid var(--accent)',
+    borderRadius: '999px',
+    color: 'var(--accent)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 800,
+    minHeight: '36px',
+    padding: '6px 12px',
+  },
+  platformMembershipCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '14px',
+  },
+  platformMembershipActions: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+  },
+  platformMembershipMeta: {
+    color: 'var(--muted)',
+    fontSize: '12px',
+    fontWeight: 600,
   },
   title: {
     fontSize: '28px',

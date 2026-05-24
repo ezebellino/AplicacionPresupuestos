@@ -550,6 +550,99 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('heading', { name: 'Solicitudes de alta' })).toBeInTheDocument();
   });
 
+  it('opens Plataforma on Resumen by default for platform admins', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+
+    expect(await screen.findByRole('heading', { name: 'Resumen de plataforma' })).toBeInTheDocument();
+    const platformNavigation = screen.getByRole('tablist', { name: 'Navegacion de plataforma' });
+    expect(within(platformNavigation).getByRole('button', { name: 'Resumen' })).toBeInTheDocument();
+    expect(within(platformNavigation).getByRole('button', { name: 'Solicitudes (1)' })).toBeInTheDocument();
+    expect(within(platformNavigation).getByRole('button', { name: 'Cambios fiscales (1)' })).toBeInTheDocument();
+    expect(within(platformNavigation).getByRole('button', { name: 'Membresias (2)' })).toBeInTheDocument();
+  });
+
+  it('switches platform subsections from the internal navigation', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Solicitudes (1)' }));
+    expect(await screen.findByRole('heading', { name: 'Solicitudes de alta' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cambios fiscales (1)' }));
+    expect(await screen.findByRole('heading', { name: 'Cambios fiscales' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Membresias (2)' }));
+    expect(await screen.findByRole('heading', { name: 'Membresias SaaS' })).toBeInTheDocument();
+  });
+
+  it('renders platform overview KPIs and immediate attention items', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+
+    expect(await screen.findByText('Solicitudes pendientes')).toBeInTheDocument();
+    expect(screen.getByText('Cambios fiscales pendientes')).toBeInTheDocument();
+    expect(screen.getByText('Membresias activas')).toBeInTheDocument();
+    expect(screen.getByText('Membresias vencidas')).toBeInTheDocument();
+    expect(screen.getByText('Vencen en 3 dias')).toBeInTheDocument();
+    expect(screen.getByText('A cobrar este mes')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Atencion inmediata' })).toBeInTheDocument();
+  });
+
+  it('shows pending-only operational content in Solicitudes and Cambios fiscales', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Solicitudes (1)' }));
+    expect(screen.queryByText('approved')).not.toBeInTheDocument();
+    expect(screen.queryByText('rejected')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cambios fiscales (1)' }));
+    expect(screen.queryByText('approved')).not.toBeInTheDocument();
+    expect(screen.queryByText('rejected')).not.toBeInTheDocument();
+  });
+
+  it('filters memberships by operational status', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Membresias (2)' }));
+    await user.click(screen.getByRole('button', { name: 'Vencidas' }));
+
+    expect(screen.getByText('DM Refrigeracion')).toBeInTheDocument();
+    expect(screen.queryByText('AUBASA')).not.toBeInTheDocument();
+  });
+
+  it('renders a compact platform selector on mobile', async () => {
+    const user = userEvent.setup();
+    setViewportWidth(390);
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Abrir menu' }));
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+
+    expect(await screen.findByLabelText('Seccion de plataforma')).toBeInTheDocument();
+  });
+
   it('includes Perfil in the mobile drawer for platform admins', async () => {
     const user = userEvent.setup();
     setViewportWidth(390);

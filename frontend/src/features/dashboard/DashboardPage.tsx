@@ -874,6 +874,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                   aria-label="Notificaciones"
                   onClick={() => setIsNotificationsOpen((current) => !current)}
                   style={styles.notificationButton}
+                  title="Notificaciones"
                   type="button"
                 >
                   <Bell aria-hidden="true" size={16} strokeWidth={2.2} />
@@ -1004,6 +1005,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 aria-label="Notificaciones"
                 onClick={() => setIsNotificationsOpen((current) => !current)}
                 style={styles.notificationButton}
+                title="Notificaciones"
                 type="button"
               >
                 <Bell aria-hidden="true" size={16} strokeWidth={2.2} />
@@ -1015,6 +1017,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 key={item.view}
                 onClick={() => goToView(item.view)}
                 style={activeView === item.view ? styles.secondaryButtonActive : styles.secondaryButton}
+                title={item.label}
                 type="button"
               >
                 <span style={styles.buttonWithIcon}>
@@ -2862,6 +2865,7 @@ function PlatformAdminView({
                 aria-pressed={signupViewMode === 'pending'}
                 onClick={() => setSignupViewMode('pending')}
                 style={signupViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                title="Pendientes"
                 type="button"
               >
                 <span style={styles.buttonWithIcon}>
@@ -2873,6 +2877,7 @@ function PlatformAdminView({
                 aria-pressed={signupViewMode === 'history'}
                 onClick={() => setSignupViewMode('history')}
                 style={signupViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                title="Historial"
                 type="button"
               >
                 <span style={styles.buttonWithIcon}>
@@ -2929,25 +2934,37 @@ function PlatformAdminView({
                           }
                         }}
                         style={styles.primaryButton}
+                        title="Crear cuenta"
                         type="button"
                       >
-                        Crear cuenta
+                        <span style={styles.buttonWithIcon}>
+                          <UserRound aria-hidden="true" size={14} strokeWidth={2.2} />
+                          <span>Crear cuenta</span>
+                        </span>
                       </button>
                       <button
                         disabled={isSaving || request.status !== 'pending'}
                         onClick={() => onMarkSignupContacted(request)}
                         style={styles.secondaryButton}
+                        title="Marcar como contactada"
                         type="button"
                       >
-                        Contactada
+                        <span style={styles.buttonWithIcon}>
+                          <Clock3 aria-hidden="true" size={14} strokeWidth={2.2} />
+                          <span>Contactada</span>
+                        </span>
                       </button>
                       <button
                         disabled={isSaving || request.status !== 'pending'}
                         onClick={() => onRejectSignup(request)}
                         style={styles.dangerOutlineButton}
+                        title="Rechazar"
                         type="button"
                       >
-                        Rechazar
+                        <span style={styles.buttonWithIcon}>
+                          <span aria-hidden="true">X</span>
+                          <span>Rechazar</span>
+                        </span>
                       </button>
                     </div>
                   </article>
@@ -2990,6 +3007,7 @@ function PlatformAdminView({
                 aria-pressed={changeViewMode === 'pending'}
                 onClick={() => setChangeViewMode('pending')}
                 style={changeViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                title="Pendientes"
                 type="button"
               >
                 <span style={styles.buttonWithIcon}>
@@ -3001,6 +3019,7 @@ function PlatformAdminView({
                 aria-pressed={changeViewMode === 'history'}
                 onClick={() => setChangeViewMode('history')}
                 style={changeViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                title="Historial"
                 type="button"
               >
                 <span style={styles.buttonWithIcon}>
@@ -3040,17 +3059,25 @@ function PlatformAdminView({
                         disabled={isSaving || request.status !== 'pending'}
                         onClick={() => onApproveFiscalChange(request)}
                         style={styles.primaryButton}
+                        title="Aprobar"
                         type="button"
                       >
-                        Aprobar
+                        <span style={styles.buttonWithIcon}>
+                          <span aria-hidden="true">OK</span>
+                          <span>Aprobar</span>
+                        </span>
                       </button>
                       <button
                         disabled={isSaving || request.status !== 'pending'}
                         onClick={() => onRejectFiscalChange(request)}
                         style={styles.dangerOutlineButton}
+                        title="Rechazar"
                         type="button"
                       >
-                        Rechazar
+                        <span style={styles.buttonWithIcon}>
+                          <span aria-hidden="true">X</span>
+                          <span>Rechazar</span>
+                        </span>
                       </button>
                     </div>
                   </article>
@@ -3098,6 +3125,7 @@ function PlatformAdminView({
                   aria-pressed={membershipViewMode === 'pending'}
                   onClick={() => setMembershipViewMode('pending')}
                   style={membershipViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                  title="Pendientes"
                   type="button"
                 >
                   <span style={styles.buttonWithIcon}>
@@ -3109,6 +3137,7 @@ function PlatformAdminView({
                   aria-pressed={membershipViewMode === 'history'}
                   onClick={() => setMembershipViewMode('history')}
                   style={membershipViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                  title="Historial"
                   type="button"
                 >
                   <span style={styles.buttonWithIcon}>
@@ -3170,6 +3199,7 @@ function PlatformAdminView({
                               <button
                                 onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
                                 style={styles.whatsAppButton}
+                                title="Enviar por WhatsApp"
                                 type="button"
                               >
                                 <span style={styles.buttonWithIcon}>
@@ -3180,6 +3210,7 @@ function PlatformAdminView({
                               <button
                                 onClick={() => onSendMembershipQuoteByEmail(payment)}
                                 style={styles.secondaryButton}
+                                title="Enviar por Email"
                                 type="button"
                               >
                                 <span style={styles.buttonWithIcon}>
@@ -3263,9 +3294,13 @@ function PlatformAdminView({
                       }
                     }}
                     style={styles.primaryButton}
+                    title="Registrar pago"
                     type="button"
                   >
-                    Registrar pago
+                    <span style={styles.buttonWithIcon}>
+                      <Clock3 aria-hidden="true" size={14} strokeWidth={2.2} />
+                      <span>Registrar pago</span>
+                    </span>
                   </button>
                   {!isCompactLayout ? (
                     <span style={styles.platformMembershipMeta}>

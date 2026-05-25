@@ -4,6 +4,8 @@ import path from 'node:path';
 import process from 'node:process';
 
 const projectRoot = realpathSync(process.cwd());
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
@@ -27,8 +29,8 @@ function run(command, args) {
 }
 
 async function main() {
-  await run('npx.cmd', ['tsc', '-b']);
-  await run('npm.cmd', ['exec', 'vite', 'build']);
+  await run(npxCommand, ['tsc', '-b']);
+  await run(npmCommand, ['exec', 'vite', 'build']);
 }
 
 main().catch((error) => {

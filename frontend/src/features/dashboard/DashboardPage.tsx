@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { Bell, Clock3, History, Mail, MessageCircle, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 import {
@@ -875,7 +876,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                   style={styles.notificationButton}
                   type="button"
                 >
-                  <span aria-hidden="true" style={styles.notificationGlyph}>N</span>
+                  <Bell aria-hidden="true" size={16} strokeWidth={2.2} />
                   {pendingNotificationCount > 0 ? <span style={styles.notificationBadge}>{pendingNotificationCount}</span> : null}
                 </button>
               ) : null}
@@ -1005,7 +1006,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 style={styles.notificationButton}
                 type="button"
               >
-                <span aria-hidden="true" style={styles.notificationGlyph}>N</span>
+                <Bell aria-hidden="true" size={16} strokeWidth={2.2} />
                 {pendingNotificationCount > 0 ? <span style={styles.notificationBadge}>{pendingNotificationCount}</span> : null}
               </button>
             ) : null}
@@ -1016,7 +1017,10 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 style={activeView === item.view ? styles.secondaryButtonActive : styles.secondaryButton}
                 type="button"
               >
-                {item.label}
+                <span style={styles.buttonWithIcon}>
+                  <UserRound aria-hidden="true" size={15} strokeWidth={2.2} />
+                  <span>{item.label}</span>
+                </span>
               </button>
             ))}
             <button
@@ -2860,7 +2864,10 @@ function PlatformAdminView({
                 style={signupViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
                 type="button"
               >
-                Pendientes
+                <span style={styles.buttonWithIcon}>
+                  <Clock3 aria-hidden="true" size={14} strokeWidth={2.2} />
+                  <span>Pendientes</span>
+                </span>
               </button>
               <button
                 aria-pressed={signupViewMode === 'history'}
@@ -2868,7 +2875,10 @@ function PlatformAdminView({
                 style={signupViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
                 type="button"
               >
-                Historial
+                <span style={styles.buttonWithIcon}>
+                  <History aria-hidden="true" size={14} strokeWidth={2.2} />
+                  <span>Historial</span>
+                </span>
               </button>
             </div>
             {signupViewMode === 'pending' && pendingSignupRequests.length === 0 ? (
@@ -2982,7 +2992,10 @@ function PlatformAdminView({
                 style={changeViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
                 type="button"
               >
-                Pendientes
+                <span style={styles.buttonWithIcon}>
+                  <Clock3 aria-hidden="true" size={14} strokeWidth={2.2} />
+                  <span>Pendientes</span>
+                </span>
               </button>
               <button
                 aria-pressed={changeViewMode === 'history'}
@@ -2990,7 +3003,10 @@ function PlatformAdminView({
                 style={changeViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
                 type="button"
               >
-                Historial
+                <span style={styles.buttonWithIcon}>
+                  <History aria-hidden="true" size={14} strokeWidth={2.2} />
+                  <span>Historial</span>
+                </span>
               </button>
             </div>
             {changeViewMode === 'pending' && pendingChangeRequests.length === 0 ? (
@@ -3084,7 +3100,10 @@ function PlatformAdminView({
                   style={membershipViewMode === 'pending' ? styles.platformFilterButtonActive : styles.platformFilterButton}
                   type="button"
                 >
-                  Pendientes
+                  <span style={styles.buttonWithIcon}>
+                    <Clock3 aria-hidden="true" size={14} strokeWidth={2.2} />
+                    <span>Pendientes</span>
+                  </span>
                 </button>
                 <button
                   aria-pressed={membershipViewMode === 'history'}
@@ -3092,7 +3111,10 @@ function PlatformAdminView({
                   style={membershipViewMode === 'history' ? styles.platformFilterButtonActive : styles.platformFilterButton}
                   type="button"
                 >
-                  Historial
+                  <span style={styles.buttonWithIcon}>
+                    <History aria-hidden="true" size={14} strokeWidth={2.2} />
+                    <span>Historial</span>
+                  </span>
                 </button>
               </div>
               {membershipViewMode === 'pending' ? (
@@ -3150,14 +3172,20 @@ function PlatformAdminView({
                                 style={styles.whatsAppButton}
                                 type="button"
                               >
-                                WhatsApp
+                                <span style={styles.buttonWithIcon}>
+                                  <MessageCircle aria-hidden="true" size={14} strokeWidth={2.2} />
+                                  <span>WhatsApp</span>
+                                </span>
                               </button>
                               <button
                                 onClick={() => onSendMembershipQuoteByEmail(payment)}
                                 style={styles.secondaryButton}
                                 type="button"
                               >
-                                Email
+                                <span style={styles.buttonWithIcon}>
+                                  <Mail aria-hidden="true" size={14} strokeWidth={2.2} />
+                                  <span>Email</span>
+                                </span>
                               </button>
                             </div>
                           ) : null}
@@ -4433,6 +4461,11 @@ const styles = {
     color: 'var(--muted)',
     fontSize: '12px',
     fontWeight: 600,
+  },
+  buttonWithIcon: {
+    alignItems: 'center',
+    display: 'inline-flex',
+    gap: '8px',
   },
   title: {
     fontSize: '28px',

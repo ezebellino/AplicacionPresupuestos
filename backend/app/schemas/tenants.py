@@ -85,6 +85,17 @@ class PlatformMembershipPaymentCreate(BaseModel):
     notes: str | None = None
 
 
+class PlatformMembershipPaymentUpdate(BaseModel):
+    paid_at: date
+    months_covered: int = Field(ge=1, le=12)
+    amount: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = None
+
+
+class PlatformMembershipPaymentCancel(BaseModel):
+    reason: str = Field(min_length=3)
+
+
 class TenantSignupApprove(BaseModel):
     admin_password: str = Field(min_length=8)
     review_notes: str | None = None
@@ -126,6 +137,9 @@ class PlatformTenantMembershipPaymentRead(BaseModel):
     paid_at: datetime
     months_covered: int
     amount: Decimal | None
+    status: str
+    cancelled_at: datetime | None
+    cancel_reason: str | None
     quote_id: UUID | None
     quote_number: str | None
     notes: str | None

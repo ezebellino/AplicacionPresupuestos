@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone
 
 from decimal import Decimal
 from uuid import UUID
@@ -22,6 +22,8 @@ from app.infra.models import (
 from app.schemas.quotes import QuoteCreate, QuoteItemCreate
 from app.schemas.tenants import (
     PlatformMembershipPaymentCreate,
+    PlatformMembershipPaymentCancel,
+    PlatformMembershipPaymentUpdate,
     PlatformReviewUpdate,
     TenantChangeRequestCreate,
     TenantCreate,
@@ -112,72 +114,93 @@ def mark_tenant_membership_paid(
     tenant_id,
     payload: PlatformMembershipPaymentCreate,
 ) -> Tenant | None:
-    tenant = db.scalar(
-        select(Tenant)
-        .options(selectinload(Tenant.membership_payments))
-        .where(Tenant.id == tenant_id)
-    )
+    tenant = _load_platform_membership_tenant(db, tenant_id)
 
     if tenant is None:
         return None
 
-    billing_client = _ensure_platform_billing_client(db, platform_admin.tenant_id, tenant)
-    cost_item = _find_membership_cost_item(db, platform_admin.tenant_id, payload.months_covered)
-    if cost_item is None:
-        raise ValueError("membership billing item not found")
-
-    quote = create_quote(
-        db,
-        platform_admin.tenant_id,
-        QuoteCreate(
-            client_id=billing_client.id,
-            title=cost_item.name,
-            notes=f"Membresia FacturEasy - {format_membership_cycle(payload.months_covered)}",
-        ),
-    )
-    if quote is None:
-        raise ValueError("could not create membership quote")
-
-    item = add_quote_item(
-        db,
-        platform_admin.tenant,
-        quote.id,
-        QuoteItemCreate(source_cost_item_id=cost_item.id, quantity=Decimal("1.00")),
-    )
-    if item is None:
-        raise ValueError("could not add membership quote item")
-
-    quote = issue_quote(db, platform_admin.tenant_id, quote.id)
-    if quote is None:
-        raise ValueError("could not issue membership quote")
-
-    today = utc_now().date()
     paid_at = utc_now()
-    base_date = (
-        tenant.membership_due_date
-        if tenant.membership_due_date and tenant.membership_due_date > today
-        else today
-    )
-    tenant.membership_due_date = base_date + timedelta(days=30 * payload.months_covered)
-    tenant.membership_last_payment_at = paid_at
-    tenant.membership_status = "active"
+    quote = _issue_membership_quote(db, platform_admin, tenant, payload.months_covered)
     payment = TenantMembershipPayment(
         tenant=tenant,
         paid_at=paid_at,
         months_covered=payload.months_covered,
         amount=payload.amount,
+        status="active",
         quote_id=quote.id,
         quote_number=quote.number,
         notes=_clean(payload.notes),
     )
     db.add(payment)
+    _recalculate_tenant_membership_state(tenant)
 
     db.commit()
-    return db.scalar(
-        select(Tenant)
-        .options(selectinload(Tenant.membership_payments))
-        .where(Tenant.id == tenant_id)
-    )
+    return _load_platform_membership_tenant(db, tenant_id)
+
+
+def update_tenant_membership_payment(
+    db: Session,
+    platform_admin: User,
+    tenant_id: UUID,
+    payment_id: UUID,
+    payload: PlatformMembershipPaymentUpdate,
+) -> Tenant | None:
+    tenant = _load_platform_membership_tenant(db, tenant_id)
+    if tenant is None:
+        return None
+
+    payment = next((item for item in tenant.membership_payments if item.id == payment_id), None)
+    if payment is None:
+        raise LookupError("payment not found")
+    if payment.status != "active":
+        raise ValueError("payment is not active")
+    if payload.paid_at < tenant.created_at.date():
+        raise ValueError("payment date cannot be earlier than tenant creation")
+
+    if payment.months_covered != payload.months_covered and payment.quote_id is not None:
+        quote = _issue_membership_quote(db, platform_admin, tenant, payload.months_covered)
+        payment.quote_id = quote.id
+        payment.quote_number = quote.number
+
+    payment.paid_at = datetime.combine(payload.paid_at, time(12, 0, tzinfo=timezone.utc))
+    payment.months_covered = payload.months_covered
+    payment.amount = payload.amount
+    payment.notes = _clean(payload.notes)
+    _recalculate_tenant_membership_state(tenant)
+
+    db.commit()
+    return _load_platform_membership_tenant(db, tenant_id)
+
+
+def cancel_tenant_membership_payment(
+    db: Session,
+    platform_admin: User,
+    tenant_id: UUID,
+    payment_id: UUID,
+    payload: PlatformMembershipPaymentCancel,
+) -> Tenant | None:
+    tenant = _load_platform_membership_tenant(db, tenant_id)
+    if tenant is None:
+        return None
+
+    payment = next((item for item in tenant.membership_payments if item.id == payment_id), None)
+    if payment is None:
+        raise LookupError("payment not found")
+    if payment.status != "active":
+        raise ValueError("payment is not active")
+
+    cancel_reason = _clean(payload.reason)
+    if cancel_reason is None:
+        raise ValueError("cancel reason is required")
+
+    payment.status = "cancelled"
+    payment.cancelled_at = utc_now()
+    payment.cancelled_by_user_id = platform_admin.id
+    payment.cancel_reason = cancel_reason
+    _recalculate_tenant_membership_state(tenant)
+
+    db.commit()
+    return _load_platform_membership_tenant(db, tenant_id)
 
 
 def approve_tenant_change_request(
@@ -437,6 +460,72 @@ def _ensure_platform_billing_client(db: Session, platform_tenant_id: UUID, tenan
     if tenant.address and not client.address:
         client.address = tenant.address
     return client
+
+
+def _load_platform_membership_tenant(db: Session, tenant_id: UUID) -> Tenant | None:
+    return db.scalar(
+        select(Tenant)
+        .options(selectinload(Tenant.membership_payments))
+        .where(Tenant.id == tenant_id)
+    )
+
+
+def _issue_membership_quote(
+    db: Session,
+    platform_admin: User,
+    tenant: Tenant,
+    months_covered: int,
+):
+    billing_client = _ensure_platform_billing_client(db, platform_admin.tenant_id, tenant)
+    cost_item = _find_membership_cost_item(db, platform_admin.tenant_id, months_covered)
+    if cost_item is None:
+        raise ValueError("membership billing item not found")
+
+    quote = create_quote(
+        db,
+        platform_admin.tenant_id,
+        QuoteCreate(
+            client_id=billing_client.id,
+            title=cost_item.name,
+            notes=f"Membresia FacturEasy - {format_membership_cycle(months_covered)}",
+        ),
+    )
+    if quote is None:
+        raise ValueError("could not create membership quote")
+
+    item = add_quote_item(
+        db,
+        platform_admin.tenant,
+        quote.id,
+        QuoteItemCreate(source_cost_item_id=cost_item.id, quantity=Decimal("1.00")),
+    )
+    if item is None:
+        raise ValueError("could not add membership quote item")
+
+    quote = issue_quote(db, platform_admin.tenant_id, quote.id)
+    if quote is None:
+        raise ValueError("could not issue membership quote")
+
+    return quote
+
+
+def _recalculate_tenant_membership_state(tenant: Tenant) -> None:
+    current_due = tenant.created_at.date() + timedelta(days=30)
+    active_payments = sorted(
+        (payment for payment in tenant.membership_payments if payment.status == "active"),
+        key=lambda payment: (payment.paid_at, payment.created_at, str(payment.id)),
+    )
+    last_payment_at = None
+
+    for payment in active_payments:
+        paid_on = payment.paid_at.date()
+        base_date = current_due if current_due > paid_on else paid_on
+        current_due = base_date + timedelta(days=30 * payment.months_covered)
+        last_payment_at = payment.paid_at
+
+    tenant.membership_due_date = current_due
+    tenant.membership_last_payment_at = last_payment_at
+    tenant.membership_status = "expired" if current_due < utc_now().date() else "active"
 
 
 def _find_membership_cost_item(db: Session, platform_tenant_id: UUID, months_covered: int) -> CostItem | None:

@@ -9,11 +9,13 @@ from app.api.deps import get_db, require_platform_admin
 from app.infra.models import User
 from app.api.deps import get_current_user
 from app.schemas.tenants import (
+    PlatformMembershipPaymentCancel,
     TenantChangeRequestCreate,
     TenantChangeRequestList,
     TenantChangeRequestRead,
     PlatformReviewUpdate,
     PlatformMembershipPaymentCreate,
+    PlatformMembershipPaymentUpdate,
     PlatformTenantMembershipList,
     PlatformTenantMembershipRead,
     TenantCreate,
@@ -36,6 +38,8 @@ from app.services.tenants_service import (
     list_tenant_signup_requests,
     list_tenant_change_requests,
     mark_tenant_membership_paid,
+    update_tenant_membership_payment,
+    cancel_tenant_membership_payment,
     reject_tenant_change_request,
     update_tenant_signup_request_status,
 )
@@ -240,6 +244,54 @@ def mark_platform_tenant_membership_paid(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    return tenant
+
+
+@router.patch(
+    "/platform/memberships/{tenant_id}/payments/{payment_id}",
+    response_model=PlatformTenantMembershipRead,
+)
+def update_platform_tenant_membership_payment(
+    tenant_id: UUID,
+    payment_id: UUID,
+    payload: PlatformMembershipPaymentUpdate,
+    platform_admin: Annotated[User, Depends(require_platform_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> object:
+    try:
+        tenant = update_tenant_membership_payment(db, platform_admin, tenant_id, payment_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    return tenant
+
+
+@router.post(
+    "/platform/memberships/{tenant_id}/payments/{payment_id}/cancel",
+    response_model=PlatformTenantMembershipRead,
+)
+def cancel_platform_tenant_membership_payment(
+    tenant_id: UUID,
+    payment_id: UUID,
+    payload: PlatformMembershipPaymentCancel,
+    platform_admin: Annotated[User, Depends(require_platform_admin)],
+    db: Annotated[Session, Depends(get_db)],
+) -> object:
+    try:
+        tenant = cancel_tenant_membership_payment(db, platform_admin, tenant_id, payment_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")

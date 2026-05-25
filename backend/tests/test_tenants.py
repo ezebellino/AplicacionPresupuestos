@@ -1,3 +1,5 @@
+from datetime import date
+
 from conftest import create_tenant_and_login
 from sqlalchemy import select
 
@@ -236,6 +238,103 @@ def test_platform_admin_can_create_account_from_signup_request(api_context) -> N
     )
 
     assert login_response.status_code == 200
+
+
+def test_platform_admin_can_edit_and_cancel_membership_payments(api_context) -> None:
+    client, SessionLocal = api_context
+    platform_headers = create_tenant_and_login(
+        client,
+        name="FacturEasy",
+        email="platform-payments@factureasy.test",
+    )
+
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == "platform-payments@factureasy.test"))
+        assert user is not None
+        user.role = "platform_admin"
+        db.commit()
+
+    signup = client.post(
+        "/admin/tenants/signup-requests",
+        json={
+            "company_name": "AUBASA",
+            "contact_name": "Dario Lopez",
+            "email": "dario@aubasa.test",
+            "phone": "2245505050",
+        },
+    )
+    assert signup.status_code == 201
+
+    approved = client.post(
+        f"/admin/tenants/platform/signup-requests/{signup.json()['id']}/approve",
+        headers=platform_headers,
+        json={"admin_password": "temporal-123"},
+    )
+    assert approved.status_code == 200
+
+    for name, amount in (
+        ("Cobro Mensual", "5000.00"),
+        ("Cobro Trimestral", "14250.00"),
+    ):
+        response = client.post(
+            "/cost-items",
+            headers=platform_headers,
+            json={
+                "category": "services",
+                "name": name,
+                "description": f"{name} FacturEasy",
+                "unit": "servicio",
+                "unit_cost": amount,
+            },
+        )
+        assert response.status_code == 201
+
+    memberships = client.get("/admin/tenants/platform/memberships", headers=platform_headers)
+    assert memberships.status_code == 200
+    membership = next(
+        item for item in memberships.json()["items"] if item["id"] == approved.json()["created_tenant_id"]
+    )
+
+    paid = client.post(
+        f"/admin/tenants/platform/memberships/{membership['id']}/paid",
+        headers=platform_headers,
+        json={"months_covered": 3, "amount": "14250.00", "notes": "Pago trimestral"},
+    )
+    assert paid.status_code == 200
+    payment = paid.json()["payments"][0]
+    original_quote_number = payment["quote_number"]
+
+    edited = client.patch(
+        f"/admin/tenants/platform/memberships/{membership['id']}/payments/{payment['id']}",
+        headers=platform_headers,
+        json={
+            "paid_at": date.today().isoformat(),
+            "months_covered": 1,
+            "amount": "5000.00",
+            "notes": "Corregido a mensual",
+        },
+    )
+
+    assert edited.status_code == 200
+    edited_payment = next(item for item in edited.json()["payments"] if item["id"] == payment["id"])
+    assert edited_payment["months_covered"] == 1
+    assert edited_payment["amount"] == "5000.00"
+    assert edited_payment["notes"] == "Corregido a mensual"
+    assert edited_payment["status"] == "active"
+    assert edited_payment["quote_number"] != original_quote_number
+
+    cancelled = client.post(
+        f"/admin/tenants/platform/memberships/{membership['id']}/payments/{payment['id']}/cancel",
+        headers=platform_headers,
+        json={"reason": "Carga duplicada"},
+    )
+
+    assert cancelled.status_code == 200
+    cancelled_payment = next(item for item in cancelled.json()["payments"] if item["id"] == payment["id"])
+    assert cancelled_payment["status"] == "cancelled"
+    assert cancelled_payment["cancel_reason"] == "Carga duplicada"
+    assert cancelled_payment["cancelled_at"] is not None
+    assert cancelled.json()["membership_last_payment_at"] is None
 
 
 def test_platform_admin_can_approve_fiscal_change_request(api_context) -> None:

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Bell, Clock3, History, Mail, MessageCircle, UserRound } from 'lucide-react';
+import { Bell, Clock3, History, Mail, MessageCircle, Pencil, Trash2, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 import {
@@ -1653,14 +1653,32 @@ function ClientsView({
                   {client.address ? <span style={styles.mutedText}>{client.address}</span> : null}
                 </div>
                 <div style={styles.clientActions}>
-                    <button onClick={() => onEdit(client)} style={styles.linkButton} type="button">
-                      Editar
+                    <button
+                      aria-label="Editar"
+                      onClick={() => onEdit(client)}
+                      style={styles.iconActionButton}
+                      title="Editar"
+                      type="button"
+                    >
+                      <Pencil aria-hidden="true" size={15} strokeWidth={2.2} />
                     </button>
-                    <button onClick={() => onHistory(client)} style={styles.linkButton} type="button">
-                      Historial
+                    <button
+                      aria-label="Historial"
+                      onClick={() => onHistory(client)}
+                      style={styles.iconActionButton}
+                      title="Historial"
+                      type="button"
+                    >
+                      <History aria-hidden="true" size={15} strokeWidth={2.2} />
                     </button>
-                    <button onClick={() => onDelete(client)} style={styles.dangerButton} type="button">
-                      Eliminar
+                    <button
+                      aria-label="Eliminar"
+                      onClick={() => onDelete(client)}
+                      style={styles.iconDangerButton}
+                      title="Eliminar"
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" size={15} strokeWidth={2.2} />
                     </button>
                 </div>
               </article>
@@ -2580,8 +2598,14 @@ function TreasuryView({
                 <div style={styles.clientActions}>
                   {quote.status === 'accepted' ? (
                     <>
-                      <button onClick={() => onSendInvoiceByWhatsApp(quote)} style={styles.whatsAppButton} type="button">
-                        Enviar PDF por WhatsApp
+                      <button
+                        aria-label="Enviar PDF por WhatsApp"
+                        onClick={() => onSendInvoiceByWhatsApp(quote)}
+                        style={styles.whatsAppIconButton}
+                        title="Enviar PDF por WhatsApp"
+                        type="button"
+                      >
+                        <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
                       </button>
                     </>
                   ) : (
@@ -3197,15 +3221,13 @@ function PlatformAdminView({
                           {payment.quote_id ? (
                             <div style={styles.membershipPaymentActions}>
                               <button
+                                aria-label="Enviar por WhatsApp"
                                 onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
-                                style={styles.whatsAppButton}
+                                style={styles.whatsAppIconButton}
                                 title="Enviar por WhatsApp"
                                 type="button"
                               >
-                                <span style={styles.buttonWithIcon}>
-                                  <MessageCircle aria-hidden="true" size={14} strokeWidth={2.2} />
-                                  <span>WhatsApp</span>
-                                </span>
+                                <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
                               </button>
                               <button
                                 onClick={() => onSendMembershipQuoteByEmail(payment)}
@@ -4795,6 +4817,18 @@ const styles = {
     fontWeight: 800,
     padding: '6px 10px',
   },
+  whatsAppIconButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(37, 211, 102, 0.14)',
+    border: '1px solid rgba(37, 211, 102, 0.42)',
+    borderRadius: '8px',
+    color: '#25d366',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    height: '36px',
+    justifyContent: 'center',
+    width: '36px',
+  },
   dangerButton: {
     background: 'transparent',
     border: 0,
@@ -4803,6 +4837,30 @@ const styles = {
     font: 'inherit',
     fontWeight: 700,
     padding: 0,
+  },
+  iconActionButton: {
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--accent)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    height: '34px',
+    justifyContent: 'center',
+    width: '34px',
+  },
+  iconDangerButton: {
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    border: '1px solid rgba(239, 68, 68, 0.5)',
+    borderRadius: '8px',
+    color: 'var(--danger)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    height: '34px',
+    justifyContent: 'center',
+    width: '34px',
   },
   dangerOutlineButton: {
     background: 'transparent',

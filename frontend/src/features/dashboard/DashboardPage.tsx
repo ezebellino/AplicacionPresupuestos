@@ -34,6 +34,8 @@ type CompanySection = 'data' | 'billing' | 'preview';
 type QuoteSection = 'list' | 'editor';
 type ClientSection = 'list' | 'record';
 type ClientRecordSection = 'data' | 'services' | 'quotes';
+type TreasurySection = 'overview' | 'movements' | 'pending';
+type TreasuryMovementFilter = 'all' | 'accepted' | 'issued' | 'rejected';
 type MembershipFilter = 'all' | 'expired' | 'due_soon' | 'active';
 
 type PlatformNotification =
@@ -226,6 +228,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [quoteEditorRequestId, setQuoteEditorRequestId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -830,6 +833,12 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
+  const openQuoteEditorFromAnotherView = (quoteId: string) => {
+    setSelectedQuoteId(quoteId);
+    setQuoteEditorRequestId(quoteId);
+    setActiveView('quotes');
+  };
+
   const navigationItems: Array<{ label: string; view: View }> = [
     { label: 'Resumen', view: 'summary' },
     { label: 'Clientes', view: 'clients' },
@@ -1190,12 +1199,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           <QuotesView
             clients={clients}
             costItems={costItems}
+            editorRequestId={quoteEditorRequestId}
             form={quoteForm}
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             onAddCostItem={addQuoteItemFromCatalog}
             onDeleteItem={deleteQuoteItem}
             onDownloadPdf={downloadQuotePdf}
+            onEditorRequestHandled={() => setQuoteEditorRequestId(null)}
             onFormChange={setQuoteForm}
             onSelectQuote={setSelectedQuoteId}
             onSubmit={handleQuoteSubmit}
@@ -1209,6 +1220,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           <TreasuryView
             clients={clients}
             isCompactLayout={isCompactLayout}
+            onDownloadPdf={downloadQuotePdf}
+            onOpenQuote={openQuoteEditorFromAnotherView}
             onSendInvoiceByWhatsApp={sendInvoiceByWhatsApp}
             quotes={quotes}
           />
@@ -2129,12 +2142,14 @@ function CostsView({
 function QuotesView({
   clients,
   costItems,
+  editorRequestId,
   form,
   isCompactLayout,
   isSaving,
   onAddCostItem,
   onDeleteItem,
   onDownloadPdf,
+  onEditorRequestHandled,
   onFormChange,
   onSelectQuote,
   onSubmit,
@@ -2144,12 +2159,14 @@ function QuotesView({
 }: {
   clients: Client[];
   costItems: CostItem[];
+  editorRequestId: string | null;
   form: QuoteForm;
   isCompactLayout: boolean;
   isSaving: boolean;
   onAddCostItem: (quote: Quote, item: CostItem) => void;
   onDeleteItem: (quote: Quote, itemId: string) => void;
   onDownloadPdf: (quote: Quote) => void;
+  onEditorRequestHandled: () => void;
   onFormChange: (form: QuoteForm) => void;
   onSelectQuote: (quoteId: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => boolean | Promise<boolean>;
@@ -2162,6 +2179,16 @@ function QuotesView({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
   const [catalogSearch, setCatalogSearch] = useState('');
+  useEffect(() => {
+    if (!editorRequestId || selectedQuoteId !== editorRequestId) {
+      return;
+    }
+
+    setIsCreatingNew(false);
+    setActiveSection('editor');
+    onEditorRequestHandled();
+  }, [editorRequestId, onEditorRequestHandled, selectedQuoteId]);
+
   const filteredQuotes = [...quotes]
     .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     .filter((quote) => {
@@ -2928,34 +2955,53 @@ function CompanyProfileView({
 function TreasuryView({
   clients,
   isCompactLayout,
+  onDownloadPdf,
+  onOpenQuote,
   onSendInvoiceByWhatsApp,
   quotes,
 }: {
   clients: Client[];
   isCompactLayout: boolean;
+  onDownloadPdf: (quote: Quote) => void;
+  onOpenQuote: (quoteId: string) => void;
   onSendInvoiceByWhatsApp: (quote: Quote) => void;
   quotes: Quote[];
 }) {
+  const [activeSection, setActiveSection] = useState<TreasurySection>('overview');
   const [isSmartTreasury, setIsSmartTreasury] = useState(false);
+  const [movementFilter, setMovementFilter] = useState<TreasuryMovementFilter>('all');
   const acceptedQuotes = quotes.filter((quote) => quote.status === 'accepted');
   const issuedQuotes = quotes.filter((quote) => quote.status === 'issued');
-  const draftQuotes = quotes.filter((quote) => quote.status === 'draft');
   const rejectedQuotes = quotes.filter((quote) => quote.status === 'rejected');
+  const treasurySections = [
+    { id: 'overview' as const, label: 'Resumen' },
+    { id: 'movements' as const, label: 'Movimientos' },
+    { id: 'pending' as const, label: 'Cobros pendientes' },
+  ];
   const treasuryMetrics = [
     { label: 'Facturado aceptado', value: formatMoney(sumQuotes(acceptedQuotes)) },
     { label: 'Pendiente emitido', value: formatMoney(sumQuotes(issuedQuotes)) },
-    { label: 'En borrador', value: formatMoney(sumQuotes(draftQuotes)) },
     { label: 'Rechazado', value: formatMoney(sumQuotes(rejectedQuotes)) },
+    { label: 'Total de presupuestos', value: String(quotes.length) },
+    {
+      label: 'Mes actual',
+      value: new Intl.DateTimeFormat('es-AR', {
+        month: 'long',
+        timeZone: 'America/Buenos_Aires',
+        year: 'numeric',
+      }).format(new Date()),
+    },
   ];
   const averageAccepted = acceptedQuotes.length
     ? sumQuotes(acceptedQuotes) / acceptedQuotes.length
     : 0;
   const conversionRate = quotes.length ? (acceptedQuotes.length / quotes.length) * 100 : 0;
-  const monthlyRows = buildMonthlyTreasuryRows(acceptedQuotes);
   const latestMovements = [...quotes]
     .filter((quote) => quote.status !== 'draft')
+    .filter((quote) => movementFilter === 'all' || quote.status === movementFilter)
     .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
-    .slice(0, 8);
+    .slice(0, 12);
+  const pendingQuotes = [...issuedQuotes].sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left));
   const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes);
 
   if (isSmartTreasury) {
@@ -3015,110 +3061,219 @@ function TreasuryView({
   }
 
   return (
-    <>
+    <section style={styles.companyWorkspace}>
       <section style={styles.smartHeader}>
         <div>
           <h2 style={styles.panelTitle}>Tesoreria</h2>
-          <p style={styles.panelSubtitle}>Control de facturacion y movimientos del negocio.</p>
+          <p style={styles.panelSubtitle}>Seguimiento operativo de presupuestos, cobros y movimientos del negocio.</p>
         </div>
-        <button onClick={() => setIsSmartTreasury(true)} style={styles.primaryButton} type="button">
-          Tesoreria inteligente
-        </button>
-      </section>
-
-      <section style={styles.metrics} aria-label="Metricas de tesoreria">
-        {treasuryMetrics.map((metric) => (
-          <article key={metric.label} style={styles.metricCard}>
-            <p style={styles.metricLabel}>{metric.label}</p>
-            <strong style={styles.metricValue}>{metric.value}</strong>
-          </article>
-        ))}
-      </section>
-
-      <section style={styles.gridTwo}>
-        <section style={styles.tablePanel} aria-labelledby="treasury-health-title">
-          <div style={styles.panelHeader}>
-            <h2 id="treasury-health-title" style={styles.panelTitle}>
-              Metricas
-            </h2>
-          </div>
-          <div style={styles.categoryGrid}>
-            <div style={styles.categoryRow}>
-              <span>Ticket promedio aceptado</span>
-              <strong>{formatMoney(String(averageAccepted))}</strong>
-            </div>
-            <div style={styles.categoryRow}>
-              <span>Conversion aceptada</span>
-              <strong>{conversionRate.toFixed(0)}%</strong>
-            </div>
-            <div style={styles.categoryRow}>
-              <span>Presupuestos aceptados</span>
-              <strong>{acceptedQuotes.length}</strong>
-            </div>
-            <div style={styles.categoryRow}>
-              <span>Presupuestos pendientes</span>
-              <strong>{issuedQuotes.length}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section style={styles.tablePanel} aria-labelledby="treasury-monthly-title">
-          <div style={styles.panelHeader}>
-            <h2 id="treasury-monthly-title" style={styles.panelTitle}>
-              Facturacion por mes
-            </h2>
-          </div>
-          {monthlyRows.length === 0 ? (
-            <p style={styles.emptyState}>Todavia no hay presupuestos aceptados.</p>
+        <div style={styles.actions}>
+          <button onClick={() => setIsSmartTreasury(true)} style={styles.primaryButton} type="button">
+            Tesoreria inteligente
+          </button>
+          {isCompactLayout ? (
+            <label style={styles.platformSelectField}>
+              <span style={styles.labelCaption}>Seccion de tesoreria</span>
+              <select
+                aria-label="Seccion de tesoreria"
+                onChange={(event) => setActiveSection(event.target.value as TreasurySection)}
+                style={styles.select}
+                value={activeSection}
+              >
+                {treasurySections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           ) : (
-            <DataTable headers={['Mes', 'Cantidad', 'Facturado']} isCompactLayout={isCompactLayout} rows={monthlyRows} />
+            <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de tesoreria">
+              {treasurySections.map((section) => (
+                <button
+                  aria-pressed={activeSection === section.id}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
           )}
-        </section>
+        </div>
       </section>
 
-      <section style={styles.tablePanel} aria-labelledby="treasury-movements-title">
-        <div style={styles.panelHeader}>
-          <h2 id="treasury-movements-title" style={styles.panelTitle}>
-            Movimientos recientes
-          </h2>
-        </div>
-        {latestMovements.length === 0 ? (
-          <p style={styles.emptyState}>Todavia no hay presupuestos emitidos o aceptados.</p>
-        ) : (
-          <div style={styles.clientList}>
-            {latestMovements.map((quote) => (
-              <article key={quote.id} style={styles.treasuryMovementRow}>
-                <div style={styles.clientIdentity}>
-                  <strong>{clientName(clients, quote.client_id)}</strong>
-                  <span style={styles.mutedText}>
-                    {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
-                  </span>
-                </div>
-                <StatusBadge status={quote.status} />
-                <strong>{formatMoney(quote.total)}</strong>
-                <div style={styles.clientActions}>
-                  {quote.status === 'accepted' ? (
-                    <>
-                      <button
-                        aria-label="Enviar PDF por WhatsApp"
-                        onClick={() => onSendInvoiceByWhatsApp(quote)}
-                        style={styles.whatsAppIconButton}
-                        title="Enviar PDF por WhatsApp"
-                        type="button"
-                      >
-                        <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
-                      </button>
-                    </>
-                  ) : (
-                    <span style={styles.mutedText}>Sin factura</span>
-                  )}
-                </div>
+      {activeSection === 'overview' ? (
+        <>
+          <section style={styles.metrics} aria-label="Metricas de tesoreria">
+            {treasuryMetrics.map((metric) => (
+              <article key={metric.label} style={styles.metricCard}>
+                <p style={styles.metricLabel}>{metric.label}</p>
+                <strong style={styles.metricValue}>{metric.value}</strong>
               </article>
             ))}
+          </section>
+
+          <section style={styles.gridTwo}>
+            <section style={styles.tablePanel} aria-labelledby="treasury-health-title">
+              <div style={styles.panelHeader}>
+                <h2 id="treasury-health-title" style={styles.panelTitle}>
+                  Resumen de tesoreria
+                </h2>
+              </div>
+              <div style={styles.categoryGrid}>
+                <div style={styles.categoryRow}>
+                  <span>Ticket promedio aceptado</span>
+                  <strong>{formatMoney(String(averageAccepted))}</strong>
+                </div>
+                <div style={styles.categoryRow}>
+                  <span>Conversion aceptada</span>
+                  <strong>{conversionRate.toFixed(0)}%</strong>
+                </div>
+                <div style={styles.categoryRow}>
+                  <span>Presupuestos aceptados</span>
+                  <strong>{acceptedQuotes.length}</strong>
+                </div>
+                <div style={styles.categoryRow}>
+                  <span>Presupuestos emitidos</span>
+                  <strong>{issuedQuotes.length}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section style={styles.tablePanel} aria-labelledby="treasury-attention-title">
+              <div style={styles.panelHeader}>
+                <h2 id="treasury-attention-title" style={styles.panelTitle}>
+                  Atencion inmediata
+                </h2>
+              </div>
+              {pendingQuotes.length === 0 ? (
+                <p style={styles.emptyState}>No hay presupuestos emitidos pendientes de seguimiento.</p>
+              ) : (
+                <div style={styles.clientList}>
+                  {pendingQuotes.map((quote) => (
+                    <article key={quote.id} style={styles.treasuryMovementRow}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{clientName(clients, quote.client_id)}</strong>
+                        <span style={styles.mutedText}>
+                          {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
+                        </span>
+                      </div>
+                      <StatusBadge status={quote.status} />
+                      <strong>{formatMoney(quote.total)}</strong>
+                      <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
+                        Abrir presupuesto
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </section>
+        </>
+      ) : null}
+
+      {activeSection === 'movements' ? (
+        <section style={styles.tablePanel} aria-labelledby="treasury-movements-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="treasury-movements-title" style={styles.panelTitle}>
+                Movimientos
+              </h2>
+              <p style={styles.panelSubtitle}>Cronologia operativa de presupuestos del negocio.</p>
+            </div>
           </div>
-        )}
-      </section>
-    </>
+          <div style={styles.platformFilterBar}>
+            {[
+              { key: 'all', label: 'Todos' },
+              { key: 'accepted', label: 'Aceptados' },
+              { key: 'issued', label: 'Emitidos' },
+              { key: 'rejected', label: 'Rechazados' },
+            ].map((filter) => (
+              <button
+                key={filter.key}
+                onClick={() => setMovementFilter(filter.key as TreasuryMovementFilter)}
+                style={movementFilter === filter.key ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                type="button"
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          {latestMovements.length === 0 ? (
+            <p style={styles.emptyState}>No hay movimientos para ese filtro.</p>
+          ) : (
+            <div style={styles.clientList}>
+              {latestMovements.map((quote) => (
+                <article key={quote.id} style={styles.treasuryMovementRow}>
+                  <div style={styles.clientIdentity}>
+                    <strong>{clientName(clients, quote.client_id)}</strong>
+                    <span style={styles.mutedText}>
+                      {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
+                    </span>
+                  </div>
+                  <StatusBadge status={quote.status} />
+                  <strong>{formatMoney(quote.total)}</strong>
+                  <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
+                    Abrir presupuesto
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {activeSection === 'pending' ? (
+        <section style={styles.tablePanel} aria-labelledby="treasury-pending-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="treasury-pending-title" style={styles.panelTitle}>
+                Cobros pendientes
+              </h2>
+              <p style={styles.panelSubtitle}>Solo presupuestos emitidos pendientes de resolucion.</p>
+            </div>
+          </div>
+          {pendingQuotes.length === 0 ? (
+            <p style={styles.emptyState}>No hay cobros pendientes en este momento.</p>
+          ) : (
+            <div style={styles.clientList}>
+              {pendingQuotes.map((quote) => (
+                <article key={quote.id} style={styles.treasuryMovementRow}>
+                  <div style={styles.clientIdentity}>
+                    <strong>{clientName(clients, quote.client_id)}</strong>
+                    <span style={styles.mutedText}>
+                      {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
+                    </span>
+                  </div>
+                  <StatusBadge status={quote.status} />
+                  <strong>{formatMoney(quote.total)}</strong>
+                  <div style={styles.clientActions}>
+                    <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
+                      Abrir presupuesto
+                    </button>
+                    <button
+                      aria-label="Enviar PDF por WhatsApp"
+                      onClick={() => onSendInvoiceByWhatsApp(quote)}
+                      style={styles.whatsAppIconButton}
+                      title="Enviar PDF por WhatsApp"
+                      type="button"
+                    >
+                      <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
+                    </button>
+                    <button onClick={() => onDownloadPdf(quote)} style={styles.secondaryButton} title="PDF" type="button">
+                      PDF
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+    </section>
   );
 }
 

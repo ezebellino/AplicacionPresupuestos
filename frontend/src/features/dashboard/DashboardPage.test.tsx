@@ -380,6 +380,72 @@ describe('DashboardPage', () => {
                       },
                     ],
                   },
+                  {
+                    id: 'quote-2',
+                    client_id: 'client-1',
+                    number: 'Q-000002',
+                    status: 'issued',
+                    title: 'Mantenimiento',
+                    notes: null,
+                    valid_until: null,
+                    created_at: '2026-05-16T09:00:00',
+                    subtotal: '0.00',
+                    discount_total: '0.00',
+                    tax_total: '0.00',
+                    total: '99000.00',
+                    issued_at: '2026-05-16T10:30:00',
+                    items: [
+                      {
+                        id: 'quote-item-2',
+                        source_cost_item_id: 'cost-1',
+                        category: 'services',
+                        name: 'Mantenimiento',
+                        description: null,
+                        unit: 'servicio',
+                        quantity: '1.00',
+                        unit_price: '81818.18',
+                        tax_rate: '21.00',
+                        discount_amount: '0.00',
+                        line_subtotal: '81818.18',
+                        line_tax: '17181.82',
+                        line_total: '99000.00',
+                        position: 1,
+                      },
+                    ],
+                  },
+                  {
+                    id: 'quote-3',
+                    client_id: 'client-1',
+                    number: 'Q-000003',
+                    status: 'rejected',
+                    title: 'Reparacion',
+                    notes: null,
+                    valid_until: null,
+                    created_at: '2026-05-12T08:00:00',
+                    subtotal: '0.00',
+                    discount_total: '0.00',
+                    tax_total: '0.00',
+                    total: '57000.00',
+                    issued_at: '2026-05-12T09:00:00',
+                    items: [
+                      {
+                        id: 'quote-item-3',
+                        source_cost_item_id: 'cost-1',
+                        category: 'services',
+                        name: 'Reparacion',
+                        description: null,
+                        unit: 'servicio',
+                        quantity: '1.00',
+                        unit_price: '47107.44',
+                        tax_rate: '21.00',
+                        discount_amount: '0.00',
+                        line_subtotal: '47107.44',
+                        line_tax: '9892.56',
+                        line_total: '57000.00',
+                        position: 1,
+                      },
+                    ],
+                  },
                 ],
               }),
               { status: 200 },
@@ -387,7 +453,7 @@ describe('DashboardPage', () => {
           );
         }
 
-        if (url.endsWith('/quotes/quote-1/pdf')) {
+        if (url.match(/\/quotes\/quote-(1|2|3)\/pdf$/)) {
           return Promise.resolve(new Response(new Blob(['pdf'], { type: 'application/pdf' }), { status: 200 }));
         }
 
@@ -453,17 +519,50 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Mantenimiento preventivo')).toBeInTheDocument();
   });
 
-  it('shows treasury metrics from accepted quotes', async () => {
+  it('opens Tesoreria on Resumen with internal navigation and summary metrics', async () => {
     const user = userEvent.setup();
 
     render(<DashboardPage onLogout={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
 
+    expect(await screen.findByRole('heading', { name: 'Resumen de tesoreria' })).toBeInTheDocument();
+    const treasuryNavigation = screen.getByRole('tablist', { name: 'Navegacion de tesoreria' });
+    expect(within(treasuryNavigation).getByRole('button', { name: 'Resumen' })).toBeInTheDocument();
+    expect(within(treasuryNavigation).getByRole('button', { name: 'Movimientos' })).toBeInTheDocument();
+    expect(within(treasuryNavigation).getByRole('button', { name: 'Cobros pendientes' })).toBeInTheDocument();
     expect(await screen.findByText('Facturado aceptado')).toBeInTheDocument();
     expect(screen.getAllByText('$ 121.000,00').length).toBeGreaterThan(0);
-    expect(screen.getByText('Facturacion por mes')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Enviar PDF por WhatsApp' })).toBeInTheDocument();
+    expect(screen.getByText('Pendiente emitido')).toBeInTheDocument();
+    expect(screen.getByText('Rechazado')).toBeInTheDocument();
+    expect(screen.getByText('Total de presupuestos')).toBeInTheDocument();
+    expect(screen.getByText('Mes actual')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Atencion inmediata' })).toBeInTheDocument();
+  });
+
+  it('filters treasury movements by quote status', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+    await user.click(screen.getByRole('button', { name: 'Movimientos' }));
+    await user.click(screen.getByRole('button', { name: 'Emitidos' }));
+
+    expect(await screen.findByText('Q-000002 - 16/05/2026')).toBeInTheDocument();
+    expect(screen.queryByText('Q-000001 - 14/05/2026')).not.toBeInTheDocument();
+  });
+
+  it('opens issued quotes from treasury pending collections', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+    await user.click(screen.getByRole('button', { name: 'Cobros pendientes' }));
+    await user.click(await screen.findByRole('button', { name: 'Abrir presupuesto' }));
+
+    expect(await screen.findByRole('heading', { name: 'Q-000002' })).toBeInTheDocument();
   });
 
   it('opens smart treasury with charts and insights', async () => {
@@ -481,13 +580,14 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: 'Volver a tesoreria' })).toBeInTheDocument();
   });
 
-  it('opens whatsapp with a prefilled invoice message', async () => {
+  it('opens whatsapp with a prefilled invoice message from pending collections', async () => {
     const user = userEvent.setup();
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
 
     render(<DashboardPage onLogout={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+    await user.click(screen.getByRole('button', { name: 'Cobros pendientes' }));
     await user.click(await screen.findByRole('button', { name: 'Enviar PDF por WhatsApp' }));
 
     await waitFor(() => {
@@ -497,9 +597,9 @@ describe('DashboardPage', () => {
         'noopener,noreferrer',
       );
     });
-    expect(openSpy.mock.calls.at(-1)?.[0]).toContain('Q-000001');
+    expect(openSpy.mock.calls.at(-1)?.[0]).toContain('Q-000002');
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/quotes/quote-1/pdf'),
+      expect.stringContaining('/quotes/quote-2/pdf'),
       expect.objectContaining({ headers: expect.any(Headers) }),
     );
     openSpy.mockRestore();
@@ -855,7 +955,7 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
     await waitFor(() => expect(screen.getAllByText('Q-000001').length).toBeGreaterThan(0));
 
-    expect(screen.getByRole('button', { name: 'Listado (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Listado (3)' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Editor' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear borrador' })).not.toBeInTheDocument();
 

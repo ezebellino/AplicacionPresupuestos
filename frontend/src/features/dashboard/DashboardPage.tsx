@@ -1229,6 +1229,36 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
                 setIsSaving(false);
               }
             }}
+            onUpdateMembershipPayment={async (membership, payment, payload) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.updatePlatformMembershipPayment(membership.id, payment.id, payload);
+                const quotesResponse = await apiClient.listQuotes();
+                setPlatformMemberships((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                setQuotes(quotesResponse.items);
+                const updatedPayment = updated.payments.find((item) => item.id === payment.id) ?? null;
+                if (updatedPayment?.quote_id) {
+                  setSelectedQuoteId(updatedPayment.quote_id);
+                }
+                showSuccessToast('Pago actualizado');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
+            onCancelMembershipPayment={async (membership, payment, payload) => {
+              setIsSaving(true);
+              try {
+                const updated = await apiClient.cancelPlatformMembershipPayment(membership.id, payment.id, payload);
+                setPlatformMemberships((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                showSuccessToast('Pago anulado');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
             onApproveSignup={async (request, adminPassword) => {
               setIsSaving(true);
               try {
@@ -2631,6 +2661,8 @@ function PlatformAdminView({
   onApproveFiscalChange,
   onApproveSignup,
   onMarkMembershipPaid,
+  onUpdateMembershipPayment,
+  onCancelMembershipPayment,
   onMarkSignupContacted,
   onRejectFiscalChange,
   onRejectSignup,
@@ -2649,6 +2681,16 @@ function PlatformAdminView({
   onMarkMembershipPaid: (
     membership: PlatformTenantMembership,
     payload: { months_covered: number; amount?: string | null; notes?: string | null },
+  ) => void;
+  onUpdateMembershipPayment: (
+    membership: PlatformTenantMembership,
+    payment: PlatformTenantMembership['payments'][number],
+    payload: { paid_at: string; months_covered: number; amount?: string | null; notes?: string | null },
+  ) => void;
+  onCancelMembershipPayment: (
+    membership: PlatformTenantMembership,
+    payment: PlatformTenantMembership['payments'][number],
+    payload: { reason: string },
   ) => void;
   onMarkSignupContacted: (request: TenantSignupRequest) => void;
   onRejectFiscalChange: (request: TenantChangeRequest) => void;
@@ -3209,9 +3251,9 @@ function PlatformAdminView({
                     Ultimo pago:{' '}
                     {membership.membership_last_payment_at ? formatDate(membership.membership_last_payment_at) : 'Sin registro'}
                   </span>
-                  {membership.payments.length > 0 ? (
+                  {membership.payments.some((payment) => payment.status === 'active') ? (
                     <div style={styles.membershipPaymentList}>
-                      {membership.payments.slice(0, 4).map((payment) => (
+                      {membership.payments.filter((payment) => payment.status === 'active').slice(0, 4).map((payment) => (
                         <div key={payment.id} style={styles.membershipPaymentRow}>
                           <span style={styles.membershipPaymentChip}>
                             {formatMonthsCovered(payment.months_covered)} - {formatDate(payment.paid_at)}
@@ -3349,12 +3391,167 @@ function PlatformAdminView({
                           {formatDate(payment.paid_at)} - {formatMonthsCovered(payment.months_covered)}
                         </span>
                       </div>
-                      <span style={styles.categoryBadge}>{payment.quote_number ?? 'Sin presupuesto'}</span>
+                      <span
+                        style={{
+                          ...styles.categoryBadge,
+                          ...(payment.status === 'cancelled' ? styles.historyRejectedBadge : styles.historyAcceptedBadge),
+                        }}
+                      >
+                        {payment.status === 'cancelled' ? 'Anulado' : payment.quote_number ?? 'Sin presupuesto'}
+                      </span>
                     </div>
                     <p style={styles.serviceDescription}>
                       {payment.amount ? formatMoney(payment.amount) : 'Sin monto cargado'}
                       {payment.notes ? ` | ${payment.notes}` : ''}
+                      {payment.cancel_reason ? ` | Motivo de anulacion: ${payment.cancel_reason}` : ''}
                     </p>
+                    <div style={styles.membershipPaymentActions}>
+                      {payment.status === 'active' ? (
+                        <>
+                          <button
+                            aria-label="Editar pago"
+                            disabled={isSaving}
+                            onClick={async () => {
+                              const result = await Swal.fire({
+                                title: `Editar pago de ${membership.name}`,
+                                html: `
+                                <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+                                  <span>Fecha efectiva</span>
+                                  <input id="membership-paid-at" type="date" class="swal2-input" style="margin:0;" value="${payment.paid_at.slice(0, 10)}" />
+                                </label>
+                                <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+                                  <span>Periodo</span>
+                                  <select id="membership-months-edit" class="swal2-input" style="margin:0;">
+                                    <option value="1" ${payment.months_covered === 1 ? 'selected' : ''}>Mensual</option>
+                                    <option value="3" ${payment.months_covered === 3 ? 'selected' : ''}>Trimestral</option>
+                                    <option value="6" ${payment.months_covered === 6 ? 'selected' : ''}>Semestral</option>
+                                    <option value="12" ${payment.months_covered === 12 ? 'selected' : ''}>Anual</option>
+                                  </select>
+                                </label>
+                                <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+                                  <span>Monto total</span>
+                                  <input id="membership-amount-edit" class="swal2-input" style="margin:0;" value="${payment.amount ?? ''}" />
+                                </label>
+                                <label style="display:grid;gap:6px;text-align:left;">
+                                  <span>Nota</span>
+                                  <input id="membership-notes-edit" class="swal2-input" style="margin:0;" value="${payment.notes ?? ''}" />
+                                </label>
+                              `,
+                                focusConfirm: false,
+                                showCancelButton: true,
+                                confirmButtonText: 'Guardar cambios',
+                                cancelButtonText: 'Cancelar',
+                                preConfirm: () => {
+                                  const paidAtValue =
+                                    (document.getElementById('membership-paid-at') as HTMLInputElement | null)?.value ?? '';
+                                  const monthsValue =
+                                    (document.getElementById('membership-months-edit') as HTMLSelectElement | null)?.value ?? '1';
+                                  const amountValue =
+                                    (document.getElementById('membership-amount-edit') as HTMLInputElement | null)?.value.trim() ?? '';
+                                  const notesValue =
+                                    (document.getElementById('membership-notes-edit') as HTMLInputElement | null)?.value.trim() ?? '';
+                                  const monthsCovered = Number(monthsValue);
+
+                                  if (!paidAtValue) {
+                                    Swal.showValidationMessage('Indica la fecha efectiva del pago.');
+                                    return undefined;
+                                  }
+
+                                  if (![1, 3, 6, 12].includes(monthsCovered)) {
+                                    Swal.showValidationMessage('Elegi un periodo valido.');
+                                    return undefined;
+                                  }
+
+                                  if (amountValue && Number.isNaN(Number(amountValue))) {
+                                    Swal.showValidationMessage('El monto debe ser numerico.');
+                                    return undefined;
+                                  }
+
+                                  return {
+                                    paid_at: paidAtValue,
+                                    amount: amountValue || null,
+                                    months_covered: monthsCovered,
+                                    notes: notesValue || null,
+                                  };
+                                },
+                              });
+
+                              if (result.isConfirmed && result.value) {
+                                onUpdateMembershipPayment(membership, payment, result.value);
+                              }
+                            }}
+                            style={styles.iconActionButton}
+                            title="Editar pago"
+                            type="button"
+                          >
+                            <Pencil aria-hidden="true" size={15} strokeWidth={2.2} />
+                          </button>
+                          <button
+                            aria-label="Anular pago"
+                            disabled={isSaving}
+                            onClick={async () => {
+                              const result = await Swal.fire({
+                                title: `Anular pago de ${membership.name}`,
+                                html: `
+                                <label style="display:grid;gap:6px;text-align:left;">
+                                  <span>Motivo de anulacion</span>
+                                  <input id="membership-cancel-reason" class="swal2-input" style="margin:0;" placeholder="Error de carga, pago duplicado, etc." />
+                                </label>
+                              `,
+                                focusConfirm: false,
+                                showCancelButton: true,
+                                confirmButtonText: 'Anular pago',
+                                cancelButtonText: 'Cancelar',
+                                confirmButtonColor: '#ef4444',
+                                preConfirm: () => {
+                                  const reasonValue =
+                                    (document.getElementById('membership-cancel-reason') as HTMLInputElement | null)?.value.trim() ?? '';
+                                  if (reasonValue.length < 3) {
+                                    Swal.showValidationMessage('Indica un motivo valido.');
+                                    return undefined;
+                                  }
+
+                                  return { reason: reasonValue };
+                                },
+                              });
+
+                              if (result.isConfirmed && result.value) {
+                                onCancelMembershipPayment(membership, payment, result.value);
+                              }
+                            }}
+                            style={styles.iconDangerButton}
+                            title="Anular pago"
+                            type="button"
+                          >
+                            <Trash2 aria-hidden="true" size={15} strokeWidth={2.2} />
+                          </button>
+                        </>
+                      ) : null}
+                      {payment.status === 'active' && payment.quote_id ? (
+                        <>
+                          <button
+                            aria-label="Enviar por WhatsApp"
+                            onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
+                            style={styles.whatsAppIconButton}
+                            title="Enviar por WhatsApp"
+                            type="button"
+                          >
+                            <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
+                          </button>
+                          <button
+                            onClick={() => onSendMembershipQuoteByEmail(payment)}
+                            style={styles.secondaryButton}
+                            title="Enviar por Email"
+                            type="button"
+                          >
+                            <span style={styles.buttonWithIcon}>
+                              <Mail aria-hidden="true" size={14} strokeWidth={2.2} />
+                              <span>Email</span>
+                            </span>
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </article>
                 ))}
               </div>
@@ -5415,6 +5612,14 @@ const styles = {
     color: 'var(--success)',
   },
   expiredMembershipBadge: {
+    background: 'var(--danger-bg)',
+    color: 'var(--danger)',
+  },
+  historyAcceptedBadge: {
+    background: 'var(--success-bg)',
+    color: 'var(--success)',
+  },
+  historyRejectedBadge: {
     background: 'var(--danger-bg)',
     color: 'var(--danger)',
   },

@@ -96,6 +96,9 @@ export type PlatformTenantMembershipPayment = {
   paid_at: string;
   months_covered: number;
   amount: string | null;
+  status: string;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
   quote_id: string | null;
   quote_number: string | null;
   notes: string | null;
@@ -105,6 +108,17 @@ export type PlatformMembershipPaymentPayload = {
   months_covered: number;
   amount?: string | null;
   notes?: string | null;
+};
+
+export type PlatformMembershipPaymentUpdatePayload = {
+  paid_at: string;
+  months_covered: number;
+  amount?: string | null;
+  notes?: string | null;
+};
+
+export type PlatformMembershipPaymentCancelPayload = {
+  reason: string;
 };
 
 export type TenantSignupRequestPayload = {
@@ -340,6 +354,26 @@ export const apiClient = {
   },
   markPlatformMembershipPaid(id: string, payload: PlatformMembershipPaymentPayload) {
     return request<PlatformTenantMembership>(`/admin/tenants/platform/memberships/${id}/paid`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updatePlatformMembershipPayment(
+    tenantId: string,
+    paymentId: string,
+    payload: PlatformMembershipPaymentUpdatePayload,
+  ) {
+    return request<PlatformTenantMembership>(`/admin/tenants/platform/memberships/${tenantId}/payments/${paymentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  cancelPlatformMembershipPayment(
+    tenantId: string,
+    paymentId: string,
+    payload: PlatformMembershipPaymentCancelPayload,
+  ) {
+    return request<PlatformTenantMembership>(`/admin/tenants/platform/memberships/${tenantId}/payments/${paymentId}/cancel`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });

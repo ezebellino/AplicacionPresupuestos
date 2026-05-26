@@ -232,6 +232,9 @@ describe('DashboardPage', () => {
                         paid_at: '2026-05-01',
                         months_covered: 1,
                         amount: '5000.00',
+                        status: 'active',
+                        cancelled_at: null,
+                        cancel_reason: null,
                         quote_id: 'quote-1',
                         quote_number: 'Q-000001',
                         notes: 'Pago mensual',
@@ -255,6 +258,9 @@ describe('DashboardPage', () => {
                         paid_at: '2026-04-15',
                         months_covered: 3,
                         amount: '14250.00',
+                        status: 'active',
+                        cancelled_at: null,
+                        cancel_reason: null,
                         quote_id: 'quote-2',
                         quote_number: 'Q-000002',
                         notes: 'Pago trimestral',
@@ -717,6 +723,8 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Q-000001')).toBeInTheDocument();
     expect(screen.getByText(/Pago mensual/i)).toBeInTheDocument();
     expect(screen.getByText(/Pago trimestral/i)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Editar pago' })).not.toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: 'Anular pago' })).not.toHaveLength(0);
   });
 
   it('renders a compact platform selector on mobile', async () => {

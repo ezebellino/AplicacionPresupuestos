@@ -434,7 +434,7 @@ describe('DashboardPage', () => {
     expect(screen.getAllByText('Aceptado').length).toBeGreaterThan(0);
   });
 
-  it('opens a client service history from the clients table', async () => {
+  it('opens the client record on the services subsection from the clients table', async () => {
     const user = userEvent.setup();
 
     render(<DashboardPage onLogout={vi.fn()} />);
@@ -444,9 +444,13 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Historial' }));
 
-    expect(await screen.findByText('Historial de Acme Clima')).toBeInTheDocument();
-    expect(screen.getAllByText('Instalacion').length).toBeGreaterThan(0);
-    expect(screen.getByText('Mantenimiento preventivo')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ficha de Acme Clima' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('tablist', { name: 'Navegacion de ficha del cliente' })).getByRole('button', {
+        name: 'Servicios',
+      }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText('Mantenimiento preventivo')).toBeInTheDocument();
   });
 
   it('shows treasury metrics from accepted quotes', async () => {
@@ -783,13 +787,16 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: 'Desinstalación' })).toBeInTheDocument();
   });
 
-  it('shows client actions without relying on a clipped table column', async () => {
+  it('shows the reorganized clients workspace with list and record entrypoints', async () => {
     const user = userEvent.setup();
 
     render(<DashboardPage onLogout={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: 'Clientes' }));
 
+    expect(await screen.findByRole('button', { name: 'Nuevo cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Listado' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ficha' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Editar' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Historial' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Eliminar' })).toBeInTheDocument();

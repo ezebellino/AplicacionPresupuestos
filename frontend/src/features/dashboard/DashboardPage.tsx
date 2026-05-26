@@ -32,6 +32,8 @@ type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' 
 type PlatformSection = 'overview' | 'signups' | 'changes' | 'memberships';
 type CompanySection = 'data' | 'billing' | 'preview';
 type QuoteSection = 'list' | 'editor';
+type ClientSection = 'list' | 'record';
+type ClientRecordSection = 'data' | 'services' | 'quotes';
 type MembershipFilter = 'all' | 'expired' | 'due_soon' | 'active';
 
 type PlatformNotification =
@@ -341,6 +343,31 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
+  const handleQuickClientCreate = async (payload: Pick<ClientPayload, 'name' | 'phone' | 'address'>) => {
+    setIsSaving(true);
+
+    try {
+      const createdClient = await apiClient.createClient(payload);
+      setClientForm(emptyClientForm);
+      setEditingClientId(null);
+      setSelectedClientId(createdClient.id);
+      setClientServiceRecords([]);
+      await loadWorkspace();
+      showSuccessToast('Cliente creado');
+      return createdClient;
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo crear el cliente',
+        text: 'Revisa nombre, telefono y direccion antes de intentar nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleCostSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -391,6 +418,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
   const editClient = (client: Client) => {
     setEditingClientId(client.id);
+    setSelectedClientId(client.id);
     setClientForm({
       name: client.name,
       document: client.document ?? '',
@@ -1118,6 +1146,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           <ClientsView
             clients={clients}
             form={clientForm}
+            isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             editingClientId={editingClientId}
             selectedClientId={selectedClientId}
@@ -1132,6 +1161,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onEdit={editClient}
             onFormChange={setClientForm}
             onHistory={openClientHistory}
+            onQuickCreate={handleQuickClientCreate}
             onServiceFormChange={setServiceRecordForm}
             onServiceSubmit={handleServiceRecordSubmit}
             onSubmit={handleClientSubmit}
@@ -1474,6 +1504,7 @@ function ClientsView({
   clients,
   editingClientId,
   form,
+  isCompactLayout,
   isSaving,
   quotes,
   selectedClientId,
@@ -1483,6 +1514,7 @@ function ClientsView({
   onDelete,
   onEdit,
   onHistory,
+  onQuickCreate,
   onFormChange,
   onServiceFormChange,
   onServiceSubmit,
@@ -1491,6 +1523,7 @@ function ClientsView({
   clients: Client[];
   editingClientId: string | null;
   form: ClientForm;
+  isCompactLayout: boolean;
   isSaving: boolean;
   quotes: Quote[];
   selectedClientId: string | null;
@@ -1499,13 +1532,25 @@ function ClientsView({
   onCancel: () => void;
   onDelete: (client: Client) => void;
   onEdit: (client: Client) => void;
-  onHistory: (client: Client) => void;
+  onHistory: (client: Client) => Promise<void>;
+  onQuickCreate: (payload: Pick<ClientPayload, 'name' | 'phone' | 'address'>) => Promise<Client | null>;
   onFormChange: (form: ClientForm) => void;
   onServiceFormChange: (form: ServiceRecordForm) => void;
   onServiceSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const [activeSection, setActiveSection] = useState<ClientSection>('list');
+  const [activeRecordSection, setActiveRecordSection] = useState<ClientRecordSection>('data');
   const [search, setSearch] = useState('');
+  const clientSections = [
+    { id: 'list' as const, label: 'Listado' },
+    { id: 'record' as const, label: 'Ficha' },
+  ];
+  const recordSections = [
+    { id: 'data' as const, label: 'Datos' },
+    { id: 'services' as const, label: 'Servicios' },
+    { id: 'quotes' as const, label: 'Presupuestos' },
+  ];
   const filteredClients = clients.filter((client) =>
     matchesSearch(
       [client.name, client.document, client.email, client.phone, client.address],
@@ -1518,178 +1563,159 @@ function ClientsView({
         .filter((quote) => quote.client_id === selectedClient.id)
         .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     : [];
+  const openClientRecord = async (client: Client, section: ClientRecordSection = 'data') => {
+    setActiveRecordSection(section);
+    setActiveSection('record');
+    await onHistory(client);
+  };
+  const handleQuickCreate = async () => {
+    const result = await Swal.fire({
+      title: 'Nuevo cliente',
+      html: `
+        <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+          <span>Nombre</span>
+          <input id="client-name" class="swal2-input" style="margin:0;" />
+        </label>
+        <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+          <span>Telefono</span>
+          <input id="client-phone" class="swal2-input" style="margin:0;" />
+        </label>
+        <label style="display:grid;gap:6px;text-align:left;">
+          <span>Direccion</span>
+          <input id="client-address" class="swal2-input" style="margin:0;" />
+        </label>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Crear cliente',
+      cancelButtonText: 'Cancelar',
+      preConfirm: () => {
+        const nameValue = (document.getElementById('client-name') as HTMLInputElement | null)?.value.trim() ?? '';
+        const phoneValue = (document.getElementById('client-phone') as HTMLInputElement | null)?.value.trim() ?? '';
+        const addressValue =
+          (document.getElementById('client-address') as HTMLInputElement | null)?.value.trim() ?? '';
+
+        if (!nameValue || !phoneValue || !addressValue) {
+          Swal.showValidationMessage('Completa nombre, telefono y direccion.');
+          return undefined;
+        }
+
+        return {
+          address: addressValue,
+          name: nameValue,
+          phone: phoneValue,
+        };
+      },
+    });
+
+    if (!result.isConfirmed || !result.value) {
+      return;
+    }
+
+    const createdClient = await onQuickCreate(result.value);
+    if (!createdClient) {
+      return;
+    }
+
+    setActiveRecordSection('data');
+    setActiveSection('record');
+  };
 
   return (
-    <section style={styles.workspaceGrid}>
-      <div style={styles.sideStack}>
-        <form onSubmit={onSubmit} style={styles.formPanel}>
-          <h2 style={styles.panelTitle}>{editingClientId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
-          <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
-          <Field label="CUIT/DNI" value={form.document} onChange={(document) => onFormChange({ ...form, document })} />
-          <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
-          <Field label="Telefono" required value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
-          <Field label="Direccion" required value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
-          <label style={styles.label}>
-            Notas
-            <textarea
-              onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
-              rows={3}
-              style={styles.textarea}
-              value={form.notes}
-            />
-          </label>
-          <div style={styles.actions}>
-            <button disabled={isSaving} style={styles.primaryButton} type="submit">
-              {editingClientId ? 'Guardar cambios' : 'Crear cliente'}
-            </button>
-            {editingClientId ? (
-              <button onClick={onCancel} style={styles.secondaryButton} type="button">
-                Cancelar
-              </button>
-            ) : null}
-          </div>
-        </form>
-
-        {selectedClient ? (
-          <section style={styles.formPanel} aria-labelledby="client-history-title">
-            <h2 id="client-history-title" style={styles.panelTitle}>
-              Historial de {selectedClient.name}
-            </h2>
-            <div style={styles.historyBlock}>
-              <div>
-                <strong>Presupuestos</strong>
-                <p style={styles.panelSubtitle}>Todas las veces que se presupuestaron trabajos para este cliente.</p>
-              </div>
-              {selectedClientQuotes.length === 0 ? (
-                <p style={styles.compactEmpty}>Todavia no hay presupuestos para este cliente.</p>
-              ) : (
-                <div style={styles.serviceList}>
-                  {selectedClientQuotes.map((quote) => (
-                    <article key={quote.id} style={styles.historyQuoteRecord}>
-                      <div style={styles.historyRecordHeader}>
-                        <div>
-                          <strong>{quote.title || quote.number}</strong>
-                          <p style={styles.panelSubtitle}>
-                            {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
-                          </p>
-                        </div>
-                        <StatusBadge status={quote.status} />
-                      </div>
-                      {quote.items.length > 0 ? (
-                        <p style={styles.serviceDescription}>
-                          {quote.items.map((item) => item.name).join(', ')}
-                        </p>
-                      ) : (
-                        <p style={styles.serviceDescription}>Presupuesto sin items cargados.</p>
-                      )}
-                      <strong>{formatMoney(quote.total)}</strong>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={styles.historyBlock}>
-              <div>
-                <strong>Servicios realizados</strong>
-                <p style={styles.panelSubtitle}>Registro manual para trabajos ya ejecutados o novedades operativas.</p>
-              </div>
-            <form onSubmit={onServiceSubmit} style={styles.serviceForm}>
-              <Field
-                label="Fecha"
-                required
-                type="date"
-                value={serviceRecordForm.performed_at}
-                onChange={(performedAt) =>
-                  onServiceFormChange({ ...serviceRecordForm, performed_at: performedAt })
-                }
-              />
-              <Field
-                label="Servicio"
-                required
-                value={serviceRecordForm.title}
-                onChange={(title) => onServiceFormChange({ ...serviceRecordForm, title })}
-              />
-              <Field
-                label="Importe"
-                min="0"
-                step="0.01"
-                type="number"
-                value={serviceRecordForm.amount}
-                onChange={(amount) => onServiceFormChange({ ...serviceRecordForm, amount })}
-              />
-              <label style={styles.label}>
-                Detalle
-                <textarea
-                  onChange={(event) =>
-                    onServiceFormChange({ ...serviceRecordForm, description: event.target.value })
-                  }
-                  rows={3}
-                  style={styles.textarea}
-                  value={serviceRecordForm.description}
-                />
-              </label>
-              <button disabled={isSaving} style={styles.primaryButton} type="submit">
-                Agregar servicio
-              </button>
-            </form>
-            {serviceRecords.length === 0 ? (
-              <p style={styles.compactEmpty}>Todavia no hay servicios registrados.</p>
-            ) : (
-              <div style={styles.serviceList}>
-                {serviceRecords.map((record) => (
-                  <article key={record.id} style={styles.serviceRecord}>
-                    <div>
-                      <strong>{record.title}</strong>
-                      <p style={styles.panelSubtitle}>{formatDate(record.performed_at)}</p>
-                    </div>
-                    {record.amount ? <span>{formatMoney(record.amount)}</span> : null}
-                    {record.description ? <p style={styles.serviceDescription}>{record.description}</p> : null}
-                  </article>
+    <section style={styles.companyWorkspace}>
+      <div style={styles.companyWorkspaceHeader}>
+        <div>
+          <h2 style={styles.panelTitle}>Clientes</h2>
+          <p style={styles.panelSubtitle}>Alta rapida, seguimiento y relacion completa de cada cliente en una sola ficha.</p>
+        </div>
+        <div style={styles.actions}>
+          <button disabled={isSaving} onClick={() => void handleQuickCreate()} style={styles.primaryButton} type="button">
+            Nuevo cliente
+          </button>
+          {isCompactLayout ? (
+            <label style={styles.platformSelectField}>
+              <span style={styles.labelCaption}>Seccion de clientes</span>
+              <select
+                aria-label="Seccion de clientes"
+                onChange={(event) => setActiveSection(event.target.value as ClientSection)}
+                style={styles.select}
+                value={activeSection}
+              >
+                {clientSections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
+                  </option>
                 ))}
-              </div>
-            )}
+              </select>
+            </label>
+          ) : (
+            <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de clientes">
+              {clientSections.map((section) => (
+                <button
+                  aria-pressed={activeSection === section.id}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
             </div>
-          </section>
-        ) : null}
+          )}
+        </div>
       </div>
 
-      <section style={styles.tablePanel} aria-labelledby="clients-title">
-        <div style={styles.panelHeader}>
-          <h2 id="clients-title" style={styles.panelTitle}>
-            Clientes
-          </h2>
-        </div>
-        <div style={styles.filterBar}>
-          <label style={styles.compactLabel}>
-            Buscar
-            <input
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Nombre, documento o contacto"
-              style={styles.searchInput}
-              value={search}
-            />
-          </label>
-        </div>
-        {clients.length === 0 ? (
-          <p style={styles.emptyState}>Todavia no hay clientes cargados.</p>
-        ) : filteredClients.length === 0 ? (
-          <p style={styles.emptyState}>No hay clientes que coincidan con la busqueda.</p>
-        ) : (
-          <div style={styles.clientList}>
-            {filteredClients.map((client) => (
-              <article key={client.id} style={styles.clientRow}>
-                <div style={styles.clientIdentity}>
-                  <strong>{client.name}</strong>
-                  <span style={styles.mutedText}>{client.document || 'Sin documento'}</span>
-                </div>
-                <div style={styles.clientContact}>
-                  <span>{client.email || client.phone || 'Sin contacto'}</span>
-                  {client.address ? <span style={styles.mutedText}>{client.address}</span> : null}
-                </div>
-                <div style={styles.clientActions}>
+      {activeSection === 'list' ? (
+        <section style={styles.tablePanel} aria-labelledby="clients-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="clients-title" style={styles.panelTitle}>
+                Listado
+              </h2>
+              <p style={styles.panelSubtitle}>Busca, abre la ficha o ejecuta acciones rapidas sobre cada cliente.</p>
+            </div>
+          </div>
+          <div style={styles.filterBar}>
+            <label style={styles.compactLabel}>
+              Buscar
+              <input
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nombre, documento o contacto"
+                style={styles.searchInput}
+                value={search}
+              />
+            </label>
+          </div>
+          {clients.length === 0 ? (
+            <p style={styles.emptyState}>Todavia no hay clientes cargados.</p>
+          ) : filteredClients.length === 0 ? (
+            <p style={styles.emptyState}>No hay clientes que coincidan con la busqueda.</p>
+          ) : (
+            <div style={styles.clientList}>
+              {filteredClients.map((client) => (
+                <article key={client.id} style={styles.clientRow}>
+                  <button
+                    onClick={() => void openClientRecord(client, 'data')}
+                    style={styles.clientRowButton}
+                    type="button"
+                  >
+                    <div style={styles.clientIdentity}>
+                      <strong>{client.name}</strong>
+                      <span style={styles.mutedText}>{client.document || 'Sin documento'}</span>
+                    </div>
+                    <div style={styles.clientContact}>
+                      <span>{client.phone || client.email || 'Sin contacto'}</span>
+                      <span style={styles.mutedText}>{client.email || client.address || 'Sin direccion cargada'}</span>
+                    </div>
+                  </button>
+                  <div style={styles.clientActions}>
                     <button
                       aria-label="Editar"
-                      onClick={() => onEdit(client)}
+                      onClick={() => {
+                        void openClientRecord(client, 'data');
+                        onEdit(client);
+                      }}
                       style={styles.iconActionButton}
                       title="Editar"
                       type="button"
@@ -1698,7 +1724,7 @@ function ClientsView({
                     </button>
                     <button
                       aria-label="Historial"
-                      onClick={() => onHistory(client)}
+                      onClick={() => void openClientRecord(client, 'services')}
                       style={styles.iconActionButton}
                       title="Historial"
                       type="button"
@@ -1714,12 +1740,239 @@ function ClientsView({
                     >
                       <Trash2 aria-hidden="true" size={15} strokeWidth={2.2} />
                     </button>
-                </div>
-              </article>
-            ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {activeSection === 'record' ? (
+        <section style={styles.tablePanel} aria-labelledby="client-record-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="client-record-title" style={styles.panelTitle}>
+                {selectedClient ? `Ficha de ${selectedClient.name}` : 'Ficha del cliente'}
+              </h2>
+              <p style={styles.panelSubtitle}>
+                {selectedClient
+                  ? 'Consulta datos, servicios y presupuestos del cliente seleccionado.'
+                  : 'Selecciona un cliente desde el listado o crea uno nuevo para continuar.'}
+              </p>
+            </div>
           </div>
-        )}
-      </section>
+          {!selectedClient ? (
+            <p style={styles.emptyState}>Selecciona un cliente desde el listado para abrir su ficha.</p>
+          ) : (
+            <div style={styles.clientRecordShell}>
+              {isCompactLayout ? (
+                <label style={styles.platformSelectField}>
+                  <span style={styles.labelCaption}>Seccion de ficha</span>
+                  <select
+                    aria-label="Seccion de ficha"
+                    onChange={(event) => setActiveRecordSection(event.target.value as ClientRecordSection)}
+                    style={styles.select}
+                    value={activeRecordSection}
+                  >
+                    {recordSections.map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de ficha del cliente">
+                  {recordSections.map((section) => (
+                    <button
+                      aria-pressed={activeRecordSection === section.id}
+                      key={section.id}
+                      onClick={() => setActiveRecordSection(section.id)}
+                      style={
+                        activeRecordSection === section.id
+                          ? styles.platformSectionButtonActive
+                          : styles.platformSectionButton
+                      }
+                      type="button"
+                    >
+                      {section.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {activeRecordSection === 'data' ? (
+                editingClientId === selectedClient.id ? (
+                  <form onSubmit={onSubmit} style={styles.formPanel}>
+                    <h3 style={styles.compactTitle}>Editar cliente</h3>
+                    <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
+                    <Field label="CUIT/DNI" value={form.document} onChange={(document) => onFormChange({ ...form, document })} />
+                    <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
+                    <Field label="Telefono" required value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
+                    <Field label="Direccion" required value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
+                    <label style={styles.label}>
+                      Notas
+                      <textarea
+                        onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
+                        rows={3}
+                        style={styles.textarea}
+                        value={form.notes}
+                      />
+                    </label>
+                    <div style={styles.actions}>
+                      <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                        Guardar cambios
+                      </button>
+                      <button onClick={onCancel} style={styles.secondaryButton} type="button">
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <section style={styles.quoteEditorSection}>
+                    <article style={styles.quoteEditorBlock}>
+                      <div style={styles.panelHeaderCompact}>
+                        <div>
+                          <h3 style={styles.compactTitle}>Datos</h3>
+                          <p style={styles.helperText}>Identidad y contacto principal del cliente.</p>
+                        </div>
+                        <button onClick={() => onEdit(selectedClient)} style={styles.secondaryButton} type="button">
+                          Editar cliente
+                        </button>
+                      </div>
+                      <div style={styles.quoteSummaryGrid}>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Nombre</span>
+                          <strong>{selectedClient.name}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Telefono</span>
+                          <strong>{selectedClient.phone || 'Sin telefono'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Direccion</span>
+                          <strong>{selectedClient.address || 'Sin direccion'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Email</span>
+                          <strong>{selectedClient.email || 'Sin email'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Documento</span>
+                          <strong>{selectedClient.document || 'Sin documento'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Notas</span>
+                          <strong>{selectedClient.notes || 'Sin notas operativas'}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  </section>
+                )
+              ) : null}
+
+              {activeRecordSection === 'services' ? (
+                <section style={styles.quoteEditorSection}>
+                  <article style={styles.quoteEditorBlock}>
+                    <div>
+                      <h3 style={styles.compactTitle}>Servicios realizados</h3>
+                      <p style={styles.helperText}>Registro manual para trabajos ya ejecutados o novedades operativas.</p>
+                    </div>
+                    <form onSubmit={onServiceSubmit} style={styles.serviceForm}>
+                      <Field
+                        label="Fecha"
+                        required
+                        type="date"
+                        value={serviceRecordForm.performed_at}
+                        onChange={(performedAt) => onServiceFormChange({ ...serviceRecordForm, performed_at: performedAt })}
+                      />
+                      <Field
+                        label="Servicio"
+                        required
+                        value={serviceRecordForm.title}
+                        onChange={(title) => onServiceFormChange({ ...serviceRecordForm, title })}
+                      />
+                      <Field
+                        label="Importe"
+                        min="0"
+                        step="0.01"
+                        type="number"
+                        value={serviceRecordForm.amount}
+                        onChange={(amount) => onServiceFormChange({ ...serviceRecordForm, amount })}
+                      />
+                      <label style={styles.label}>
+                        Detalle
+                        <textarea
+                          onChange={(event) => onServiceFormChange({ ...serviceRecordForm, description: event.target.value })}
+                          rows={3}
+                          style={styles.textarea}
+                          value={serviceRecordForm.description}
+                        />
+                      </label>
+                      <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                        Agregar servicio
+                      </button>
+                    </form>
+                    {serviceRecords.length === 0 ? (
+                      <p style={styles.compactEmpty}>Todavia no hay servicios registrados.</p>
+                    ) : (
+                      <div style={styles.serviceList}>
+                        {serviceRecords.map((record) => (
+                          <article key={record.id} style={styles.serviceRecord}>
+                            <div>
+                              <strong>{record.title}</strong>
+                              <p style={styles.panelSubtitle}>{formatDate(record.performed_at)}</p>
+                            </div>
+                            {record.amount ? <span>{formatMoney(record.amount)}</span> : null}
+                            {record.description ? <p style={styles.serviceDescription}>{record.description}</p> : null}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                </section>
+              ) : null}
+
+              {activeRecordSection === 'quotes' ? (
+                <section style={styles.quoteEditorSection}>
+                  <article style={styles.quoteEditorBlock}>
+                    <div>
+                      <h3 style={styles.compactTitle}>Presupuestos</h3>
+                      <p style={styles.helperText}>Todas las veces que se presupuestaron trabajos para este cliente.</p>
+                    </div>
+                    {selectedClientQuotes.length === 0 ? (
+                      <p style={styles.compactEmpty}>Todavia no hay presupuestos para este cliente.</p>
+                    ) : (
+                      <div style={styles.serviceList}>
+                        {selectedClientQuotes.map((quote) => (
+                          <article key={quote.id} style={styles.historyQuoteRecord}>
+                            <div style={styles.historyRecordHeader}>
+                              <div>
+                                <strong>{quote.title || quote.number}</strong>
+                                <p style={styles.panelSubtitle}>
+                                  {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
+                                </p>
+                              </div>
+                              <StatusBadge status={quote.status} />
+                            </div>
+                            {quote.items.length > 0 ? (
+                              <p style={styles.serviceDescription}>{quote.items.map((item) => item.name).join(', ')}</p>
+                            ) : (
+                              <p style={styles.serviceDescription}>Presupuesto sin items cargados.</p>
+                            )}
+                            <strong>{formatMoney(quote.total)}</strong>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                </section>
+              ) : null}
+            </div>
+          )}
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -5365,6 +5618,19 @@ const styles = {
     gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.2fr) auto',
     padding: '12px 14px',
   },
+  clientRowButton: {
+    alignItems: 'center',
+    background: 'transparent',
+    border: 0,
+    color: 'var(--text)',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.2fr)',
+    minWidth: 0,
+    padding: 0,
+    textAlign: 'left',
+  },
   clientIdentity: {
     display: 'grid',
     gap: '4px',
@@ -5382,6 +5648,11 @@ const styles = {
     flexWrap: 'wrap',
     gap: '10px',
     justifyContent: 'flex-end',
+  },
+  clientRecordShell: {
+    display: 'grid',
+    gap: '16px',
+    padding: '16px 20px 20px',
   },
   compactEmpty: {
     color: 'var(--muted)',

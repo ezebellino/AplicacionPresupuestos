@@ -30,6 +30,10 @@ type DashboardPageProps = {
 
 type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' | 'platform';
 type PlatformSection = 'overview' | 'signups' | 'changes' | 'memberships';
+type CompanySection = 'data' | 'billing' | 'preview';
+type QuoteSection = 'list' | 'editor';
+type ClientSection = 'list' | 'record';
+type ClientRecordSection = 'data' | 'services' | 'quotes';
 type MembershipFilter = 'all' | 'expired' | 'due_soon' | 'active';
 
 type PlatformNotification =
@@ -339,6 +343,31 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
+  const handleQuickClientCreate = async (payload: Pick<ClientPayload, 'name' | 'phone' | 'address'>) => {
+    setIsSaving(true);
+
+    try {
+      const createdClient = await apiClient.createClient(payload);
+      setClientForm(emptyClientForm);
+      setEditingClientId(null);
+      setSelectedClientId(createdClient.id);
+      setClientServiceRecords([]);
+      await loadWorkspace();
+      showSuccessToast('Cliente creado');
+      return createdClient;
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo crear el cliente',
+        text: 'Revisa nombre, telefono y direccion antes de intentar nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleCostSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -389,6 +418,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
   const editClient = (client: Client) => {
     setEditingClientId(client.id);
+    setSelectedClientId(client.id);
     setClientForm({
       name: client.name,
       document: client.document ?? '',
@@ -1116,6 +1146,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           <ClientsView
             clients={clients}
             form={clientForm}
+            isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             editingClientId={editingClientId}
             selectedClientId={selectedClientId}
@@ -1130,6 +1161,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onEdit={editClient}
             onFormChange={setClientForm}
             onHistory={openClientHistory}
+            onQuickCreate={handleQuickClientCreate}
             onServiceFormChange={setServiceRecordForm}
             onServiceSubmit={handleServiceRecordSubmit}
             onSubmit={handleClientSubmit}
@@ -1159,6 +1191,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             clients={clients}
             costItems={costItems}
             form={quoteForm}
+            isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             onAddCostItem={addQuoteItemFromCatalog}
             onDeleteItem={deleteQuoteItem}
@@ -1184,6 +1217,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         {activeView === 'company' ? (
           <CompanyProfileView
             form={companyProfileForm}
+            isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             legalChangeForm={tenantLegalChangeForm}
             mode={currentUser?.role === 'platform_admin' ? 'platform' : 'tenant'}
@@ -1470,6 +1504,7 @@ function ClientsView({
   clients,
   editingClientId,
   form,
+  isCompactLayout,
   isSaving,
   quotes,
   selectedClientId,
@@ -1479,6 +1514,7 @@ function ClientsView({
   onDelete,
   onEdit,
   onHistory,
+  onQuickCreate,
   onFormChange,
   onServiceFormChange,
   onServiceSubmit,
@@ -1487,6 +1523,7 @@ function ClientsView({
   clients: Client[];
   editingClientId: string | null;
   form: ClientForm;
+  isCompactLayout: boolean;
   isSaving: boolean;
   quotes: Quote[];
   selectedClientId: string | null;
@@ -1495,13 +1532,25 @@ function ClientsView({
   onCancel: () => void;
   onDelete: (client: Client) => void;
   onEdit: (client: Client) => void;
-  onHistory: (client: Client) => void;
+  onHistory: (client: Client) => Promise<void>;
+  onQuickCreate: (payload: Pick<ClientPayload, 'name' | 'phone' | 'address'>) => Promise<Client | null>;
   onFormChange: (form: ClientForm) => void;
   onServiceFormChange: (form: ServiceRecordForm) => void;
   onServiceSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const [activeSection, setActiveSection] = useState<ClientSection>('list');
+  const [activeRecordSection, setActiveRecordSection] = useState<ClientRecordSection>('data');
   const [search, setSearch] = useState('');
+  const clientSections = [
+    { id: 'list' as const, label: 'Listado' },
+    { id: 'record' as const, label: 'Ficha' },
+  ];
+  const recordSections = [
+    { id: 'data' as const, label: 'Datos' },
+    { id: 'services' as const, label: 'Servicios' },
+    { id: 'quotes' as const, label: 'Presupuestos' },
+  ];
   const filteredClients = clients.filter((client) =>
     matchesSearch(
       [client.name, client.document, client.email, client.phone, client.address],
@@ -1514,178 +1563,159 @@ function ClientsView({
         .filter((quote) => quote.client_id === selectedClient.id)
         .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     : [];
+  const openClientRecord = async (client: Client, section: ClientRecordSection = 'data') => {
+    setActiveRecordSection(section);
+    setActiveSection('record');
+    await onHistory(client);
+  };
+  const handleQuickCreate = async () => {
+    const result = await Swal.fire({
+      title: 'Nuevo cliente',
+      html: `
+        <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+          <span>Nombre</span>
+          <input id="client-name" class="swal2-input" style="margin:0;" />
+        </label>
+        <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
+          <span>Telefono</span>
+          <input id="client-phone" class="swal2-input" style="margin:0;" />
+        </label>
+        <label style="display:grid;gap:6px;text-align:left;">
+          <span>Direccion</span>
+          <input id="client-address" class="swal2-input" style="margin:0;" />
+        </label>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Crear cliente',
+      cancelButtonText: 'Cancelar',
+      preConfirm: () => {
+        const nameValue = (document.getElementById('client-name') as HTMLInputElement | null)?.value.trim() ?? '';
+        const phoneValue = (document.getElementById('client-phone') as HTMLInputElement | null)?.value.trim() ?? '';
+        const addressValue =
+          (document.getElementById('client-address') as HTMLInputElement | null)?.value.trim() ?? '';
+
+        if (!nameValue || !phoneValue || !addressValue) {
+          Swal.showValidationMessage('Completa nombre, telefono y direccion.');
+          return undefined;
+        }
+
+        return {
+          address: addressValue,
+          name: nameValue,
+          phone: phoneValue,
+        };
+      },
+    });
+
+    if (!result.isConfirmed || !result.value) {
+      return;
+    }
+
+    const createdClient = await onQuickCreate(result.value);
+    if (!createdClient) {
+      return;
+    }
+
+    setActiveRecordSection('data');
+    setActiveSection('record');
+  };
 
   return (
-    <section style={styles.workspaceGrid}>
-      <div style={styles.sideStack}>
-        <form onSubmit={onSubmit} style={styles.formPanel}>
-          <h2 style={styles.panelTitle}>{editingClientId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
-          <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
-          <Field label="CUIT/DNI" value={form.document} onChange={(document) => onFormChange({ ...form, document })} />
-          <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
-          <Field label="Telefono" required value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
-          <Field label="Direccion" required value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
-          <label style={styles.label}>
-            Notas
-            <textarea
-              onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
-              rows={3}
-              style={styles.textarea}
-              value={form.notes}
-            />
-          </label>
-          <div style={styles.actions}>
-            <button disabled={isSaving} style={styles.primaryButton} type="submit">
-              {editingClientId ? 'Guardar cambios' : 'Crear cliente'}
-            </button>
-            {editingClientId ? (
-              <button onClick={onCancel} style={styles.secondaryButton} type="button">
-                Cancelar
-              </button>
-            ) : null}
-          </div>
-        </form>
-
-        {selectedClient ? (
-          <section style={styles.formPanel} aria-labelledby="client-history-title">
-            <h2 id="client-history-title" style={styles.panelTitle}>
-              Historial de {selectedClient.name}
-            </h2>
-            <div style={styles.historyBlock}>
-              <div>
-                <strong>Presupuestos</strong>
-                <p style={styles.panelSubtitle}>Todas las veces que se presupuestaron trabajos para este cliente.</p>
-              </div>
-              {selectedClientQuotes.length === 0 ? (
-                <p style={styles.compactEmpty}>Todavia no hay presupuestos para este cliente.</p>
-              ) : (
-                <div style={styles.serviceList}>
-                  {selectedClientQuotes.map((quote) => (
-                    <article key={quote.id} style={styles.historyQuoteRecord}>
-                      <div style={styles.historyRecordHeader}>
-                        <div>
-                          <strong>{quote.title || quote.number}</strong>
-                          <p style={styles.panelSubtitle}>
-                            {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
-                          </p>
-                        </div>
-                        <StatusBadge status={quote.status} />
-                      </div>
-                      {quote.items.length > 0 ? (
-                        <p style={styles.serviceDescription}>
-                          {quote.items.map((item) => item.name).join(', ')}
-                        </p>
-                      ) : (
-                        <p style={styles.serviceDescription}>Presupuesto sin items cargados.</p>
-                      )}
-                      <strong>{formatMoney(quote.total)}</strong>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={styles.historyBlock}>
-              <div>
-                <strong>Servicios realizados</strong>
-                <p style={styles.panelSubtitle}>Registro manual para trabajos ya ejecutados o novedades operativas.</p>
-              </div>
-            <form onSubmit={onServiceSubmit} style={styles.serviceForm}>
-              <Field
-                label="Fecha"
-                required
-                type="date"
-                value={serviceRecordForm.performed_at}
-                onChange={(performedAt) =>
-                  onServiceFormChange({ ...serviceRecordForm, performed_at: performedAt })
-                }
-              />
-              <Field
-                label="Servicio"
-                required
-                value={serviceRecordForm.title}
-                onChange={(title) => onServiceFormChange({ ...serviceRecordForm, title })}
-              />
-              <Field
-                label="Importe"
-                min="0"
-                step="0.01"
-                type="number"
-                value={serviceRecordForm.amount}
-                onChange={(amount) => onServiceFormChange({ ...serviceRecordForm, amount })}
-              />
-              <label style={styles.label}>
-                Detalle
-                <textarea
-                  onChange={(event) =>
-                    onServiceFormChange({ ...serviceRecordForm, description: event.target.value })
-                  }
-                  rows={3}
-                  style={styles.textarea}
-                  value={serviceRecordForm.description}
-                />
-              </label>
-              <button disabled={isSaving} style={styles.primaryButton} type="submit">
-                Agregar servicio
-              </button>
-            </form>
-            {serviceRecords.length === 0 ? (
-              <p style={styles.compactEmpty}>Todavia no hay servicios registrados.</p>
-            ) : (
-              <div style={styles.serviceList}>
-                {serviceRecords.map((record) => (
-                  <article key={record.id} style={styles.serviceRecord}>
-                    <div>
-                      <strong>{record.title}</strong>
-                      <p style={styles.panelSubtitle}>{formatDate(record.performed_at)}</p>
-                    </div>
-                    {record.amount ? <span>{formatMoney(record.amount)}</span> : null}
-                    {record.description ? <p style={styles.serviceDescription}>{record.description}</p> : null}
-                  </article>
+    <section style={styles.companyWorkspace}>
+      <div style={styles.companyWorkspaceHeader}>
+        <div>
+          <h2 style={styles.panelTitle}>Clientes</h2>
+          <p style={styles.panelSubtitle}>Alta rapida, seguimiento y relacion completa de cada cliente en una sola ficha.</p>
+        </div>
+        <div style={styles.actions}>
+          <button disabled={isSaving} onClick={() => void handleQuickCreate()} style={styles.primaryButton} type="button">
+            Nuevo cliente
+          </button>
+          {isCompactLayout ? (
+            <label style={styles.platformSelectField}>
+              <span style={styles.labelCaption}>Seccion de clientes</span>
+              <select
+                aria-label="Seccion de clientes"
+                onChange={(event) => setActiveSection(event.target.value as ClientSection)}
+                style={styles.select}
+                value={activeSection}
+              >
+                {clientSections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
+                  </option>
                 ))}
-              </div>
-            )}
+              </select>
+            </label>
+          ) : (
+            <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de clientes">
+              {clientSections.map((section) => (
+                <button
+                  aria-pressed={activeSection === section.id}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
             </div>
-          </section>
-        ) : null}
+          )}
+        </div>
       </div>
 
-      <section style={styles.tablePanel} aria-labelledby="clients-title">
-        <div style={styles.panelHeader}>
-          <h2 id="clients-title" style={styles.panelTitle}>
-            Clientes
-          </h2>
-        </div>
-        <div style={styles.filterBar}>
-          <label style={styles.compactLabel}>
-            Buscar
-            <input
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Nombre, documento o contacto"
-              style={styles.searchInput}
-              value={search}
-            />
-          </label>
-        </div>
-        {clients.length === 0 ? (
-          <p style={styles.emptyState}>Todavia no hay clientes cargados.</p>
-        ) : filteredClients.length === 0 ? (
-          <p style={styles.emptyState}>No hay clientes que coincidan con la busqueda.</p>
-        ) : (
-          <div style={styles.clientList}>
-            {filteredClients.map((client) => (
-              <article key={client.id} style={styles.clientRow}>
-                <div style={styles.clientIdentity}>
-                  <strong>{client.name}</strong>
-                  <span style={styles.mutedText}>{client.document || 'Sin documento'}</span>
-                </div>
-                <div style={styles.clientContact}>
-                  <span>{client.email || client.phone || 'Sin contacto'}</span>
-                  {client.address ? <span style={styles.mutedText}>{client.address}</span> : null}
-                </div>
-                <div style={styles.clientActions}>
+      {activeSection === 'list' ? (
+        <section style={styles.tablePanel} aria-labelledby="clients-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="clients-title" style={styles.panelTitle}>
+                Listado
+              </h2>
+              <p style={styles.panelSubtitle}>Busca, abre la ficha o ejecuta acciones rapidas sobre cada cliente.</p>
+            </div>
+          </div>
+          <div style={styles.filterBar}>
+            <label style={styles.compactLabel}>
+              Buscar
+              <input
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nombre, documento o contacto"
+                style={styles.searchInput}
+                value={search}
+              />
+            </label>
+          </div>
+          {clients.length === 0 ? (
+            <p style={styles.emptyState}>Todavia no hay clientes cargados.</p>
+          ) : filteredClients.length === 0 ? (
+            <p style={styles.emptyState}>No hay clientes que coincidan con la busqueda.</p>
+          ) : (
+            <div style={styles.clientList}>
+              {filteredClients.map((client) => (
+                <article key={client.id} style={styles.clientRow}>
+                  <button
+                    onClick={() => void openClientRecord(client, 'data')}
+                    style={styles.clientRowButton}
+                    type="button"
+                  >
+                    <div style={styles.clientIdentity}>
+                      <strong>{client.name}</strong>
+                      <span style={styles.mutedText}>{client.document || 'Sin documento'}</span>
+                    </div>
+                    <div style={styles.clientContact}>
+                      <span>{client.phone || client.email || 'Sin contacto'}</span>
+                      <span style={styles.mutedText}>{client.email || client.address || 'Sin direccion cargada'}</span>
+                    </div>
+                  </button>
+                  <div style={styles.clientActions}>
                     <button
                       aria-label="Editar"
-                      onClick={() => onEdit(client)}
+                      onClick={() => {
+                        void openClientRecord(client, 'data');
+                        onEdit(client);
+                      }}
                       style={styles.iconActionButton}
                       title="Editar"
                       type="button"
@@ -1694,7 +1724,7 @@ function ClientsView({
                     </button>
                     <button
                       aria-label="Historial"
-                      onClick={() => onHistory(client)}
+                      onClick={() => void openClientRecord(client, 'services')}
                       style={styles.iconActionButton}
                       title="Historial"
                       type="button"
@@ -1710,12 +1740,239 @@ function ClientsView({
                     >
                       <Trash2 aria-hidden="true" size={15} strokeWidth={2.2} />
                     </button>
-                </div>
-              </article>
-            ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {activeSection === 'record' ? (
+        <section style={styles.tablePanel} aria-labelledby="client-record-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="client-record-title" style={styles.panelTitle}>
+                {selectedClient ? `Ficha de ${selectedClient.name}` : 'Ficha del cliente'}
+              </h2>
+              <p style={styles.panelSubtitle}>
+                {selectedClient
+                  ? 'Consulta datos, servicios y presupuestos del cliente seleccionado.'
+                  : 'Selecciona un cliente desde el listado o crea uno nuevo para continuar.'}
+              </p>
+            </div>
           </div>
-        )}
-      </section>
+          {!selectedClient ? (
+            <p style={styles.emptyState}>Selecciona un cliente desde el listado para abrir su ficha.</p>
+          ) : (
+            <div style={styles.clientRecordShell}>
+              {isCompactLayout ? (
+                <label style={styles.platformSelectField}>
+                  <span style={styles.labelCaption}>Seccion de ficha</span>
+                  <select
+                    aria-label="Seccion de ficha"
+                    onChange={(event) => setActiveRecordSection(event.target.value as ClientRecordSection)}
+                    style={styles.select}
+                    value={activeRecordSection}
+                  >
+                    {recordSections.map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de ficha del cliente">
+                  {recordSections.map((section) => (
+                    <button
+                      aria-pressed={activeRecordSection === section.id}
+                      key={section.id}
+                      onClick={() => setActiveRecordSection(section.id)}
+                      style={
+                        activeRecordSection === section.id
+                          ? styles.platformSectionButtonActive
+                          : styles.platformSectionButton
+                      }
+                      type="button"
+                    >
+                      {section.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {activeRecordSection === 'data' ? (
+                editingClientId === selectedClient.id ? (
+                  <form onSubmit={onSubmit} style={styles.formPanel}>
+                    <h3 style={styles.compactTitle}>Editar cliente</h3>
+                    <Field label="Nombre" required value={form.name} onChange={(name) => onFormChange({ ...form, name })} />
+                    <Field label="CUIT/DNI" value={form.document} onChange={(document) => onFormChange({ ...form, document })} />
+                    <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
+                    <Field label="Telefono" required value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
+                    <Field label="Direccion" required value={form.address} onChange={(address) => onFormChange({ ...form, address })} />
+                    <label style={styles.label}>
+                      Notas
+                      <textarea
+                        onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
+                        rows={3}
+                        style={styles.textarea}
+                        value={form.notes}
+                      />
+                    </label>
+                    <div style={styles.actions}>
+                      <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                        Guardar cambios
+                      </button>
+                      <button onClick={onCancel} style={styles.secondaryButton} type="button">
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <section style={styles.quoteEditorSection}>
+                    <article style={styles.quoteEditorBlock}>
+                      <div style={styles.panelHeaderCompact}>
+                        <div>
+                          <h3 style={styles.compactTitle}>Datos</h3>
+                          <p style={styles.helperText}>Identidad y contacto principal del cliente.</p>
+                        </div>
+                        <button onClick={() => onEdit(selectedClient)} style={styles.secondaryButton} type="button">
+                          Editar cliente
+                        </button>
+                      </div>
+                      <div style={styles.quoteSummaryGrid}>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Nombre</span>
+                          <strong>{selectedClient.name}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Telefono</span>
+                          <strong>{selectedClient.phone || 'Sin telefono'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Direccion</span>
+                          <strong>{selectedClient.address || 'Sin direccion'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Email</span>
+                          <strong>{selectedClient.email || 'Sin email'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Documento</span>
+                          <strong>{selectedClient.document || 'Sin documento'}</strong>
+                        </div>
+                        <div style={styles.quoteSummaryCard}>
+                          <span style={styles.quoteSummaryLabel}>Notas</span>
+                          <strong>{selectedClient.notes || 'Sin notas operativas'}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  </section>
+                )
+              ) : null}
+
+              {activeRecordSection === 'services' ? (
+                <section style={styles.quoteEditorSection}>
+                  <article style={styles.quoteEditorBlock}>
+                    <div>
+                      <h3 style={styles.compactTitle}>Servicios realizados</h3>
+                      <p style={styles.helperText}>Registro manual para trabajos ya ejecutados o novedades operativas.</p>
+                    </div>
+                    <form onSubmit={onServiceSubmit} style={styles.serviceForm}>
+                      <Field
+                        label="Fecha"
+                        required
+                        type="date"
+                        value={serviceRecordForm.performed_at}
+                        onChange={(performedAt) => onServiceFormChange({ ...serviceRecordForm, performed_at: performedAt })}
+                      />
+                      <Field
+                        label="Servicio"
+                        required
+                        value={serviceRecordForm.title}
+                        onChange={(title) => onServiceFormChange({ ...serviceRecordForm, title })}
+                      />
+                      <Field
+                        label="Importe"
+                        min="0"
+                        step="0.01"
+                        type="number"
+                        value={serviceRecordForm.amount}
+                        onChange={(amount) => onServiceFormChange({ ...serviceRecordForm, amount })}
+                      />
+                      <label style={styles.label}>
+                        Detalle
+                        <textarea
+                          onChange={(event) => onServiceFormChange({ ...serviceRecordForm, description: event.target.value })}
+                          rows={3}
+                          style={styles.textarea}
+                          value={serviceRecordForm.description}
+                        />
+                      </label>
+                      <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                        Agregar servicio
+                      </button>
+                    </form>
+                    {serviceRecords.length === 0 ? (
+                      <p style={styles.compactEmpty}>Todavia no hay servicios registrados.</p>
+                    ) : (
+                      <div style={styles.serviceList}>
+                        {serviceRecords.map((record) => (
+                          <article key={record.id} style={styles.serviceRecord}>
+                            <div>
+                              <strong>{record.title}</strong>
+                              <p style={styles.panelSubtitle}>{formatDate(record.performed_at)}</p>
+                            </div>
+                            {record.amount ? <span>{formatMoney(record.amount)}</span> : null}
+                            {record.description ? <p style={styles.serviceDescription}>{record.description}</p> : null}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                </section>
+              ) : null}
+
+              {activeRecordSection === 'quotes' ? (
+                <section style={styles.quoteEditorSection}>
+                  <article style={styles.quoteEditorBlock}>
+                    <div>
+                      <h3 style={styles.compactTitle}>Presupuestos</h3>
+                      <p style={styles.helperText}>Todas las veces que se presupuestaron trabajos para este cliente.</p>
+                    </div>
+                    {selectedClientQuotes.length === 0 ? (
+                      <p style={styles.compactEmpty}>Todavia no hay presupuestos para este cliente.</p>
+                    ) : (
+                      <div style={styles.serviceList}>
+                        {selectedClientQuotes.map((quote) => (
+                          <article key={quote.id} style={styles.historyQuoteRecord}>
+                            <div style={styles.historyRecordHeader}>
+                              <div>
+                                <strong>{quote.title || quote.number}</strong>
+                                <p style={styles.panelSubtitle}>
+                                  {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
+                                </p>
+                              </div>
+                              <StatusBadge status={quote.status} />
+                            </div>
+                            {quote.items.length > 0 ? (
+                              <p style={styles.serviceDescription}>{quote.items.map((item) => item.name).join(', ')}</p>
+                            ) : (
+                              <p style={styles.serviceDescription}>Presupuesto sin items cargados.</p>
+                            )}
+                            <strong>{formatMoney(quote.total)}</strong>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                </section>
+              ) : null}
+            </div>
+          )}
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -1873,6 +2130,7 @@ function QuotesView({
   clients,
   costItems,
   form,
+  isCompactLayout,
   isSaving,
   onAddCostItem,
   onDeleteItem,
@@ -1887,6 +2145,7 @@ function QuotesView({
   clients: Client[];
   costItems: CostItem[];
   form: QuoteForm;
+  isCompactLayout: boolean;
   isSaving: boolean;
   onAddCostItem: (quote: Quote, item: CostItem) => void;
   onDeleteItem: (quote: Quote, itemId: string) => void;
@@ -1898,10 +2157,14 @@ function QuotesView({
   quotes: Quote[];
   selectedQuoteId: string | null;
 }) {
-  const [isQuoteFormOpen, setIsQuoteFormOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<QuoteSection>('list');
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
-  const filteredQuotes = quotes.filter((quote) => {
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const filteredQuotes = [...quotes]
+    .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
+    .filter((quote) => {
     const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
 
     return (
@@ -1917,74 +2180,86 @@ function QuotesView({
         search,
       )
     );
-  });
+    });
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
   const canEditSelected = selectedQuote?.status === 'draft';
+  const filteredCatalogItems = costItems.filter((item) =>
+    matchesSearch([item.name, item.description], catalogSearch),
+  );
+  const quoteSections: Array<{ id: QuoteSection; label: string }> = [
+    { id: 'list', label: `Listado (${filteredQuotes.length})` },
+    { id: 'editor', label: 'Editor' },
+  ];
   const handleCreateQuote = async (event: FormEvent<HTMLFormElement>) => {
     const wasCreated = await onSubmit(event);
 
     if (wasCreated) {
-      setIsQuoteFormOpen(false);
+      setIsCreatingNew(false);
+      setActiveSection('editor');
     }
+  };
+  const openNewQuoteEditor = () => {
+    onFormChange(emptyQuoteForm);
+    setIsCreatingNew(true);
+    setActiveSection('editor');
+  };
+  const openExistingQuote = (quoteId: string) => {
+    setIsCreatingNew(false);
+    onSelectQuote(quoteId);
+    setActiveSection('editor');
   };
 
   return (
-    <section style={styles.workspaceGrid}>
-      <div style={styles.sideStack}>
-        {isQuoteFormOpen ? (
-          <form onSubmit={handleCreateQuote} style={styles.formPanel}>
-            <div style={styles.panelHeaderCompact}>
-              <h2 style={styles.panelTitle}>Nuevo presupuesto</h2>
-              <button onClick={() => setIsQuoteFormOpen(false)} style={styles.linkButton} type="button">
-                Cerrar
-              </button>
-            </div>
-            <label style={styles.label}>
-              Cliente
+    <section style={styles.companyWorkspace}>
+      <div style={styles.companyWorkspaceHeader}>
+        <div>
+          <h2 style={styles.panelTitle}>Presupuestos</h2>
+          <p style={styles.panelSubtitle}>Gestiona borradores, emisiones y seguimiento desde un flujo mas claro.</p>
+        </div>
+        <div style={styles.actions}>
+          <button onClick={openNewQuoteEditor} style={styles.primaryButton} type="button">
+            Nuevo presupuesto
+          </button>
+          {isCompactLayout ? (
+            <label style={styles.platformSelectField}>
+              <span style={styles.labelCaption}>Seccion de presupuestos</span>
               <select
-                onChange={(event) => onFormChange({ ...form, client_id: event.target.value })}
-                required
-                style={styles.input}
-                value={form.client_id}
+                aria-label="Seccion de presupuestos"
+                onChange={(event) => setActiveSection(event.target.value as QuoteSection)}
+                style={styles.select}
+                value={activeSection}
               >
-                <option value="">Seleccionar cliente</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
+                {quoteSections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
                   </option>
                 ))}
               </select>
             </label>
-            <Field label="Titulo" value={form.title} onChange={(title) => onFormChange({ ...form, title })} />
-            <Field
-              label="Valido hasta"
-              type="date"
-              value={form.valid_until}
-              onChange={(validUntil) => onFormChange({ ...form, valid_until: validUntil })}
-            />
-            <label style={styles.label}>
-              Notas
-              <textarea
-                onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
-                rows={3}
-                style={styles.textarea}
-                value={form.notes}
-              />
-            </label>
-            <button disabled={isSaving || clients.length === 0} style={styles.primaryButton} type="submit">
-              Crear borrador
-            </button>
-          </form>
-        ) : null}
+          ) : (
+            <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de presupuestos">
+              {quoteSections.map((section) => (
+                <button
+                  aria-pressed={activeSection === section.id}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
+      {activeSection === 'list' ? (
         <section style={styles.tablePanel} aria-labelledby="quotes-title">
           <div style={styles.panelHeader}>
             <h2 id="quotes-title" style={styles.panelTitle}>
-              Presupuestos
+              Listado
             </h2>
-            <button onClick={() => setIsQuoteFormOpen(true)} style={styles.primaryButton} type="button">
-              Nuevo presupuesto
-            </button>
           </div>
           <div style={styles.quoteFilterBar}>
             <label style={styles.compactLabel}>
@@ -2025,152 +2300,272 @@ function QuotesView({
               {filteredQuotes.map((quote) => (
                 <button
                   key={quote.id}
-                  onClick={() => onSelectQuote(quote.id)}
+                  onClick={() => openExistingQuote(quote.id)}
                   style={quote.id === selectedQuoteId ? styles.quoteListActive : styles.quoteListButton}
                   type="button"
                 >
-                  <span style={styles.quoteRowMain}>
-                    <span style={styles.quoteNumber}>{quote.number}</span>
-                    <strong>{formatMoney(quote.total)}</strong>
-                  </span>
-                  <StatusBadge status={quote.status} />
+                  <div style={styles.quoteListCard}>
+                    <div style={styles.quoteRowMain}>
+                      <span style={styles.quoteNumber}>{quote.number}</span>
+                      <strong>{clientName(clients, quote.client_id)}</strong>
+                      <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
+                    </div>
+                    <div style={styles.quoteListAside}>
+                      <strong>{formatMoney(quote.total)}</strong>
+                      <span style={styles.mutedText}>{formatDate(quote.created_at)}</span>
+                      <StatusBadge status={quote.status} />
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
           )}
         </section>
-      </div>
+      ) : null}
 
-      <section style={styles.tablePanel} aria-labelledby="quote-detail-title">
-        <div style={styles.panelHeader}>
-          <div>
-            <h2 id="quote-detail-title" style={styles.panelTitle}>
-              {selectedQuote ? selectedQuote.number : 'Detalle'}
-            </h2>
+      {activeSection === 'editor' ? (
+        <section style={styles.tablePanel} aria-labelledby="quote-detail-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="quote-detail-title" style={styles.panelTitle}>
+                {selectedQuote ? selectedQuote.number : 'Editor de presupuesto'}
+              </h2>
+              <p style={styles.panelSubtitle}>
+                {selectedQuote
+                  ? 'Trabaja el presupuesto seleccionado en un unico flujo de lectura y edicion.'
+                  : 'Crea un borrador y continua cargando servicios sin salir del editor.'}
+              </p>
+            </div>
             {selectedQuote ? (
-              <div style={styles.detailMeta}>
-                <span>{clientName(clients, selectedQuote.client_id)}</span>
-                <StatusBadge status={selectedQuote.status} />
+              <div style={styles.actions}>
+                {selectedQuote.status === 'draft' ? (
+                  <button onClick={() => onTransition(selectedQuote, 'issue')} style={styles.primaryButton} type="button">
+                    Emitir
+                  </button>
+                ) : null}
+                {selectedQuote.status === 'issued' ? (
+                  <>
+                    <button onClick={() => onTransition(selectedQuote, 'accept')} style={styles.primaryButton} type="button">
+                      Aceptar
+                    </button>
+                    <button onClick={() => onTransition(selectedQuote, 'reject')} style={styles.secondaryButton} type="button">
+                      Rechazar
+                    </button>
+                  </>
+                ) : null}
+                <button onClick={() => onDownloadPdf(selectedQuote)} style={styles.secondaryButton} type="button">
+                  PDF
+                </button>
               </div>
             ) : null}
           </div>
-          {selectedQuote ? (
-            <div style={styles.actions}>
-              {selectedQuote.status === 'draft' ? (
-                <button onClick={() => onTransition(selectedQuote, 'issue')} style={styles.primaryButton} type="button">
-                  Emitir
-                </button>
-              ) : null}
-              {selectedQuote.status === 'issued' ? (
-                <>
-                  <button onClick={() => onTransition(selectedQuote, 'accept')} style={styles.primaryButton} type="button">
-                    Aceptar
-                  </button>
-                  <button onClick={() => onTransition(selectedQuote, 'reject')} style={styles.secondaryButton} type="button">
-                    Rechazar
-                  </button>
-                </>
-              ) : null}
-              <button onClick={() => onDownloadPdf(selectedQuote)} style={styles.secondaryButton} type="button">
-                PDF
-              </button>
-            </div>
-          ) : null}
-        </div>
 
-        {selectedQuote ? (
-          <>
-            <QuoteProgress quote={selectedQuote} />
-
-            {canEditSelected ? (
-              <section style={styles.catalogPicker} aria-label="Items de cobro">
+          {isCreatingNew || !selectedQuote ? (
+            <form onSubmit={handleCreateQuote} style={styles.quoteEditorSection}>
+              <section style={styles.quoteEditorBlock}>
                 <div>
-                  <h3 style={styles.compactTitle}>Items de cobro</h3>
-                  <p style={styles.helperText}>Hace click en un servicio para sumarlo al presupuesto.</p>
+                  <h3 style={styles.compactTitle}>Cliente</h3>
+                  <p style={styles.helperText}>Selecciona primero a quien va dirigido el presupuesto.</p>
                 </div>
-                {costItems.length === 0 ? (
-                  <p style={styles.emptyState}>Carga primero los servicios con su precio.</p>
-                ) : (
-                  <div style={styles.catalogGrid}>
-                    {costItems.map((item) => (
-                      <button
-                        disabled={isSaving}
-                        key={item.id}
-                        onClick={() => onAddCostItem(selectedQuote, item)}
-                        style={styles.catalogItemButton}
-                        type="button"
-                      >
-                        <span>
-                          <strong>{item.name}</strong>
-                          {item.description ? <small style={styles.catalogItemDescription}>{item.description}</small> : null}
-                        </span>
-                        <span style={styles.catalogItemPrice}>{formatMoney(item.unit_cost)}</span>
-                      </button>
+                <label style={styles.label}>
+                  Cliente
+                  <select
+                    onChange={(event) => onFormChange({ ...form, client_id: event.target.value })}
+                    required
+                    style={styles.input}
+                    value={form.client_id}
+                  >
+                    <option value="">Seleccionar cliente</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                      </option>
                     ))}
-                  </div>
-                )}
+                  </select>
+                </label>
               </section>
-            ) : null}
+              <section style={styles.quoteEditorBlock}>
+                <div>
+                  <h3 style={styles.compactTitle}>Datos del presupuesto</h3>
+                  <p style={styles.helperText}>Define titulo, vigencia y notas generales antes de emitir.</p>
+                </div>
+                <Field label="Titulo" value={form.title} onChange={(title) => onFormChange({ ...form, title })} />
+                <Field
+                  label="Valido hasta"
+                  type="date"
+                  value={form.valid_until}
+                  onChange={(validUntil) => onFormChange({ ...form, valid_until: validUntil })}
+                />
+                <label style={styles.label}>
+                  Notas
+                  <textarea
+                    onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
+                    rows={3}
+                    style={styles.textarea}
+                    value={form.notes}
+                  />
+                </label>
+              </section>
+              <section style={styles.quoteEditorBlock}>
+                <div>
+                  <h3 style={styles.compactTitle}>Totales y acciones</h3>
+                  <p style={styles.helperText}>Primero crea el borrador. Luego podras cargar servicios y emitirlo.</p>
+                </div>
+                <button disabled={isSaving || clients.length === 0} style={styles.primaryButton} type="submit">
+                  Crear borrador
+                </button>
+              </section>
+            </form>
+          ) : (
+            <>
+              <QuoteProgress quote={selectedQuote} />
+              <div style={styles.quoteEditorSection}>
+                <section style={styles.quoteEditorBlock}>
+                  <div>
+                    <h3 style={styles.compactTitle}>Cliente</h3>
+                    <p style={styles.helperText}>Empresa o cliente asociado al presupuesto actual.</p>
+                  </div>
+                  <div style={styles.quoteSummaryCard}>
+                    <strong>{clientName(clients, selectedQuote.client_id)}</strong>
+                    <div style={styles.detailMeta}>
+                      <span>{selectedQuote.title || 'Sin titulo'}</span>
+                      <StatusBadge status={selectedQuote.status} />
+                    </div>
+                  </div>
+                </section>
 
-            {selectedQuote.items.length === 0 ? (
-              <p style={styles.emptyState}>Agrega items desde el catalogo de servicios.</p>
-            ) : (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Item</th>
-                    <th style={styles.thRight}>Cant.</th>
-                    <th style={styles.thRight}>Unitario</th>
-                    <th style={styles.thRight}>IVA</th>
-                    <th style={styles.thRight}>Total</th>
-                    {canEditSelected ? <th style={styles.thRight}>Acciones</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedQuote.items.map((item) => (
-                    <tr key={item.id}>
-                      <td style={styles.td}>
-                        <strong>{item.name}</strong>
-                        {item.description ? (
-                          <>
-                            <br />
-                            <span style={styles.mutedText}>{item.description}</span>
-                          </>
-                        ) : null}
-                      </td>
-                      <td style={styles.tdRight}>{item.quantity}</td>
-                      <td style={styles.tdRight}>{formatMoney(item.unit_price)}</td>
-                      <td style={styles.tdRight}>{item.tax_rate}%</td>
-                      <td style={styles.tdRight}>{formatMoney(item.line_total)}</td>
-                      {canEditSelected ? (
-                        <td style={styles.tdRight}>
-                          <button onClick={() => onDeleteItem(selectedQuote, item.id)} style={styles.dangerButton} type="button">
-                            Quitar
+                <section style={styles.quoteEditorBlock}>
+                  <div>
+                    <h3 style={styles.compactTitle}>Datos del presupuesto</h3>
+                    <p style={styles.helperText}>Resumen operativo del presupuesto seleccionado.</p>
+                  </div>
+                  <div style={styles.quoteSummaryGrid}>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Numero</span>
+                      <strong>{selectedQuote.number}</strong>
+                    </div>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Fecha</span>
+                      <strong>{formatDate(selectedQuote.created_at)}</strong>
+                    </div>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Vigencia</span>
+                      <strong>{selectedQuote.valid_until ? formatDate(selectedQuote.valid_until) : 'Sin fecha'}</strong>
+                    </div>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Notas</span>
+                      <strong>{selectedQuote.notes || 'Sin notas'}</strong>
+                    </div>
+                  </div>
+                </section>
+
+                {canEditSelected ? (
+                  <section style={styles.quoteEditorBlock} aria-label="Items de cobro">
+                    <div>
+                      <h3 style={styles.compactTitle}>Items de cobro</h3>
+                      <p style={styles.helperText}>Agrega varios servicios seguidos sin salir del editor.</p>
+                    </div>
+                    <label style={styles.compactLabel}>
+                      Buscar servicio
+                      <input
+                        onChange={(event) => setCatalogSearch(event.target.value)}
+                        placeholder="Instalacion, mantenimiento o carga de gas"
+                        style={styles.searchInput}
+                        value={catalogSearch}
+                      />
+                    </label>
+                    {costItems.length === 0 ? (
+                      <p style={styles.emptyState}>Carga primero los servicios con su precio.</p>
+                    ) : filteredCatalogItems.length === 0 ? (
+                      <p style={styles.emptyState}>No hay servicios para esa busqueda.</p>
+                    ) : (
+                      <div style={styles.catalogGrid}>
+                        {filteredCatalogItems.map((item) => (
+                          <button
+                            disabled={isSaving}
+                            key={item.id}
+                            onClick={() => onAddCostItem(selectedQuote, item)}
+                            style={styles.catalogItemButton}
+                            type="button"
+                          >
+                            <span>
+                              <strong>{item.name}</strong>
+                              {item.description ? <small style={styles.catalogItemDescription}>{item.description}</small> : null}
+                            </span>
+                            <span style={styles.catalogItemPrice}>{formatMoney(item.unit_cost)}</span>
                           </button>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ) : null}
 
-            <div style={styles.totals}>
-              <span>Subtotal {formatMoney(selectedQuote.subtotal)}</span>
-              <span>IVA {formatMoney(selectedQuote.tax_total)}</span>
-              <strong>Total {formatMoney(selectedQuote.total)}</strong>
-            </div>
-          </>
-        ) : (
-          <p style={styles.emptyState}>Selecciona o crea un presupuesto para ver el detalle.</p>
-        )}
-      </section>
+                <section style={styles.quoteEditorBlock}>
+                  <div>
+                    <h3 style={styles.compactTitle}>Totales y acciones</h3>
+                    <p style={styles.helperText}>Revisa el detalle cargado y ejecuta solo las acciones validas para su estado.</p>
+                  </div>
+                  {selectedQuote.items.length === 0 ? (
+                    <p style={styles.emptyState}>Agrega items desde el catalogo de servicios.</p>
+                  ) : (
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={styles.th}>Item</th>
+                          <th style={styles.thRight}>Cant.</th>
+                          <th style={styles.thRight}>Unitario</th>
+                          <th style={styles.thRight}>IVA</th>
+                          <th style={styles.thRight}>Total</th>
+                          {canEditSelected ? <th style={styles.thRight}>Acciones</th> : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedQuote.items.map((item) => (
+                          <tr key={item.id}>
+                            <td style={styles.td}>
+                              <strong>{item.name}</strong>
+                              {item.description ? (
+                                <>
+                                  <br />
+                                  <span style={styles.mutedText}>{item.description}</span>
+                                </>
+                              ) : null}
+                            </td>
+                            <td style={styles.tdRight}>{item.quantity}</td>
+                            <td style={styles.tdRight}>{formatMoney(item.unit_price)}</td>
+                            <td style={styles.tdRight}>{item.tax_rate}%</td>
+                            <td style={styles.tdRight}>{formatMoney(item.line_total)}</td>
+                            {canEditSelected ? (
+                              <td style={styles.tdRight}>
+                                <button onClick={() => onDeleteItem(selectedQuote, item.id)} style={styles.dangerButton} type="button">
+                                  Quitar
+                                </button>
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  <div style={styles.totals}>
+                    <span>Subtotal {formatMoney(selectedQuote.subtotal)}</span>
+                    <span>IVA {formatMoney(selectedQuote.tax_total)}</span>
+                    <strong>Total {formatMoney(selectedQuote.total)}</strong>
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
     </section>
   );
 }
 
 function CompanyProfileView({
   form,
+  isCompactLayout,
   isSaving,
   legalChangeForm,
   mode,
@@ -2181,6 +2576,7 @@ function CompanyProfileView({
   requests,
 }: {
   form: CompanyProfileForm;
+  isCompactLayout: boolean;
   isSaving: boolean;
   legalChangeForm: TenantLegalChangeForm;
   mode: 'tenant' | 'platform';
@@ -2191,6 +2587,7 @@ function CompanyProfileView({
   requests: TenantChangeRequest[];
 }) {
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [activeSection, setActiveSection] = useState<CompanySection>('data');
   const hasLocalLogo = form.logo_url.startsWith('data:image/');
   const isPlatformProfile = mode === 'platform';
   const profileTitle = isPlatformProfile ? 'Perfil de plataforma' : 'Perfil de empresa';
@@ -2201,255 +2598,329 @@ function CompanyProfileView({
   const lockedPanelSubtitle = isPlatformProfile
     ? 'Configura la identidad visible de la plataforma para PDF, facturas y comunicaciones.'
     : 'Nombre, razon social y CUIT solo cambian con solicitud para evitar uso indebido de empresas.';
+  const companySections: Array<{ id: CompanySection; label: string }> = [
+    { id: 'data', label: 'Datos' },
+    { id: 'billing', label: 'Facturacion' },
+    { id: 'preview', label: 'Vista previa' },
+  ];
 
   return (
-    <section style={styles.profileGrid}>
-      <form onSubmit={onSubmit} style={styles.formPanel}>
+    <section style={styles.companyWorkspace}>
+      <div style={styles.companyWorkspaceHeader}>
         <div>
           <h2 style={styles.panelTitle}>{profileTitle}</h2>
           <p style={styles.panelSubtitle}>{profileSubtitle}</p>
         </div>
-        <section style={styles.lockedFiscalPanel}>
-          <div>
-            <strong>{lockedPanelTitle}</strong>
-            <p style={styles.panelSubtitle}>{lockedPanelSubtitle}</p>
-          </div>
-          <div style={styles.lockedFiscalGrid}>
-            <span>Empresa: {form.name || 'Sin cargar'}</span>
-            <span>Razon social: {form.legal_name || 'Sin cargar'}</span>
-            <span>CUIT: {form.tax_id || 'Sin cargar'}</span>
-          </div>
-        </section>
-        <Field
-          label="Direccion"
-          value={form.address}
-          onChange={(address) => onFormChange({ ...form, address })}
-        />
-        <section style={styles.formGridTwo}>
-          <Field label="Telefono" value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
-          <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
-        </section>
-        <section style={styles.formGridTwo}>
-          <Field label="Sitio web" value={form.website} onChange={(website) => onFormChange({ ...form, website })} />
-          <Field
-            label="IVA general"
-            min="0"
-            max="100"
-            step="0.01"
-            type="number"
-            value={form.default_tax_rate}
-            onChange={(defaultTaxRate) => onFormChange({ ...form, default_tax_rate: defaultTaxRate })}
-          />
-        </section>
-        <label style={styles.label}>
-          Logo
-          <div style={styles.actions}>
-            <button
-              onClick={() => logoInputRef.current?.click()}
-              style={styles.secondaryButton}
-              type="button"
+        {isCompactLayout ? (
+          <label style={styles.platformSelectField}>
+            <span style={styles.labelCaption}>Seccion de empresa</span>
+            <select
+              aria-label="Seccion de empresa"
+              onChange={(event) => setActiveSection(event.target.value as CompanySection)}
+              style={styles.select}
+              value={activeSection}
             >
-              Subir logo local
-            </button>
-            {form.logo_url ? (
+              {companySections.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de empresa">
+            {companySections.map((section) => (
               <button
-                onClick={() => onFormChange({ ...form, logo_url: '' })}
-                style={styles.linkButton}
+                aria-pressed={activeSection === section.id}
+                key={section.id}
+                onClick={() => setActiveSection(section.id)}
+                style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
                 type="button"
               >
-                Quitar logo
+                {section.label}
               </button>
-            ) : null}
+            ))}
           </div>
-          <input
-            accept="image/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
+        )}
+      </div>
 
-              if (!file) {
-                return;
-              }
-
-              if (!file.type.startsWith('image/')) {
-                void Swal.fire({
-                  title: 'Archivo no valido',
-                  text: 'Selecciona un archivo de imagen para usarlo como logo.',
-                  icon: 'warning',
-                  confirmButtonText: 'Cerrar',
-                });
-                event.target.value = '';
-                return;
-              }
-
-              const reader = new FileReader();
-              reader.onload = () => {
-                const result = reader.result;
-                if (typeof result === 'string') {
-                  onFormChange({ ...form, logo_url: result });
-                }
-              };
-              reader.onerror = () => {
-                void Swal.fire({
-                  title: 'No se pudo leer el archivo',
-                  text: 'Intenta nuevamente con otra imagen.',
-                  icon: 'error',
-                  confirmButtonText: 'Cerrar',
-                });
-              };
-              reader.readAsDataURL(file);
-              event.target.value = '';
-            }}
-            ref={logoInputRef}
-            style={{ display: 'none' }}
-            type="file"
-          />
-          <input
-            onChange={(event) => onFormChange({ ...form, logo_url: event.target.value })}
-            placeholder="https://..."
-            style={styles.input}
-            value={hasLocalLogo ? '' : form.logo_url}
-          />
-          <small style={styles.panelSubtitle}>
-            {hasLocalLogo
-              ? 'Logo local cargado. Se guardara como imagen embebida.'
-              : 'Tambien puedes pegar una URL publica de imagen.'}
-          </small>
-        </label>
-        <label style={styles.label}>
-          Leyenda para facturas
-          <textarea
-            onChange={(event) => onFormChange({ ...form, invoice_notes: event.target.value })}
-            rows={4}
-            style={styles.textarea}
-            value={form.invoice_notes}
-          />
-        </label>
-        <button disabled={isSaving} style={styles.primaryButton} type="submit">
-          Guardar perfil
-        </button>
-      </form>
-
-      {isPlatformProfile ? null : (
-        <form onSubmit={onLegalChangeSubmit} style={styles.formPanel}>
-          <div>
-            <h2 style={styles.panelTitle}>Solicitar cambio fiscal</h2>
-            <p style={styles.panelSubtitle}>
-              La solicitud queda pendiente hasta que un administrador de plataforma la revise.
-            </p>
-          </div>
-          <Field
-            label="Nuevo nombre de empresa"
-            value={legalChangeForm.proposed_name}
-            onChange={(proposedName) => onLegalChangeFormChange({ ...legalChangeForm, proposed_name: proposedName })}
-          />
-          <Field
-            label="Nueva razon social"
-            value={legalChangeForm.proposed_legal_name}
-            onChange={(proposedLegalName) =>
-              onLegalChangeFormChange({ ...legalChangeForm, proposed_legal_name: proposedLegalName })
-            }
-          />
-          <Field
-            label="Nuevo CUIT"
-            value={legalChangeForm.proposed_tax_id}
-            onChange={(proposedTaxId) => onLegalChangeFormChange({ ...legalChangeForm, proposed_tax_id: proposedTaxId })}
-          />
-          <label style={styles.label}>
-            Motivo
-            <textarea
-              onChange={(event) => onLegalChangeFormChange({ ...legalChangeForm, reason: event.target.value })}
-              rows={3}
-              style={styles.textarea}
-              value={legalChangeForm.reason}
-            />
-          </label>
-          <button disabled={isSaving} style={styles.secondaryButton} type="submit">
-            Enviar solicitud
-          </button>
-          {requests.length > 0 ? (
-            <div style={styles.serviceList}>
-              <strong>Solicitudes recientes</strong>
-              {requests.slice(0, 3).map((request) => (
-                <article key={request.id} style={styles.serviceRecord}>
-                  <span style={styles.categoryBadge}>{request.status}</span>
-                  <span style={styles.mutedText}>
-                    {[
-                      request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
-                      request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
-                      request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' | ')}
-                  </span>
-                </article>
-              ))}
-            </div>
-          ) : null}
-        </form>
-      )}
-
-      <section style={styles.tablePanel} aria-labelledby="profile-preview-title">
-        <div style={styles.panelHeader}>
-          <h2 id="profile-preview-title" style={styles.panelTitle}>
-            Vista PDF
-          </h2>
-        </div>
-        <div style={styles.pdfPreviewShell}>
-          <article style={styles.pdfPreviewPage} aria-label="Vista previa PDF de factura">
-            <header style={styles.pdfPreviewHeader}>
-              <div>
-                <h3 style={styles.invoiceCompanyName}>{form.legal_name || form.name || 'FacturEasy'}</h3>
-                <p style={styles.pdfPreviewMuted}>{form.tax_id ? `CUIT ${form.tax_id}` : 'CUIT pendiente'}</p>
-                <p style={styles.pdfPreviewMuted}>{form.address || 'Direccion pendiente'}</p>
-                <p style={styles.pdfPreviewMuted}>
-                  {[form.phone, form.email].filter(Boolean).join(' - ') || 'Contacto pendiente'}
+      {activeSection === 'data' ? (
+        <section style={styles.profileGrid}>
+          <form onSubmit={onSubmit} style={styles.formPanel}>
+            <div style={styles.companyLogoCard}>
+              <div style={styles.companyLogoPreviewFrame}>
+                {form.logo_url ? (
+                  <img alt="" src={form.logo_url} style={styles.companyLogoPreviewImage} />
+                ) : (
+                  <div style={styles.logoPlaceholder}>Logo</div>
+                )}
+              </div>
+              <div style={styles.companyLogoInfo}>
+                <strong>Identidad visual</strong>
+                <p style={styles.panelSubtitle}>
+                  Carga el logo una sola vez y valida al instante como se integra con el perfil y el PDF.
                 </p>
+                <div style={styles.actions}>
+                  <button
+                    onClick={() => logoInputRef.current?.click()}
+                    style={styles.secondaryButton}
+                    type="button"
+                  >
+                    Subir logo local
+                  </button>
+                  {form.logo_url ? (
+                    <button
+                      onClick={() => onFormChange({ ...form, logo_url: '' })}
+                      style={styles.linkButton}
+                      type="button"
+                    >
+                      Quitar logo
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              {form.logo_url ? <img alt="" src={form.logo_url} style={styles.logoPreview} /> : <div style={styles.logoPlaceholder}>Logo</div>}
-            </header>
-            <section style={styles.pdfPreviewMeta}>
+            </div>
+            <label style={styles.label}>
+              URL de logo
+              <input
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+
+                  if (!file) {
+                    return;
+                  }
+
+                  if (!file.type.startsWith('image/')) {
+                    void Swal.fire({
+                      title: 'Archivo no valido',
+                      text: 'Selecciona un archivo de imagen para usarlo como logo.',
+                      icon: 'warning',
+                      confirmButtonText: 'Cerrar',
+                    });
+                    event.target.value = '';
+                    return;
+                  }
+
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const result = reader.result;
+                    if (typeof result === 'string') {
+                      onFormChange({ ...form, logo_url: result });
+                    }
+                  };
+                  reader.onerror = () => {
+                    void Swal.fire({
+                      title: 'No se pudo leer el archivo',
+                      text: 'Intenta nuevamente con otra imagen.',
+                      icon: 'error',
+                      confirmButtonText: 'Cerrar',
+                    });
+                  };
+                  reader.readAsDataURL(file);
+                  event.target.value = '';
+                }}
+                ref={logoInputRef}
+                style={{ display: 'none' }}
+                type="file"
+              />
+              <input
+                onChange={(event) => onFormChange({ ...form, logo_url: event.target.value })}
+                placeholder="https://..."
+                style={styles.input}
+                value={hasLocalLogo ? '' : form.logo_url}
+              />
+              <small style={styles.panelSubtitle}>
+                {hasLocalLogo
+                  ? 'Logo local cargado. Se guardara como imagen embebida.'
+                  : 'Tambien puedes pegar una URL publica de imagen.'}
+              </small>
+            </label>
+            <section style={styles.lockedFiscalPanel}>
               <div>
-                <strong>Factura electronica</strong>
-                <p style={styles.pdfPreviewMuted}>Presupuesto Q-000001 - {formatDate(new Date().toISOString())}</p>
+                <strong>{lockedPanelTitle}</strong>
+                <p style={styles.panelSubtitle}>{lockedPanelSubtitle}</p>
               </div>
-              <div style={styles.pdfPreviewClient}>
-                <span>Cliente</span>
-                <strong>Cliente demo</strong>
+              <div style={styles.lockedFiscalGrid}>
+                <span>Empresa: {form.name || 'Sin cargar'}</span>
+                <span>Razon social: {form.legal_name || 'Sin cargar'}</span>
+                <span>CUIT: {form.tax_id || 'Sin cargar'}</span>
               </div>
             </section>
-            <table style={styles.pdfPreviewTable}>
-              <thead>
-                <tr>
-                  <th style={styles.pdfPreviewTh}>Servicio</th>
-                  <th style={styles.pdfPreviewThRight}>Cantidad</th>
-                  <th style={styles.pdfPreviewThRight}>Unitario</th>
-                  <th style={styles.pdfPreviewThRight}>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style={styles.pdfPreviewTd}>Instalacion</td>
-                  <td style={styles.pdfPreviewTdRight}>1</td>
-                  <td style={styles.pdfPreviewTdRight}>{formatMoney(85000)}</td>
-                  <td style={styles.pdfPreviewTdRight}>{formatMoney(85000)}</td>
-                </tr>
-                <tr>
-                  <td style={styles.pdfPreviewTd}>Carga de gas</td>
-                  <td style={styles.pdfPreviewTdRight}>1</td>
-                  <td style={styles.pdfPreviewTdRight}>{formatMoney(60000)}</td>
-                  <td style={styles.pdfPreviewTdRight}>{formatMoney(60000)}</td>
-                </tr>
-              </tbody>
-            </table>
-            <footer style={styles.pdfPreviewTotals}>
-              <span>Subtotal {formatMoney(145000)}</span>
-              <span>IVA {formatMoney(30450)}</span>
-              <strong>Total {formatMoney(175450)}</strong>
-            </footer>
-            {form.invoice_notes ? <p style={styles.pdfPreviewNotes}>{form.invoice_notes}</p> : null}
-          </article>
-        </div>
-      </section>
+            <Field
+              label="Direccion"
+              value={form.address}
+              onChange={(address) => onFormChange({ ...form, address })}
+            />
+            <section style={styles.formGridTwo}>
+              <Field label="Telefono" value={form.phone} onChange={(phone) => onFormChange({ ...form, phone })} />
+              <Field label="Email" type="email" value={form.email} onChange={(email) => onFormChange({ ...form, email })} />
+            </section>
+            <Field label="Sitio web" value={form.website} onChange={(website) => onFormChange({ ...form, website })} />
+            <button disabled={isSaving} style={styles.primaryButton} type="submit">
+              Guardar datos
+            </button>
+          </form>
+
+          {isPlatformProfile ? null : (
+            <form onSubmit={onLegalChangeSubmit} style={styles.formPanel}>
+              <div>
+                <h2 style={styles.panelTitle}>Solicitar cambio fiscal</h2>
+                <p style={styles.panelSubtitle}>
+                  La solicitud queda pendiente hasta que un administrador de plataforma la revise.
+                </p>
+              </div>
+              <Field
+                label="Nuevo nombre de empresa"
+                value={legalChangeForm.proposed_name}
+                onChange={(proposedName) => onLegalChangeFormChange({ ...legalChangeForm, proposed_name: proposedName })}
+              />
+              <Field
+                label="Nueva razon social"
+                value={legalChangeForm.proposed_legal_name}
+                onChange={(proposedLegalName) =>
+                  onLegalChangeFormChange({ ...legalChangeForm, proposed_legal_name: proposedLegalName })
+                }
+              />
+              <Field
+                label="Nuevo CUIT"
+                value={legalChangeForm.proposed_tax_id}
+                onChange={(proposedTaxId) => onLegalChangeFormChange({ ...legalChangeForm, proposed_tax_id: proposedTaxId })}
+              />
+              <label style={styles.label}>
+                Motivo
+                <textarea
+                  onChange={(event) => onLegalChangeFormChange({ ...legalChangeForm, reason: event.target.value })}
+                  rows={3}
+                  style={styles.textarea}
+                  value={legalChangeForm.reason}
+                />
+              </label>
+              <button disabled={isSaving} style={styles.secondaryButton} type="submit">
+                Enviar solicitud
+              </button>
+              {requests.length > 0 ? (
+                <div style={styles.serviceList}>
+                  <strong>Solicitudes recientes</strong>
+                  {requests.slice(0, 3).map((request) => (
+                    <article key={request.id} style={styles.serviceRecord}>
+                      <span style={styles.categoryBadge}>{request.status}</span>
+                      <span style={styles.mutedText}>
+                        {[
+                          request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
+                          request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
+                          request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' | ')}
+                      </span>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </form>
+          )}
+        </section>
+      ) : null}
+
+      {activeSection === 'billing' ? (
+        <section style={styles.profileGrid}>
+          <form onSubmit={onSubmit} style={styles.formPanel}>
+            <div>
+              <h3 style={styles.panelTitle}>Facturacion</h3>
+              <p style={styles.panelSubtitle}>
+                Ajusta los datos que afectan la salida del comprobante sin mezclar identidad institucional.
+              </p>
+            </div>
+            <Field
+              label="IVA general"
+              min="0"
+              max="100"
+              step="0.01"
+              type="number"
+              value={form.default_tax_rate}
+              onChange={(defaultTaxRate) => onFormChange({ ...form, default_tax_rate: defaultTaxRate })}
+            />
+            <label style={styles.label}>
+              Leyenda para facturas
+              <textarea
+                onChange={(event) => onFormChange({ ...form, invoice_notes: event.target.value })}
+                rows={5}
+                style={styles.textarea}
+                value={form.invoice_notes}
+              />
+            </label>
+            <button disabled={isSaving} style={styles.primaryButton} type="submit">
+              Guardar facturacion
+            </button>
+          </form>
+        </section>
+      ) : null}
+
+      {activeSection === 'preview' ? (
+        <section style={styles.tablePanel} aria-labelledby="profile-preview-title">
+          <div style={styles.panelHeader}>
+            <h2 id="profile-preview-title" style={styles.panelTitle}>
+              Vista PDF
+            </h2>
+          </div>
+          <div style={styles.pdfPreviewShell}>
+            <article style={styles.pdfPreviewPage} aria-label="Vista previa PDF de factura">
+              <header style={styles.pdfPreviewHeader}>
+                <div>
+                  <h3 style={styles.invoiceCompanyName}>{form.legal_name || form.name || 'FacturEasy'}</h3>
+                  <p style={styles.pdfPreviewMuted}>{form.tax_id ? `CUIT ${form.tax_id}` : 'CUIT pendiente'}</p>
+                  <p style={styles.pdfPreviewMuted}>{form.address || 'Direccion pendiente'}</p>
+                  <p style={styles.pdfPreviewMuted}>
+                    {[form.phone, form.email].filter(Boolean).join(' - ') || 'Contacto pendiente'}
+                  </p>
+                </div>
+                {form.logo_url ? <img alt="" src={form.logo_url} style={styles.logoPreview} /> : <div style={styles.logoPlaceholder}>Logo</div>}
+              </header>
+              <section style={styles.pdfPreviewMeta}>
+                <div>
+                  <strong>Factura electronica</strong>
+                  <p style={styles.pdfPreviewMuted}>Presupuesto Q-000001 - {formatDate(new Date().toISOString())}</p>
+                </div>
+                <div style={styles.pdfPreviewClient}>
+                  <span>Cliente</span>
+                  <strong>Cliente demo</strong>
+                </div>
+              </section>
+              <table style={styles.pdfPreviewTable}>
+                <thead>
+                  <tr>
+                    <th style={styles.pdfPreviewTh}>Servicio</th>
+                    <th style={styles.pdfPreviewThRight}>Cantidad</th>
+                    <th style={styles.pdfPreviewThRight}>Unitario</th>
+                    <th style={styles.pdfPreviewThRight}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style={styles.pdfPreviewTd}>Instalacion</td>
+                    <td style={styles.pdfPreviewTdRight}>1</td>
+                    <td style={styles.pdfPreviewTdRight}>{formatMoney(85000)}</td>
+                    <td style={styles.pdfPreviewTdRight}>{formatMoney(85000)}</td>
+                  </tr>
+                  <tr>
+                    <td style={styles.pdfPreviewTd}>Carga de gas</td>
+                    <td style={styles.pdfPreviewTdRight}>1</td>
+                    <td style={styles.pdfPreviewTdRight}>{formatMoney(60000)}</td>
+                    <td style={styles.pdfPreviewTdRight}>{formatMoney(60000)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <footer style={styles.pdfPreviewTotals}>
+                <span>Subtotal {formatMoney(145000)}</span>
+                <span>IVA {formatMoney(30450)}</span>
+                <strong>Total {formatMoney(175450)}</strong>
+              </footer>
+              {form.invoice_notes ? <p style={styles.pdfPreviewNotes}>{form.invoice_notes}</p> : null}
+            </article>
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -4402,7 +4873,7 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   sidebarToggle: {
-    background: 'var(--panel-subtle)',
+    backgroundColor: 'var(--panel-subtle)',
     border: '1px solid var(--border)',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -4443,7 +4914,7 @@ const styles = {
   },
   navItem: {
     alignItems: 'center',
-    background: 'transparent',
+    backgroundColor: 'transparent',
     border: 0,
     borderRadius: '6px',
     color: 'var(--muted)',
@@ -4460,7 +4931,7 @@ const styles = {
   },
   navActive: {
     alignItems: 'center',
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: 0,
     borderRadius: '6px',
     color: 'var(--accent)',
@@ -4612,7 +5083,7 @@ const styles = {
     gap: '10px',
   },
   platformSectionButton: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid var(--border)',
     borderRadius: '999px',
     color: 'var(--muted)',
@@ -4623,7 +5094,7 @@ const styles = {
     padding: '8px 14px',
   },
   platformSectionButtonActive: {
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: '1px solid var(--accent)',
     borderRadius: '999px',
     color: 'var(--accent)',
@@ -4637,6 +5108,21 @@ const styles = {
     display: 'grid',
     gap: '6px',
     minWidth: '220px',
+  },
+  labelCaption: {
+    color: 'var(--muted)',
+    fontSize: '12px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+  },
+  select: {
+    background: 'var(--input-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    color: 'var(--text)',
+    font: 'inherit',
+    minHeight: '42px',
+    padding: '10px 11px',
   },
   platformImmediateList: {
     display: 'grid',
@@ -4781,7 +5267,7 @@ const styles = {
     padding: '12px 14px',
   },
   secondaryButton: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid var(--border)',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -4791,7 +5277,7 @@ const styles = {
     padding: '10px 14px',
   },
   secondaryButtonActive: {
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: '1px solid var(--accent)',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -4801,7 +5287,7 @@ const styles = {
     padding: '10px 14px',
   },
   primaryButton: {
-    background: 'var(--accent)',
+    backgroundColor: 'var(--accent)',
     border: 0,
     borderRadius: '6px',
     color: 'var(--accent-contrast)',
@@ -4854,6 +5340,17 @@ const styles = {
     gap: '20px',
     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
   },
+  companyWorkspace: {
+    display: 'grid',
+    gap: '18px',
+  },
+  companyWorkspaceHeader: {
+    alignItems: 'flex-start',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '14px',
+    justifyContent: 'space-between',
+  },
   formGridTwo: {
     display: 'grid',
     gap: '12px',
@@ -4872,6 +5369,38 @@ const styles = {
     display: 'grid',
     gap: '14px',
     padding: '20px',
+  },
+  companyLogoCard: {
+    alignItems: 'center',
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '16px',
+    gridTemplateColumns: 'minmax(96px, 128px) minmax(0, 1fr)',
+    padding: '16px',
+  },
+  companyLogoPreviewFrame: {
+    alignItems: 'center',
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '10px',
+    display: 'flex',
+    height: '120px',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    padding: '10px',
+    width: '120px',
+  },
+  companyLogoPreviewImage: {
+    display: 'block',
+    height: '100%',
+    objectFit: 'contain',
+    width: '100%',
+  },
+  companyLogoInfo: {
+    display: 'grid',
+    gap: '8px',
   },
   tablePanel: {
     background: 'var(--panel-bg)',
@@ -5089,6 +5618,19 @@ const styles = {
     gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.2fr) auto',
     padding: '12px 14px',
   },
+  clientRowButton: {
+    alignItems: 'center',
+    background: 'transparent',
+    border: 0,
+    color: 'var(--text)',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.2fr)',
+    minWidth: 0,
+    padding: 0,
+    textAlign: 'left',
+  },
   clientIdentity: {
     display: 'grid',
     gap: '4px',
@@ -5106,6 +5648,11 @@ const styles = {
     flexWrap: 'wrap',
     gap: '10px',
     justifyContent: 'flex-end',
+  },
+  clientRecordShell: {
+    display: 'grid',
+    gap: '16px',
+    padding: '16px 20px 20px',
   },
   compactEmpty: {
     color: 'var(--muted)',
@@ -5337,38 +5884,78 @@ const styles = {
     padding: '10px',
   },
   quoteListButton: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid transparent',
     borderRadius: '6px',
     color: 'var(--text)',
     cursor: 'pointer',
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'space-between',
+    display: 'block',
     padding: '10px 12px',
     textAlign: 'left',
   },
   quoteListActive: {
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: '1px solid var(--accent)',
     borderRadius: '6px',
     color: 'var(--text)',
     cursor: 'pointer',
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'space-between',
+    display: 'block',
     padding: '10px 12px',
     textAlign: 'left',
+  },
+  quoteListCard: {
+    alignItems: 'start',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
   },
   quoteRowMain: {
     display: 'grid',
     gap: '3px',
     minWidth: 0,
   },
+  quoteListAside: {
+    alignItems: 'end',
+    display: 'grid',
+    gap: '6px',
+    justifyItems: 'end',
+  },
   quoteNumber: {
     color: 'var(--muted)',
     fontSize: '13px',
     fontWeight: 700,
+  },
+  quoteEditorSection: {
+    display: 'grid',
+    gap: '16px',
+    padding: '16px 20px 20px',
+  },
+  quoteEditorBlock: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '16px',
+  },
+  quoteSummaryGrid: {
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  },
+  quoteSummaryCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '6px',
+    padding: '12px',
+  },
+  quoteSummaryLabel: {
+    color: 'var(--muted)',
+    fontSize: '12px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
   },
   inlineForm: {
     alignItems: 'end',
@@ -5563,7 +6150,7 @@ const styles = {
     gap: '6px',
   },
   filterChip: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid var(--border)',
     borderRadius: '999px',
     color: 'var(--text)',
@@ -5573,7 +6160,7 @@ const styles = {
     padding: '6px 9px',
   },
   filterChipActive: {
-    background: 'var(--accent)',
+    backgroundColor: 'var(--accent)',
     border: '1px solid var(--accent)',
     borderRadius: '999px',
     color: 'var(--accent-contrast)',

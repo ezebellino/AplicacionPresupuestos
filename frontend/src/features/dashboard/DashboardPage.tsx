@@ -31,6 +31,7 @@ type DashboardPageProps = {
 type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' | 'platform';
 type PlatformSection = 'overview' | 'signups' | 'changes' | 'memberships';
 type CompanySection = 'data' | 'billing' | 'preview';
+type QuoteSection = 'list' | 'editor';
 type MembershipFilter = 'all' | 'expired' | 'due_soon' | 'active';
 
 type PlatformNotification =
@@ -1160,6 +1161,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             clients={clients}
             costItems={costItems}
             form={quoteForm}
+            isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             onAddCostItem={addQuoteItemFromCatalog}
             onDeleteItem={deleteQuoteItem}
@@ -1875,6 +1877,7 @@ function QuotesView({
   clients,
   costItems,
   form,
+  isCompactLayout,
   isSaving,
   onAddCostItem,
   onDeleteItem,
@@ -1889,6 +1892,7 @@ function QuotesView({
   clients: Client[];
   costItems: CostItem[];
   form: QuoteForm;
+  isCompactLayout: boolean;
   isSaving: boolean;
   onAddCostItem: (quote: Quote, item: CostItem) => void;
   onDeleteItem: (quote: Quote, itemId: string) => void;
@@ -1900,10 +1904,14 @@ function QuotesView({
   quotes: Quote[];
   selectedQuoteId: string | null;
 }) {
-  const [isQuoteFormOpen, setIsQuoteFormOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<QuoteSection>('list');
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
-  const filteredQuotes = quotes.filter((quote) => {
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const filteredQuotes = [...quotes]
+    .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
+    .filter((quote) => {
     const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
 
     return (
@@ -1919,74 +1927,86 @@ function QuotesView({
         search,
       )
     );
-  });
+    });
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
   const canEditSelected = selectedQuote?.status === 'draft';
+  const filteredCatalogItems = costItems.filter((item) =>
+    matchesSearch([item.name, item.description], catalogSearch),
+  );
+  const quoteSections: Array<{ id: QuoteSection; label: string }> = [
+    { id: 'list', label: `Listado (${filteredQuotes.length})` },
+    { id: 'editor', label: 'Editor' },
+  ];
   const handleCreateQuote = async (event: FormEvent<HTMLFormElement>) => {
     const wasCreated = await onSubmit(event);
 
     if (wasCreated) {
-      setIsQuoteFormOpen(false);
+      setIsCreatingNew(false);
+      setActiveSection('editor');
     }
+  };
+  const openNewQuoteEditor = () => {
+    onFormChange(emptyQuoteForm);
+    setIsCreatingNew(true);
+    setActiveSection('editor');
+  };
+  const openExistingQuote = (quoteId: string) => {
+    setIsCreatingNew(false);
+    onSelectQuote(quoteId);
+    setActiveSection('editor');
   };
 
   return (
-    <section style={styles.workspaceGrid}>
-      <div style={styles.sideStack}>
-        {isQuoteFormOpen ? (
-          <form onSubmit={handleCreateQuote} style={styles.formPanel}>
-            <div style={styles.panelHeaderCompact}>
-              <h2 style={styles.panelTitle}>Nuevo presupuesto</h2>
-              <button onClick={() => setIsQuoteFormOpen(false)} style={styles.linkButton} type="button">
-                Cerrar
-              </button>
-            </div>
-            <label style={styles.label}>
-              Cliente
+    <section style={styles.companyWorkspace}>
+      <div style={styles.companyWorkspaceHeader}>
+        <div>
+          <h2 style={styles.panelTitle}>Presupuestos</h2>
+          <p style={styles.panelSubtitle}>Gestiona borradores, emisiones y seguimiento desde un flujo mas claro.</p>
+        </div>
+        <div style={styles.actions}>
+          <button onClick={openNewQuoteEditor} style={styles.primaryButton} type="button">
+            Nuevo presupuesto
+          </button>
+          {isCompactLayout ? (
+            <label style={styles.platformSelectField}>
+              <span style={styles.labelCaption}>Seccion de presupuestos</span>
               <select
-                onChange={(event) => onFormChange({ ...form, client_id: event.target.value })}
-                required
-                style={styles.input}
-                value={form.client_id}
+                aria-label="Seccion de presupuestos"
+                onChange={(event) => setActiveSection(event.target.value as QuoteSection)}
+                style={styles.select}
+                value={activeSection}
               >
-                <option value="">Seleccionar cliente</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
+                {quoteSections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.label}
                   </option>
                 ))}
               </select>
             </label>
-            <Field label="Titulo" value={form.title} onChange={(title) => onFormChange({ ...form, title })} />
-            <Field
-              label="Valido hasta"
-              type="date"
-              value={form.valid_until}
-              onChange={(validUntil) => onFormChange({ ...form, valid_until: validUntil })}
-            />
-            <label style={styles.label}>
-              Notas
-              <textarea
-                onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
-                rows={3}
-                style={styles.textarea}
-                value={form.notes}
-              />
-            </label>
-            <button disabled={isSaving || clients.length === 0} style={styles.primaryButton} type="submit">
-              Crear borrador
-            </button>
-          </form>
-        ) : null}
+          ) : (
+            <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de presupuestos">
+              {quoteSections.map((section) => (
+                <button
+                  aria-pressed={activeSection === section.id}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
+                  type="button"
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
+      {activeSection === 'list' ? (
         <section style={styles.tablePanel} aria-labelledby="quotes-title">
           <div style={styles.panelHeader}>
             <h2 id="quotes-title" style={styles.panelTitle}>
-              Presupuestos
+              Listado
             </h2>
-            <button onClick={() => setIsQuoteFormOpen(true)} style={styles.primaryButton} type="button">
-              Nuevo presupuesto
-            </button>
           </div>
           <div style={styles.quoteFilterBar}>
             <label style={styles.compactLabel}>
@@ -2027,146 +2047,265 @@ function QuotesView({
               {filteredQuotes.map((quote) => (
                 <button
                   key={quote.id}
-                  onClick={() => onSelectQuote(quote.id)}
+                  onClick={() => openExistingQuote(quote.id)}
                   style={quote.id === selectedQuoteId ? styles.quoteListActive : styles.quoteListButton}
                   type="button"
                 >
-                  <span style={styles.quoteRowMain}>
-                    <span style={styles.quoteNumber}>{quote.number}</span>
-                    <strong>{formatMoney(quote.total)}</strong>
-                  </span>
-                  <StatusBadge status={quote.status} />
+                  <div style={styles.quoteListCard}>
+                    <div style={styles.quoteRowMain}>
+                      <span style={styles.quoteNumber}>{quote.number}</span>
+                      <strong>{clientName(clients, quote.client_id)}</strong>
+                      <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
+                    </div>
+                    <div style={styles.quoteListAside}>
+                      <strong>{formatMoney(quote.total)}</strong>
+                      <span style={styles.mutedText}>{formatDate(quote.created_at)}</span>
+                      <StatusBadge status={quote.status} />
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
           )}
         </section>
-      </div>
+      ) : null}
 
-      <section style={styles.tablePanel} aria-labelledby="quote-detail-title">
-        <div style={styles.panelHeader}>
-          <div>
-            <h2 id="quote-detail-title" style={styles.panelTitle}>
-              {selectedQuote ? selectedQuote.number : 'Detalle'}
-            </h2>
+      {activeSection === 'editor' ? (
+        <section style={styles.tablePanel} aria-labelledby="quote-detail-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="quote-detail-title" style={styles.panelTitle}>
+                {selectedQuote ? selectedQuote.number : 'Editor de presupuesto'}
+              </h2>
+              <p style={styles.panelSubtitle}>
+                {selectedQuote
+                  ? 'Trabaja el presupuesto seleccionado en un unico flujo de lectura y edicion.'
+                  : 'Crea un borrador y continua cargando servicios sin salir del editor.'}
+              </p>
+            </div>
             {selectedQuote ? (
-              <div style={styles.detailMeta}>
-                <span>{clientName(clients, selectedQuote.client_id)}</span>
-                <StatusBadge status={selectedQuote.status} />
+              <div style={styles.actions}>
+                {selectedQuote.status === 'draft' ? (
+                  <button onClick={() => onTransition(selectedQuote, 'issue')} style={styles.primaryButton} type="button">
+                    Emitir
+                  </button>
+                ) : null}
+                {selectedQuote.status === 'issued' ? (
+                  <>
+                    <button onClick={() => onTransition(selectedQuote, 'accept')} style={styles.primaryButton} type="button">
+                      Aceptar
+                    </button>
+                    <button onClick={() => onTransition(selectedQuote, 'reject')} style={styles.secondaryButton} type="button">
+                      Rechazar
+                    </button>
+                  </>
+                ) : null}
+                <button onClick={() => onDownloadPdf(selectedQuote)} style={styles.secondaryButton} type="button">
+                  PDF
+                </button>
               </div>
             ) : null}
           </div>
-          {selectedQuote ? (
-            <div style={styles.actions}>
-              {selectedQuote.status === 'draft' ? (
-                <button onClick={() => onTransition(selectedQuote, 'issue')} style={styles.primaryButton} type="button">
-                  Emitir
-                </button>
-              ) : null}
-              {selectedQuote.status === 'issued' ? (
-                <>
-                  <button onClick={() => onTransition(selectedQuote, 'accept')} style={styles.primaryButton} type="button">
-                    Aceptar
-                  </button>
-                  <button onClick={() => onTransition(selectedQuote, 'reject')} style={styles.secondaryButton} type="button">
-                    Rechazar
-                  </button>
-                </>
-              ) : null}
-              <button onClick={() => onDownloadPdf(selectedQuote)} style={styles.secondaryButton} type="button">
-                PDF
-              </button>
-            </div>
-          ) : null}
-        </div>
 
-        {selectedQuote ? (
-          <>
-            <QuoteProgress quote={selectedQuote} />
-
-            {canEditSelected ? (
-              <section style={styles.catalogPicker} aria-label="Items de cobro">
+          {isCreatingNew || !selectedQuote ? (
+            <form onSubmit={handleCreateQuote} style={styles.quoteEditorSection}>
+              <section style={styles.quoteEditorBlock}>
                 <div>
-                  <h3 style={styles.compactTitle}>Items de cobro</h3>
-                  <p style={styles.helperText}>Hace click en un servicio para sumarlo al presupuesto.</p>
+                  <h3 style={styles.compactTitle}>Cliente</h3>
+                  <p style={styles.helperText}>Selecciona primero a quien va dirigido el presupuesto.</p>
                 </div>
-                {costItems.length === 0 ? (
-                  <p style={styles.emptyState}>Carga primero los servicios con su precio.</p>
-                ) : (
-                  <div style={styles.catalogGrid}>
-                    {costItems.map((item) => (
-                      <button
-                        disabled={isSaving}
-                        key={item.id}
-                        onClick={() => onAddCostItem(selectedQuote, item)}
-                        style={styles.catalogItemButton}
-                        type="button"
-                      >
-                        <span>
-                          <strong>{item.name}</strong>
-                          {item.description ? <small style={styles.catalogItemDescription}>{item.description}</small> : null}
-                        </span>
-                        <span style={styles.catalogItemPrice}>{formatMoney(item.unit_cost)}</span>
-                      </button>
+                <label style={styles.label}>
+                  Cliente
+                  <select
+                    onChange={(event) => onFormChange({ ...form, client_id: event.target.value })}
+                    required
+                    style={styles.input}
+                    value={form.client_id}
+                  >
+                    <option value="">Seleccionar cliente</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                      </option>
                     ))}
-                  </div>
-                )}
+                  </select>
+                </label>
               </section>
-            ) : null}
+              <section style={styles.quoteEditorBlock}>
+                <div>
+                  <h3 style={styles.compactTitle}>Datos del presupuesto</h3>
+                  <p style={styles.helperText}>Define titulo, vigencia y notas generales antes de emitir.</p>
+                </div>
+                <Field label="Titulo" value={form.title} onChange={(title) => onFormChange({ ...form, title })} />
+                <Field
+                  label="Valido hasta"
+                  type="date"
+                  value={form.valid_until}
+                  onChange={(validUntil) => onFormChange({ ...form, valid_until: validUntil })}
+                />
+                <label style={styles.label}>
+                  Notas
+                  <textarea
+                    onChange={(event) => onFormChange({ ...form, notes: event.target.value })}
+                    rows={3}
+                    style={styles.textarea}
+                    value={form.notes}
+                  />
+                </label>
+              </section>
+              <section style={styles.quoteEditorBlock}>
+                <div>
+                  <h3 style={styles.compactTitle}>Totales y acciones</h3>
+                  <p style={styles.helperText}>Primero crea el borrador. Luego podras cargar servicios y emitirlo.</p>
+                </div>
+                <button disabled={isSaving || clients.length === 0} style={styles.primaryButton} type="submit">
+                  Crear borrador
+                </button>
+              </section>
+            </form>
+          ) : (
+            <>
+              <QuoteProgress quote={selectedQuote} />
+              <div style={styles.quoteEditorSection}>
+                <section style={styles.quoteEditorBlock}>
+                  <div>
+                    <h3 style={styles.compactTitle}>Cliente</h3>
+                    <p style={styles.helperText}>Empresa o cliente asociado al presupuesto actual.</p>
+                  </div>
+                  <div style={styles.quoteSummaryCard}>
+                    <strong>{clientName(clients, selectedQuote.client_id)}</strong>
+                    <div style={styles.detailMeta}>
+                      <span>{selectedQuote.title || 'Sin titulo'}</span>
+                      <StatusBadge status={selectedQuote.status} />
+                    </div>
+                  </div>
+                </section>
 
-            {selectedQuote.items.length === 0 ? (
-              <p style={styles.emptyState}>Agrega items desde el catalogo de servicios.</p>
-            ) : (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Item</th>
-                    <th style={styles.thRight}>Cant.</th>
-                    <th style={styles.thRight}>Unitario</th>
-                    <th style={styles.thRight}>IVA</th>
-                    <th style={styles.thRight}>Total</th>
-                    {canEditSelected ? <th style={styles.thRight}>Acciones</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedQuote.items.map((item) => (
-                    <tr key={item.id}>
-                      <td style={styles.td}>
-                        <strong>{item.name}</strong>
-                        {item.description ? (
-                          <>
-                            <br />
-                            <span style={styles.mutedText}>{item.description}</span>
-                          </>
-                        ) : null}
-                      </td>
-                      <td style={styles.tdRight}>{item.quantity}</td>
-                      <td style={styles.tdRight}>{formatMoney(item.unit_price)}</td>
-                      <td style={styles.tdRight}>{item.tax_rate}%</td>
-                      <td style={styles.tdRight}>{formatMoney(item.line_total)}</td>
-                      {canEditSelected ? (
-                        <td style={styles.tdRight}>
-                          <button onClick={() => onDeleteItem(selectedQuote, item.id)} style={styles.dangerButton} type="button">
-                            Quitar
+                <section style={styles.quoteEditorBlock}>
+                  <div>
+                    <h3 style={styles.compactTitle}>Datos del presupuesto</h3>
+                    <p style={styles.helperText}>Resumen operativo del presupuesto seleccionado.</p>
+                  </div>
+                  <div style={styles.quoteSummaryGrid}>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Numero</span>
+                      <strong>{selectedQuote.number}</strong>
+                    </div>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Fecha</span>
+                      <strong>{formatDate(selectedQuote.created_at)}</strong>
+                    </div>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Vigencia</span>
+                      <strong>{selectedQuote.valid_until ? formatDate(selectedQuote.valid_until) : 'Sin fecha'}</strong>
+                    </div>
+                    <div style={styles.quoteSummaryCard}>
+                      <span style={styles.quoteSummaryLabel}>Notas</span>
+                      <strong>{selectedQuote.notes || 'Sin notas'}</strong>
+                    </div>
+                  </div>
+                </section>
+
+                {canEditSelected ? (
+                  <section style={styles.quoteEditorBlock} aria-label="Items de cobro">
+                    <div>
+                      <h3 style={styles.compactTitle}>Items de cobro</h3>
+                      <p style={styles.helperText}>Agrega varios servicios seguidos sin salir del editor.</p>
+                    </div>
+                    <label style={styles.compactLabel}>
+                      Buscar servicio
+                      <input
+                        onChange={(event) => setCatalogSearch(event.target.value)}
+                        placeholder="Instalacion, mantenimiento o carga de gas"
+                        style={styles.searchInput}
+                        value={catalogSearch}
+                      />
+                    </label>
+                    {costItems.length === 0 ? (
+                      <p style={styles.emptyState}>Carga primero los servicios con su precio.</p>
+                    ) : filteredCatalogItems.length === 0 ? (
+                      <p style={styles.emptyState}>No hay servicios para esa busqueda.</p>
+                    ) : (
+                      <div style={styles.catalogGrid}>
+                        {filteredCatalogItems.map((item) => (
+                          <button
+                            disabled={isSaving}
+                            key={item.id}
+                            onClick={() => onAddCostItem(selectedQuote, item)}
+                            style={styles.catalogItemButton}
+                            type="button"
+                          >
+                            <span>
+                              <strong>{item.name}</strong>
+                              {item.description ? <small style={styles.catalogItemDescription}>{item.description}</small> : null}
+                            </span>
+                            <span style={styles.catalogItemPrice}>{formatMoney(item.unit_cost)}</span>
                           </button>
-                        </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ) : null}
 
-            <div style={styles.totals}>
-              <span>Subtotal {formatMoney(selectedQuote.subtotal)}</span>
-              <span>IVA {formatMoney(selectedQuote.tax_total)}</span>
-              <strong>Total {formatMoney(selectedQuote.total)}</strong>
-            </div>
-          </>
-        ) : (
-          <p style={styles.emptyState}>Selecciona o crea un presupuesto para ver el detalle.</p>
-        )}
-      </section>
+                <section style={styles.quoteEditorBlock}>
+                  <div>
+                    <h3 style={styles.compactTitle}>Totales y acciones</h3>
+                    <p style={styles.helperText}>Revisa el detalle cargado y ejecuta solo las acciones validas para su estado.</p>
+                  </div>
+                  {selectedQuote.items.length === 0 ? (
+                    <p style={styles.emptyState}>Agrega items desde el catalogo de servicios.</p>
+                  ) : (
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={styles.th}>Item</th>
+                          <th style={styles.thRight}>Cant.</th>
+                          <th style={styles.thRight}>Unitario</th>
+                          <th style={styles.thRight}>IVA</th>
+                          <th style={styles.thRight}>Total</th>
+                          {canEditSelected ? <th style={styles.thRight}>Acciones</th> : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedQuote.items.map((item) => (
+                          <tr key={item.id}>
+                            <td style={styles.td}>
+                              <strong>{item.name}</strong>
+                              {item.description ? (
+                                <>
+                                  <br />
+                                  <span style={styles.mutedText}>{item.description}</span>
+                                </>
+                              ) : null}
+                            </td>
+                            <td style={styles.tdRight}>{item.quantity}</td>
+                            <td style={styles.tdRight}>{formatMoney(item.unit_price)}</td>
+                            <td style={styles.tdRight}>{item.tax_rate}%</td>
+                            <td style={styles.tdRight}>{formatMoney(item.line_total)}</td>
+                            {canEditSelected ? (
+                              <td style={styles.tdRight}>
+                                <button onClick={() => onDeleteItem(selectedQuote, item.id)} style={styles.dangerButton} type="button">
+                                  Quitar
+                                </button>
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+
+                  <div style={styles.totals}>
+                    <span>Subtotal {formatMoney(selectedQuote.subtotal)}</span>
+                    <span>IVA {formatMoney(selectedQuote.tax_total)}</span>
+                    <strong>Total {formatMoney(selectedQuote.total)}</strong>
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -4481,7 +4620,7 @@ const styles = {
     whiteSpace: 'nowrap',
   },
   sidebarToggle: {
-    background: 'var(--panel-subtle)',
+    backgroundColor: 'var(--panel-subtle)',
     border: '1px solid var(--border)',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -4522,7 +4661,7 @@ const styles = {
   },
   navItem: {
     alignItems: 'center',
-    background: 'transparent',
+    backgroundColor: 'transparent',
     border: 0,
     borderRadius: '6px',
     color: 'var(--muted)',
@@ -4539,7 +4678,7 @@ const styles = {
   },
   navActive: {
     alignItems: 'center',
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: 0,
     borderRadius: '6px',
     color: 'var(--accent)',
@@ -4691,7 +4830,7 @@ const styles = {
     gap: '10px',
   },
   platformSectionButton: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid var(--border)',
     borderRadius: '999px',
     color: 'var(--muted)',
@@ -4702,7 +4841,7 @@ const styles = {
     padding: '8px 14px',
   },
   platformSectionButtonActive: {
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: '1px solid var(--accent)',
     borderRadius: '999px',
     color: 'var(--accent)',
@@ -4875,7 +5014,7 @@ const styles = {
     padding: '12px 14px',
   },
   secondaryButton: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid var(--border)',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -4885,7 +5024,7 @@ const styles = {
     padding: '10px 14px',
   },
   secondaryButtonActive: {
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: '1px solid var(--accent)',
     borderRadius: '6px',
     color: 'var(--text)',
@@ -4895,7 +5034,7 @@ const styles = {
     padding: '10px 14px',
   },
   primaryButton: {
-    background: 'var(--accent)',
+    backgroundColor: 'var(--accent)',
     border: 0,
     borderRadius: '6px',
     color: 'var(--accent-contrast)',
@@ -5474,38 +5613,78 @@ const styles = {
     padding: '10px',
   },
   quoteListButton: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid transparent',
     borderRadius: '6px',
     color: 'var(--text)',
     cursor: 'pointer',
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'space-between',
+    display: 'block',
     padding: '10px 12px',
     textAlign: 'left',
   },
   quoteListActive: {
-    background: 'var(--accent-soft)',
+    backgroundColor: 'var(--accent-soft)',
     border: '1px solid var(--accent)',
     borderRadius: '6px',
     color: 'var(--text)',
     cursor: 'pointer',
-    display: 'flex',
-    gap: '10px',
-    justifyContent: 'space-between',
+    display: 'block',
     padding: '10px 12px',
     textAlign: 'left',
+  },
+  quoteListCard: {
+    alignItems: 'start',
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
   },
   quoteRowMain: {
     display: 'grid',
     gap: '3px',
     minWidth: 0,
   },
+  quoteListAside: {
+    alignItems: 'end',
+    display: 'grid',
+    gap: '6px',
+    justifyItems: 'end',
+  },
   quoteNumber: {
     color: 'var(--muted)',
     fontSize: '13px',
     fontWeight: 700,
+  },
+  quoteEditorSection: {
+    display: 'grid',
+    gap: '16px',
+    padding: '16px 20px 20px',
+  },
+  quoteEditorBlock: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '16px',
+  },
+  quoteSummaryGrid: {
+    display: 'grid',
+    gap: '12px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  },
+  quoteSummaryCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '6px',
+    padding: '12px',
+  },
+  quoteSummaryLabel: {
+    color: 'var(--muted)',
+    fontSize: '12px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
   },
   inlineForm: {
     alignItems: 'end',
@@ -5700,7 +5879,7 @@ const styles = {
     gap: '6px',
   },
   filterChip: {
-    background: 'var(--panel-bg)',
+    backgroundColor: 'var(--panel-bg)',
     border: '1px solid var(--border)',
     borderRadius: '999px',
     color: 'var(--text)',
@@ -5710,7 +5889,7 @@ const styles = {
     padding: '6px 9px',
   },
   filterChipActive: {
-    background: 'var(--accent)',
+    backgroundColor: 'var(--accent)',
     border: '1px solid var(--accent)',
     borderRadius: '999px',
     color: 'var(--accent-contrast)',

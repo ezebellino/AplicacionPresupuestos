@@ -428,6 +428,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('No hay servicios para esa busqueda.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.click(screen.getByRole('button', { name: 'Editor' }));
 
     expect(screen.getByLabelText('Progreso del presupuesto')).toBeInTheDocument();
     expect(screen.getAllByText('Aceptado').length).toBeGreaterThan(0);
@@ -847,10 +848,25 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
     await waitFor(() => expect(screen.getAllByText('Q-000001').length).toBeGreaterThan(0));
 
+    expect(screen.getByRole('button', { name: 'Listado (1)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Editor' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear borrador' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Nuevo presupuesto' }));
 
     expect(screen.getByRole('button', { name: 'Crear borrador' })).toBeInTheDocument();
+  });
+
+  it('opens an existing quote in the editor workflow', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.click(await screen.findByRole('button', { name: /Q-000001/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Q-000001' })).toBeInTheDocument();
+    expect(screen.getByText('Totales y acciones')).toBeInTheDocument();
+    expect(screen.getAllByText('Acme Clima').length).toBeGreaterThan(0);
   });
 });

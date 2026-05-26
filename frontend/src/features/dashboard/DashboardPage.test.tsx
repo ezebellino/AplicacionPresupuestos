@@ -802,9 +802,23 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('button', { name: 'Empresa' }));
 
     expect(await screen.findByRole('heading', { name: 'Perfil de empresa' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Datos' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Facturacion' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vista previa' })).toBeInTheDocument();
     expect(screen.getByText('Empresa: Empresa Demo')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Solicitar cambio fiscal' })).toBeInTheDocument();
-    expect(screen.getByText('Vista PDF')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Vista previa PDF de factura')).not.toBeInTheDocument();
+  });
+
+  it('switches company profile sections and shows the PDF preview separately', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Empresa' }));
+    await user.click(await screen.findByRole('button', { name: 'Vista previa' }));
+
+    expect(await screen.findByText('Vista PDF')).toBeInTheDocument();
     expect(screen.getByLabelText('Vista previa PDF de factura')).toBeInTheDocument();
   });
 

@@ -36,6 +36,10 @@ type ClientSection = 'list' | 'record';
 type ClientRecordSection = 'data' | 'services' | 'quotes';
 type TreasurySection = 'overview' | 'movements' | 'pending';
 type TreasuryMovementFilter = 'all' | 'accepted' | 'issued' | 'rejected';
+type ClientRecordRequest = {
+  clientId: string;
+  section: ClientRecordSection;
+};
 type MembershipFilter = 'all' | 'expired' | 'due_soon' | 'active';
 
 type PlatformNotification =
@@ -229,6 +233,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [quoteEditorRequestId, setQuoteEditorRequestId] = useState<string | null>(null);
+  const [quoteCreateClientRequestId, setQuoteCreateClientRequestId] = useState<string | null>(null);
+  const [clientRecordRequest, setClientRecordRequest] = useState<ClientRecordRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -839,6 +845,24 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setActiveView('quotes');
   };
 
+  const openQuoteDraftForClient = (clientId: string) => {
+    setQuoteForm({ ...emptyQuoteForm, client_id: clientId });
+    setSelectedQuoteId(null);
+    setQuoteCreateClientRequestId(clientId);
+    setActiveView('quotes');
+  };
+
+  const openClientRecordFromAnotherView = async (clientId: string, section: ClientRecordSection = 'data') => {
+    const client = clients.find((currentClient) => currentClient.id === clientId);
+
+    if (!client) {
+      return;
+    }
+
+    setClientRecordRequest({ clientId, section });
+    await openClientHistory(client);
+  };
+
   const navigationItems: Array<{ label: string; view: View }> = [
     { label: 'Resumen', view: 'summary' },
     { label: 'Clientes', view: 'clients' },
@@ -1158,6 +1182,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             editingClientId={editingClientId}
+            recordRequest={clientRecordRequest}
             selectedClientId={selectedClientId}
             quotes={quotes}
             serviceRecordForm={serviceRecordForm}
@@ -1166,11 +1191,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               setClientForm(emptyClientForm);
               setEditingClientId(null);
             }}
+            onCreateQuoteForClient={openQuoteDraftForClient}
             onDelete={deleteClient}
             onEdit={editClient}
             onFormChange={setClientForm}
             onHistory={openClientHistory}
+            onOpenQuote={openQuoteEditorFromAnotherView}
             onQuickCreate={handleQuickClientCreate}
+            onRecordRequestHandled={() => setClientRecordRequest(null)}
             onServiceFormChange={setServiceRecordForm}
             onServiceSubmit={handleServiceRecordSubmit}
             onSubmit={handleClientSubmit}
@@ -1203,11 +1231,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             form={quoteForm}
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
+            newQuoteClientIdRequest={quoteCreateClientRequestId}
             onAddCostItem={addQuoteItemFromCatalog}
             onDeleteItem={deleteQuoteItem}
             onDownloadPdf={downloadQuotePdf}
+            onEditClient={openClientRecordFromAnotherView}
             onEditorRequestHandled={() => setQuoteEditorRequestId(null)}
             onFormChange={setQuoteForm}
+            onNewQuoteClientRequestHandled={() => setQuoteCreateClientRequestId(null)}
             onSelectQuote={setSelectedQuoteId}
             onSubmit={handleQuoteSubmit}
             onTransition={transitionQuote}
@@ -1519,15 +1550,19 @@ function ClientsView({
   form,
   isCompactLayout,
   isSaving,
+  recordRequest,
   quotes,
   selectedClientId,
   serviceRecordForm,
   serviceRecords,
   onCancel,
+  onCreateQuoteForClient,
   onDelete,
   onEdit,
   onHistory,
+  onOpenQuote,
   onQuickCreate,
+  onRecordRequestHandled,
   onFormChange,
   onServiceFormChange,
   onServiceSubmit,
@@ -1538,15 +1573,19 @@ function ClientsView({
   form: ClientForm;
   isCompactLayout: boolean;
   isSaving: boolean;
+  recordRequest: ClientRecordRequest | null;
   quotes: Quote[];
   selectedClientId: string | null;
   serviceRecordForm: ServiceRecordForm;
   serviceRecords: ClientServiceRecord[];
   onCancel: () => void;
+  onCreateQuoteForClient: (clientId: string) => void;
   onDelete: (client: Client) => void;
   onEdit: (client: Client) => void;
   onHistory: (client: Client) => Promise<void>;
+  onOpenQuote: (quoteId: string) => void;
   onQuickCreate: (payload: Pick<ClientPayload, 'name' | 'phone' | 'address'>) => Promise<Client | null>;
+  onRecordRequestHandled: () => void;
   onFormChange: (form: ClientForm) => void;
   onServiceFormChange: (form: ServiceRecordForm) => void;
   onServiceSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -1576,6 +1615,16 @@ function ClientsView({
         .filter((quote) => quote.client_id === selectedClient.id)
         .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     : [];
+  useEffect(() => {
+    if (!recordRequest || recordRequest.clientId !== selectedClientId) {
+      return;
+    }
+
+    setActiveRecordSection(recordRequest.section);
+    setActiveSection('record');
+    onRecordRequestHandled();
+  }, [onRecordRequestHandled, recordRequest, selectedClientId]);
+
   const openClientRecord = async (client: Client, section: ClientRecordSection = 'data') => {
     setActiveRecordSection(section);
     setActiveSection('record');
@@ -1850,9 +1899,14 @@ function ClientsView({
                           <h3 style={styles.compactTitle}>Datos</h3>
                           <p style={styles.helperText}>Identidad y contacto principal del cliente.</p>
                         </div>
-                        <button onClick={() => onEdit(selectedClient)} style={styles.secondaryButton} type="button">
-                          Editar cliente
-                        </button>
+                        <div style={styles.actions}>
+                          <button onClick={() => onCreateQuoteForClient(selectedClient.id)} style={styles.primaryButton} type="button">
+                            Nuevo presupuesto
+                          </button>
+                          <button onClick={() => onEdit(selectedClient)} style={styles.secondaryButton} type="button">
+                            Editar cliente
+                          </button>
+                        </div>
                       </div>
                       <div style={styles.quoteSummaryGrid}>
                         <div style={styles.quoteSummaryCard}>
@@ -1974,7 +2028,12 @@ function ClientsView({
                             ) : (
                               <p style={styles.serviceDescription}>Presupuesto sin items cargados.</p>
                             )}
-                            <strong>{formatMoney(quote.total)}</strong>
+                            <div style={styles.panelHeaderCompact}>
+                              <strong>{formatMoney(quote.total)}</strong>
+                              <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
+                                Abrir presupuesto
+                              </button>
+                            </div>
                           </article>
                         ))}
                       </div>
@@ -2146,11 +2205,14 @@ function QuotesView({
   form,
   isCompactLayout,
   isSaving,
+  newQuoteClientIdRequest,
   onAddCostItem,
   onDeleteItem,
   onDownloadPdf,
+  onEditClient,
   onEditorRequestHandled,
   onFormChange,
+  onNewQuoteClientRequestHandled,
   onSelectQuote,
   onSubmit,
   onTransition,
@@ -2163,11 +2225,14 @@ function QuotesView({
   form: QuoteForm;
   isCompactLayout: boolean;
   isSaving: boolean;
+  newQuoteClientIdRequest: string | null;
   onAddCostItem: (quote: Quote, item: CostItem) => void;
   onDeleteItem: (quote: Quote, itemId: string) => void;
   onDownloadPdf: (quote: Quote) => void;
+  onEditClient: (clientId: string, section?: ClientRecordSection) => Promise<void>;
   onEditorRequestHandled: () => void;
   onFormChange: (form: QuoteForm) => void;
+  onNewQuoteClientRequestHandled: () => void;
   onSelectQuote: (quoteId: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => boolean | Promise<boolean>;
   onTransition: (quote: Quote, action: 'issue' | 'accept' | 'reject') => void;
@@ -2179,6 +2244,17 @@ function QuotesView({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
   const [catalogSearch, setCatalogSearch] = useState('');
+  useEffect(() => {
+    if (!newQuoteClientIdRequest) {
+      return;
+    }
+
+    onFormChange({ ...emptyQuoteForm, client_id: newQuoteClientIdRequest });
+    setIsCreatingNew(true);
+    setActiveSection('editor');
+    onNewQuoteClientRequestHandled();
+  }, [newQuoteClientIdRequest, onFormChange, onNewQuoteClientRequestHandled]);
+
   useEffect(() => {
     if (!editorRequestId || selectedQuoteId !== editorRequestId) {
       return;
@@ -2453,7 +2529,18 @@ function QuotesView({
                     <p style={styles.helperText}>Empresa o cliente asociado al presupuesto actual.</p>
                   </div>
                   <div style={styles.quoteSummaryCard}>
-                    <strong>{clientName(clients, selectedQuote.client_id)}</strong>
+                    <div style={styles.panelHeaderCompact}>
+                      <strong>{clientName(clients, selectedQuote.client_id)}</strong>
+                      <button
+                        onClick={() => {
+                          void onEditClient(selectedQuote.client_id, 'data');
+                        }}
+                        style={styles.secondaryButton}
+                        type="button"
+                      >
+                        Ver cliente
+                      </button>
+                    </div>
                     <div style={styles.detailMeta}>
                       <span>{selectedQuote.title || 'Sin titulo'}</span>
                       <StatusBadge status={selectedQuote.status} />

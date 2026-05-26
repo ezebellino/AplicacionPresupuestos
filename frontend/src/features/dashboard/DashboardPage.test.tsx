@@ -519,6 +519,40 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Mantenimiento preventivo')).toBeInTheDocument();
   });
 
+  it('opens a quote from the client record in the quotes editor', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    await waitFor(() => expect(screen.getByText('Acme Clima')).toBeInTheDocument());
+    await user.click(screen.getByText('Acme Clima'));
+    await user.click(
+      within(await screen.findByRole('tablist', { name: 'Navegacion de ficha del cliente' })).getByRole('button', {
+        name: 'Presupuestos',
+      }),
+    );
+    await user.click((await screen.findAllByRole('button', { name: 'Abrir presupuesto' }))[0]);
+
+    expect(await screen.findByRole('heading', { name: 'Q-000002' })).toBeInTheDocument();
+    expect(screen.getByText('Totales y acciones')).toBeInTheDocument();
+  });
+
+  it('creates a new quote from the client record with the client preselected', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    await waitFor(() => expect(screen.getByText('Acme Clima')).toBeInTheDocument());
+    await user.click(screen.getByText('Acme Clima'));
+    await user.click(await screen.findByRole('button', { name: 'Nuevo presupuesto' }));
+
+    expect(await screen.findByRole('heading', { name: 'Editor de presupuesto' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear borrador' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Cliente' })).toHaveValue('client-1');
+  });
+
   it('opens Tesoreria on Resumen with internal navigation and summary metrics', async () => {
     const user = userEvent.setup();
 
@@ -975,5 +1009,18 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('heading', { name: 'Q-000001' })).toBeInTheDocument();
     expect(screen.getByText('Totales y acciones')).toBeInTheDocument();
     expect(screen.getAllByText('Acme Clima').length).toBeGreaterThan(0);
+  });
+
+  it('opens the associated client from the quote editor', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.click(await screen.findByRole('button', { name: /Q-000001/i }));
+    await user.click(await screen.findByRole('button', { name: 'Ver cliente' }));
+
+    expect(await screen.findByRole('heading', { name: 'Ficha de Acme Clima' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Datos' })).toBeInTheDocument();
   });
 });

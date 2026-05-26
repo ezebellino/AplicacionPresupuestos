@@ -11,3 +11,8 @@ dist/
 .env.*
 !.env.example
 *.log
+AGENTS.md
+.agent/
+.codex/
+.gemini/
+openspec/

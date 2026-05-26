@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Bell, Clock3, History, Mail, MessageCircle, Pencil, Trash2, UserRound } from 'lucide-react';
+import { Bell, Clock3, Eye, FileText, History, Mail, MessageCircle, Pencil, Trash2, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 import {
@@ -2360,9 +2360,12 @@ function QuotesView({
       {activeSection === 'list' ? (
         <section style={styles.tablePanel} aria-labelledby="quotes-title">
           <div style={styles.panelHeader}>
-            <h2 id="quotes-title" style={styles.panelTitle}>
-              Listado
-            </h2>
+            <div>
+              <h2 id="quotes-title" style={styles.panelTitle}>
+                Listado
+              </h2>
+              <p style={styles.panelSubtitle}>Ordena, filtra y reabre presupuestos desde una lectura mas clara.</p>
+            </div>
           </div>
           <div style={styles.quoteFilterBar}>
             <label style={styles.compactLabel}>
@@ -2411,12 +2414,12 @@ function QuotesView({
                     <div style={styles.quoteRowMain}>
                       <span style={styles.quoteNumber}>{quote.number}</span>
                       <strong>{clientName(clients, quote.client_id)}</strong>
-                      <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
+                      <span style={styles.quoteTitleText}>{quote.title || 'Sin titulo'}</span>
+                      <span style={styles.mutedText}>{formatDate(quote.created_at)}</span>
                     </div>
                     <div style={styles.quoteListAside}>
-                      <strong>{formatMoney(quote.total)}</strong>
-                      <span style={styles.mutedText}>{formatDate(quote.created_at)}</span>
                       <StatusBadge status={quote.status} />
+                      <strong>{formatMoney(quote.total)}</strong>
                     </div>
                   </div>
                 </button>
@@ -2456,8 +2459,25 @@ function QuotesView({
                     </button>
                   </>
                 ) : null}
-                <button onClick={() => onDownloadPdf(selectedQuote)} style={styles.secondaryButton} type="button">
-                  PDF
+                <button
+                  aria-label="Descargar PDF"
+                  onClick={() => onDownloadPdf(selectedQuote)}
+                  style={styles.iconActionButton}
+                  title="Descargar PDF"
+                  type="button"
+                >
+                  <FileText aria-hidden="true" size={15} strokeWidth={2.2} />
+                </button>
+                <button
+                  aria-label="Ver cliente"
+                  onClick={() => {
+                    void onEditClient(selectedQuote.client_id, 'data');
+                  }}
+                  style={styles.iconActionButton}
+                  title="Ver cliente"
+                  type="button"
+                >
+                  <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
                 </button>
               </div>
             ) : null}
@@ -2528,19 +2548,21 @@ function QuotesView({
                     <h3 style={styles.compactTitle}>Cliente</h3>
                     <p style={styles.helperText}>Empresa o cliente asociado al presupuesto actual.</p>
                   </div>
-                  <div style={styles.quoteSummaryCard}>
-                    <div style={styles.panelHeaderCompact}>
-                      <strong>{clientName(clients, selectedQuote.client_id)}</strong>
-                      <button
-                        onClick={() => {
-                          void onEditClient(selectedQuote.client_id, 'data');
-                        }}
-                        style={styles.secondaryButton}
-                        type="button"
-                      >
-                        Ver cliente
-                      </button>
-                    </div>
+                    <div style={styles.quoteSummaryCard}>
+                      <div style={styles.panelHeaderCompact}>
+                        <strong>{clientName(clients, selectedQuote.client_id)}</strong>
+                        <button
+                          aria-label="Abrir ficha del cliente"
+                          onClick={() => {
+                            void onEditClient(selectedQuote.client_id, 'data');
+                          }}
+                          style={styles.iconActionButton}
+                          title="Abrir ficha del cliente"
+                          type="button"
+                        >
+                          <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
+                        </button>
+                      </div>
                     <div style={styles.detailMeta}>
                       <span>{selectedQuote.title || 'Sin titulo'}</span>
                       <StatusBadge status={selectedQuote.status} />
@@ -2579,38 +2601,40 @@ function QuotesView({
                       <h3 style={styles.compactTitle}>Items de cobro</h3>
                       <p style={styles.helperText}>Agrega varios servicios seguidos sin salir del editor.</p>
                     </div>
-                    <label style={styles.compactLabel}>
-                      Buscar servicio
-                      <input
-                        onChange={(event) => setCatalogSearch(event.target.value)}
-                        placeholder="Instalacion, mantenimiento o carga de gas"
-                        style={styles.searchInput}
-                        value={catalogSearch}
-                      />
-                    </label>
-                    {costItems.length === 0 ? (
-                      <p style={styles.emptyState}>Carga primero los servicios con su precio.</p>
-                    ) : filteredCatalogItems.length === 0 ? (
-                      <p style={styles.emptyState}>No hay servicios para esa busqueda.</p>
-                    ) : (
-                      <div style={styles.catalogGrid}>
-                        {filteredCatalogItems.map((item) => (
-                          <button
-                            disabled={isSaving}
-                            key={item.id}
-                            onClick={() => onAddCostItem(selectedQuote, item)}
-                            style={styles.catalogItemButton}
-                            type="button"
-                          >
-                            <span>
-                              <strong>{item.name}</strong>
-                              {item.description ? <small style={styles.catalogItemDescription}>{item.description}</small> : null}
-                            </span>
-                            <span style={styles.catalogItemPrice}>{formatMoney(item.unit_cost)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <div style={styles.quoteCatalogSurface}>
+                      <label style={styles.compactLabel}>
+                        Buscar servicio
+                        <input
+                          onChange={(event) => setCatalogSearch(event.target.value)}
+                          placeholder="Instalacion, mantenimiento o carga de gas"
+                          style={styles.searchInput}
+                          value={catalogSearch}
+                        />
+                      </label>
+                      {costItems.length === 0 ? (
+                        <p style={styles.emptyState}>Carga primero los servicios con su precio.</p>
+                      ) : filteredCatalogItems.length === 0 ? (
+                        <p style={styles.emptyState}>No hay servicios para esa busqueda.</p>
+                      ) : (
+                        <div style={styles.catalogGrid}>
+                          {filteredCatalogItems.map((item) => (
+                            <button
+                              disabled={isSaving}
+                              key={item.id}
+                              onClick={() => onAddCostItem(selectedQuote, item)}
+                              style={styles.catalogItemButton}
+                              type="button"
+                            >
+                              <span>
+                                <strong>{item.name}</strong>
+                                {item.description ? <small style={styles.catalogItemDescription}>{item.description}</small> : null}
+                              </span>
+                              <span style={styles.catalogItemPrice}>{formatMoney(item.unit_cost)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </section>
                 ) : null}
 
@@ -2651,8 +2675,14 @@ function QuotesView({
                             <td style={styles.tdRight}>{formatMoney(item.line_total)}</td>
                             {canEditSelected ? (
                               <td style={styles.tdRight}>
-                                <button onClick={() => onDeleteItem(selectedQuote, item.id)} style={styles.dangerButton} type="button">
-                                  Quitar
+                                <button
+                                  aria-label="Quitar item"
+                                  onClick={() => onDeleteItem(selectedQuote, item.id)}
+                                  style={styles.iconDangerButton}
+                                  title="Quitar item"
+                                  type="button"
+                                >
+                                  <Trash2 aria-hidden="true" size={15} strokeWidth={2.2} />
                                 </button>
                               </td>
                             ) : null}
@@ -6122,44 +6152,44 @@ const styles = {
   },
   quoteList: {
     display: 'grid',
-    gap: '6px',
-    padding: '10px',
+    gap: '10px',
+    padding: '12px',
   },
   quoteListButton: {
-    backgroundColor: 'var(--panel-bg)',
-    border: '1px solid transparent',
-    borderRadius: '6px',
+    backgroundColor: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
     color: 'var(--text)',
     cursor: 'pointer',
     display: 'block',
-    padding: '10px 12px',
+    padding: '14px 16px',
     textAlign: 'left',
   },
   quoteListActive: {
     backgroundColor: 'var(--accent-soft)',
     border: '1px solid var(--accent)',
-    borderRadius: '6px',
+    borderRadius: '8px',
     color: 'var(--text)',
     cursor: 'pointer',
     display: 'block',
-    padding: '10px 12px',
+    padding: '14px 16px',
     textAlign: 'left',
   },
   quoteListCard: {
     alignItems: 'start',
     display: 'grid',
-    gap: '12px',
+    gap: '16px',
     gridTemplateColumns: 'minmax(0, 1fr) auto',
   },
   quoteRowMain: {
     display: 'grid',
-    gap: '3px',
+    gap: '5px',
     minWidth: 0,
   },
   quoteListAside: {
     alignItems: 'end',
     display: 'grid',
-    gap: '6px',
+    gap: '8px',
     justifyItems: 'end',
   },
   quoteNumber: {
@@ -6167,18 +6197,23 @@ const styles = {
     fontSize: '13px',
     fontWeight: 700,
   },
+  quoteTitleText: {
+    color: 'var(--text)',
+    fontSize: '13px',
+    fontWeight: 600,
+  },
   quoteEditorSection: {
     display: 'grid',
-    gap: '16px',
-    padding: '16px 20px 20px',
+    gap: '18px',
+    padding: '18px 20px 22px',
   },
   quoteEditorBlock: {
-    background: 'var(--panel-bg)',
+    background: 'var(--panel-subtle)',
     border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'grid',
-    gap: '12px',
-    padding: '16px',
+    gap: '14px',
+    padding: '18px',
   },
   quoteSummaryGrid: {
     display: 'grid',
@@ -6214,23 +6249,31 @@ const styles = {
     padding: '16px 20px',
   },
   compactTitle: {
-    fontSize: '15px',
+    fontSize: '16px',
     margin: 0,
   },
   helperText: {
     color: 'var(--muted)',
     fontSize: '13px',
-    lineHeight: 1.4,
-    margin: '4px 0 0',
+    lineHeight: 1.5,
+    margin: '6px 0 0',
+  },
+  quoteCatalogSurface: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '14px',
   },
   catalogGrid: {
     display: 'grid',
-    gap: '8px',
+    gap: '10px',
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
   },
   catalogItemButton: {
     alignItems: 'center',
-    background: 'var(--panel-subtle)',
+    background: 'var(--panel-bg)',
     border: '1px solid var(--border)',
     borderRadius: '8px',
     color: 'var(--text)',
@@ -6238,8 +6281,8 @@ const styles = {
     display: 'flex',
     gap: '10px',
     justifyContent: 'space-between',
-    minHeight: '58px',
-    padding: '10px 12px',
+    minHeight: '64px',
+    padding: '12px 14px',
     textAlign: 'left',
   },
   catalogItemDescription: {
@@ -6291,9 +6334,9 @@ const styles = {
     borderTop: '1px solid var(--border)',
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '18px',
+    gap: '20px',
     justifyContent: 'flex-end',
-    padding: '16px 20px',
+    padding: '18px 0 0',
   },
   filterBar: {
     alignItems: 'end',

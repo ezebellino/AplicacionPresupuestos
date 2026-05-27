@@ -961,6 +961,8 @@ describe('DashboardPage', () => {
 
     expect(screen.getByText('DM Refrigeracion')).toBeInTheDocument();
     expect(screen.queryByText('AUBASA')).not.toBeInTheDocument();
+    expect(screen.getByText('Pagos activos')).toBeInTheDocument();
+    expect(screen.getByText(/Cuota actual/i)).toBeInTheDocument();
   });
 
   it('switches Solicitudes to Historial and shows resolved records', async () => {
@@ -1002,6 +1004,7 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('button', { name: 'Historial' }));
 
     expect(await screen.findByText('Q-000001')).toBeInTheDocument();
+    expect(screen.getByText('Mensual')).toBeInTheDocument();
     expect(screen.getByText(/Pago mensual/i)).toBeInTheDocument();
     expect(screen.getByText(/Pago trimestral/i)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Editar pago' })).not.toHaveLength(0);

@@ -77,6 +77,12 @@ class Tenant(TimestampMixin, Base):
     client_service_records: Mapped[list["ClientServiceRecord"]] = relationship(
         back_populates="tenant"
     )
+    expense_categories: Mapped[list["ExpenseCategory"]] = relationship(
+        back_populates="tenant"
+    )
+    expense_entries: Mapped[list["ExpenseEntry"]] = relationship(
+        back_populates="tenant"
+    )
     cost_items: Mapped[list["CostItem"]] = relationship(back_populates="tenant")
     quotes: Mapped[list["Quote"]] = relationship(back_populates="tenant")
     change_requests: Mapped[list["TenantChangeRequest"]] = relationship(
@@ -198,6 +204,13 @@ class Client(TimestampMixin, Base):
             Client.tenant_id == ClientServiceRecord.tenant_id,
         ),
     )
+    expense_entries: Mapped[list["ExpenseEntry"]] = relationship(
+        back_populates="client",
+        primaryjoin=lambda: and_(
+            Client.id == foreign(ExpenseEntry.client_id),
+            Client.tenant_id == ExpenseEntry.tenant_id,
+        ),
+    )
 
 
 class ClientServiceRecord(TimestampMixin, Base):
@@ -226,6 +239,70 @@ class ClientServiceRecord(TimestampMixin, Base):
         primaryjoin=lambda: and_(
             foreign(ClientServiceRecord.client_id) == Client.id,
             ClientServiceRecord.tenant_id == Client.tenant_id,
+        ),
+    )
+
+
+class ExpenseCategory(TimestampMixin, Base):
+    __tablename__ = "expense_categories"
+    __table_args__ = (UniqueConstraint("id", "tenant_id", name="uq_expense_categories_id_tenant_id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    tenant: Mapped[Tenant] = relationship(back_populates="expense_categories")
+    expense_entries: Mapped[list["ExpenseEntry"]] = relationship(
+        back_populates="category",
+        primaryjoin=lambda: and_(
+            ExpenseCategory.id == foreign(ExpenseEntry.category_id),
+            ExpenseCategory.tenant_id == ExpenseEntry.tenant_id,
+        ),
+    )
+
+
+class ExpenseEntry(TimestampMixin, Base):
+    __tablename__ = "expense_entries"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["client_id", "tenant_id"],
+            ["clients.id", "clients.tenant_id"],
+            name="fk_expense_entries_client_tenant",
+        ),
+        ForeignKeyConstraint(
+            ["category_id", "tenant_id"],
+            ["expense_categories.id", "expense_categories.tenant_id"],
+            name="fk_expense_entries_category_tenant",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True
+    )
+    client_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    category_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    detail: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+
+    tenant: Mapped[Tenant] = relationship(back_populates="expense_entries")
+    client: Mapped[Client | None] = relationship(
+        back_populates="expense_entries",
+        primaryjoin=lambda: and_(
+            foreign(ExpenseEntry.client_id) == Client.id,
+            ExpenseEntry.tenant_id == Client.tenant_id,
+        ),
+    )
+    category: Mapped[ExpenseCategory | None] = relationship(
+        back_populates="expense_entries",
+        primaryjoin=lambda: and_(
+            foreign(ExpenseEntry.category_id) == ExpenseCategory.id,
+            ExpenseEntry.tenant_id == ExpenseCategory.tenant_id,
         ),
     )
 

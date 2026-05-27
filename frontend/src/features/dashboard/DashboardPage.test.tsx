@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardPage } from './DashboardPage';
+import type { ExpenseCategory, ExpenseEntry } from '../../shared/api/client';
 
 let currentRole: 'admin' | 'platform_admin' = 'admin';
 
@@ -35,6 +36,27 @@ describe('DashboardPage', () => {
     localStorage.setItem('auth_token', 'test-token');
     const expiredMembershipDate = isoDateWithOffset(-2);
     const upcomingMembershipDate = isoDateWithOffset(3);
+    const expenseCategories: ExpenseCategory[] = [
+      {
+        id: 'expense-category-1',
+        name: 'Stock',
+        is_active: true,
+      },
+    ];
+    const expenseEntries: ExpenseEntry[] = [
+      {
+        id: 'expense-1',
+        client_id: null,
+        client_name: null,
+        category_id: 'expense-category-1',
+        category_name: 'Stock',
+        amount: '45000.00',
+        detail: 'Compra de materiales para stock',
+        notes: 'Caños y aislacion.',
+        status: 'pending',
+        created_at: '2026-05-20T11:00:00',
+      },
+    ];
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:factura');
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     vi.stubGlobal(
@@ -319,6 +341,73 @@ describe('DashboardPage', () => {
           );
         }
 
+        if (url.endsWith('/expenses/categories') && options?.method === 'POST') {
+          const payload = JSON.parse(String(options.body));
+          const createdCategory = {
+            id: `expense-category-${expenseCategories.length + 1}`,
+            name: payload.name,
+            is_active: true,
+          };
+          expenseCategories.push(createdCategory);
+          return Promise.resolve(new Response(JSON.stringify(createdCategory), { status: 201 }));
+        }
+
+        if (url.endsWith('/expenses/categories')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: expenseCategories,
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
+        if (url.match(/\/expenses\/expense-\d+$/) && options?.method === 'PATCH') {
+          const payload = JSON.parse(String(options.body));
+          const expenseId = url.split('/').at(-1) as string;
+          const target = expenseEntries.find((entry) => entry.id === expenseId);
+          if (!target) {
+            return Promise.resolve(new Response(null, { status: 404 }));
+          }
+          Object.assign(target, payload);
+          return Promise.resolve(new Response(JSON.stringify(target), { status: 200 }));
+        }
+
+        if (url.endsWith('/expenses') && options?.method === 'POST') {
+          const payload = JSON.parse(String(options.body));
+          const selectedClient =
+            payload.client_id === 'client-1'
+              ? 'Acme Clima'
+              : null;
+          const selectedCategory = expenseCategories.find((category) => category.id === payload.category_id) ?? null;
+          const createdEntry = {
+            id: `expense-${expenseEntries.length + 1}`,
+            client_id: payload.client_id ?? null,
+            client_name: selectedClient,
+            category_id: payload.category_id ?? null,
+            category_name: selectedCategory?.name ?? null,
+            amount: payload.amount,
+            detail: payload.detail,
+            notes: payload.notes ?? null,
+            status: payload.status,
+            created_at: '2026-05-27T10:00:00',
+          };
+          expenseEntries.unshift(createdEntry);
+          return Promise.resolve(new Response(JSON.stringify(createdEntry), { status: 201 }));
+        }
+
+        if (url.endsWith('/expenses')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: expenseEntries,
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
         if (url.endsWith('/cost-items')) {
           return Promise.resolve(
             new Response(
@@ -565,6 +654,7 @@ describe('DashboardPage', () => {
     expect(within(treasuryNavigation).getByRole('button', { name: 'Resumen' })).toBeInTheDocument();
     expect(within(treasuryNavigation).getByRole('button', { name: 'Movimientos' })).toBeInTheDocument();
     expect(within(treasuryNavigation).getByRole('button', { name: 'Cobros pendientes' })).toBeInTheDocument();
+    expect(within(treasuryNavigation).getByRole('button', { name: 'Gastos' })).toBeInTheDocument();
     expect(await screen.findByText('Facturado aceptado')).toBeInTheDocument();
     expect(screen.getAllByText('$ 121.000,00').length).toBeGreaterThan(0);
     expect(screen.getByText('Pendiente emitido')).toBeInTheDocument();
@@ -612,6 +702,28 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Meses mas facturados')).toBeInTheDocument();
     expect(screen.getByText('Reporte inteligente')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Volver a tesoreria' })).toBeInTheDocument();
+  });
+
+  it('registers treasury expenses and updates their status', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+    await user.click(screen.getByRole('button', { name: 'Gastos' }));
+
+    expect(await screen.findByRole('heading', { name: 'Gastos' })).toBeInTheDocument();
+    expect(screen.getByText('Compra de materiales para stock')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Monto'), '12500');
+    await user.type(screen.getByLabelText('Detalle'), 'Compra de herramienta');
+    await user.selectOptions(screen.getByLabelText('Categoria'), 'expense-category-1');
+    await user.click(screen.getByRole('button', { name: 'Registrar gasto' }));
+
+    expect(await screen.findByText('Compra de herramienta')).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: 'Marcar cobrado' })[0]);
+    expect(await screen.findByRole('button', { name: 'Volver a pendiente' })).toBeInTheDocument();
   });
 
   it('opens whatsapp with a prefilled invoice message from pending collections', async () => {

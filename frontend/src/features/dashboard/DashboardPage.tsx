@@ -12,6 +12,10 @@ import {
   CostItem,
   CostItemPayload,
   CurrentUser,
+  ExpenseCategory,
+  ExpenseEntry,
+  ExpenseEntryPayload,
+  ExpenseStatus,
   Quote,
   QuoteItemPayload,
   QuotePayload,
@@ -34,8 +38,9 @@ type CompanySection = 'data' | 'billing' | 'preview';
 type QuoteSection = 'list' | 'editor';
 type ClientSection = 'list' | 'record';
 type ClientRecordSection = 'data' | 'services' | 'quotes';
-type TreasurySection = 'overview' | 'movements' | 'pending';
+type TreasurySection = 'overview' | 'movements' | 'pending' | 'expenses';
 type TreasuryMovementFilter = 'all' | 'accepted' | 'issued' | 'rejected';
+type ExpenseFilter = 'all' | ExpenseStatus;
 type ClientRecordRequest = {
   clientId: string;
   section: ClientRecordSection;
@@ -127,6 +132,15 @@ type QuoteForm = {
   valid_until: string;
 };
 
+type ExpenseForm = {
+  amount: string;
+  detail: string;
+  notes: string;
+  status: ExpenseStatus;
+  client_id: string;
+  category_id: string;
+};
+
 const emptyClientForm: ClientForm = {
   name: '',
   document: '',
@@ -179,6 +193,15 @@ const emptyQuoteForm: QuoteForm = {
   valid_until: '',
 };
 
+const emptyExpenseForm: ExpenseForm = {
+  amount: '',
+  detail: '',
+  notes: '',
+  status: 'pending',
+  client_id: '',
+  category_id: '',
+};
+
 const categoryLabels: Record<CostCategory, string> = {
   equipment: 'Equipos',
   materials: 'Materiales',
@@ -218,6 +241,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [platformChangeRequests, setPlatformChangeRequests] = useState<TenantChangeRequest[]>([]);
   const [platformSignupRequests, setPlatformSignupRequests] = useState<TenantSignupRequest[]>([]);
   const [platformMemberships, setPlatformMemberships] = useState<PlatformTenantMembership[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
+  const [expenseEntries, setExpenseEntries] = useState<ExpenseEntry[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
@@ -228,6 +253,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [serviceRecordForm, setServiceRecordForm] = useState<ServiceRecordForm>(emptyServiceRecordForm);
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
   const [quoteForm, setQuoteForm] = useState<QuoteForm>(emptyQuoteForm);
+  const [expenseForm, setExpenseForm] = useState<ExpenseForm>(emptyExpenseForm);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
@@ -252,13 +278,24 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setLoadError(null);
 
     try {
-      const [userResponse, profileResponse, changeRequestsResponse, clientsResponse, costsResponse, quotesResponse] = await Promise.all([
+      const [
+        userResponse,
+        profileResponse,
+        changeRequestsResponse,
+        clientsResponse,
+        costsResponse,
+        quotesResponse,
+        expenseCategoriesResponse,
+        expenseEntriesResponse,
+      ] = await Promise.all([
         apiClient.getCurrentUser(),
         apiClient.getTenantProfile(),
         apiClient.listTenantChangeRequests(),
         apiClient.listClients(),
         apiClient.listCostItems(),
         apiClient.listQuotes(),
+        apiClient.listExpenseCategories(),
+        apiClient.listExpenseEntries(),
       ]);
       setCurrentUser(userResponse);
       setCompanyProfile(profileResponse);
@@ -267,6 +304,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       setClients(clientsResponse.items);
       setCostItems(costsResponse.items);
       setQuotes(quotesResponse.items);
+      setExpenseCategories(expenseCategoriesResponse.items);
+      setExpenseEntries(expenseEntriesResponse.items);
       setSelectedQuoteId((current) => {
         if (current && quotesResponse.items.some((quote) => quote.id === current)) {
           return current;
@@ -417,6 +456,120 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       await Swal.fire({
         title: 'No se pudo guardar el servicio',
         text: 'Revisá importe, unidad e IVA. El IVA vacío usa el valor general de la empresa.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExpenseSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!expenseForm.amount || !expenseForm.detail.trim()) {
+      await Swal.fire({
+        title: 'Faltan datos del gasto',
+        text: 'Completa monto y detalle para registrar el gasto.',
+        icon: 'warning',
+        confirmButtonText: 'Cerrar',
+      });
+      return;
+    }
+
+    const payload: ExpenseEntryPayload = {
+      amount: expenseForm.amount,
+      detail: expenseForm.detail.trim(),
+      notes: nullable(expenseForm.notes),
+      status: expenseForm.status,
+      client_id: expenseForm.client_id || null,
+      category_id: expenseForm.category_id || null,
+    };
+
+    setIsSaving(true);
+    try {
+      await apiClient.createExpenseEntry(payload);
+      setExpenseForm(emptyExpenseForm);
+      await loadWorkspace();
+      showSuccessToast('Gasto registrado');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo registrar el gasto',
+        text: 'Revisa el monto, detalle y los datos opcionales antes de intentar nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExpenseStatusChange = async (entry: ExpenseEntry, status: ExpenseStatus) => {
+    setIsSaving(true);
+    try {
+      await apiClient.updateExpenseEntry(entry.id, { status });
+      await loadWorkspace();
+      showSuccessToast(status === 'paid' ? 'Gasto marcado como cobrado' : 'Gasto marcado como pendiente');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo actualizar el gasto',
+        text: 'Intenta nuevamente en unos segundos.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleManageExpenseCategories = async () => {
+    const currentCategories = expenseCategories
+      .map((category) => `<li style="margin:0 0 6px;">${escapeHtml(category.name)}</li>`)
+      .join('');
+
+    const result = await Swal.fire({
+      title: 'Administrar categorias',
+      html: `
+        <div style="display:grid;gap:12px;text-align:left;">
+          <div>
+            <strong style="display:block;margin-bottom:8px;">Categorias actuales</strong>
+            <ul style="margin:0;padding-left:18px;color:#64748b;">
+              ${currentCategories || '<li>Sin categorias cargadas</li>'}
+            </ul>
+          </div>
+          <label style="display:grid;gap:6px;">
+            <span>Nueva categoria</span>
+            <input id="expense-category-name" class="swal2-input" placeholder="Ej. Materiales de stock" style="margin:0;" />
+          </label>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Agregar categoria',
+      cancelButtonText: 'Cerrar',
+      preConfirm: () => {
+        const nameValue = (document.getElementById('expense-category-name') as HTMLInputElement | null)?.value.trim() ?? '';
+        if (!nameValue) {
+          Swal.showValidationMessage('Escribe un nombre para la categoria.');
+          return undefined;
+        }
+        return { name: nameValue };
+      },
+    });
+
+    if (!result.isConfirmed || !result.value) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await apiClient.createExpenseCategory(result.value);
+      await loadWorkspace();
+      showSuccessToast('Categoria creada');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo crear la categoria',
+        text: 'Intenta nuevamente con otro nombre.',
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });
@@ -1250,7 +1403,15 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         {activeView === 'treasury' ? (
           <TreasuryView
             clients={clients}
+            expenseCategories={expenseCategories}
+            expenseEntries={expenseEntries}
+            expenseForm={expenseForm}
             isCompactLayout={isCompactLayout}
+            isSaving={isSaving}
+            onExpenseFormChange={setExpenseForm}
+            onExpenseStatusChange={handleExpenseStatusChange}
+            onExpenseSubmit={handleExpenseSubmit}
+            onManageExpenseCategories={handleManageExpenseCategories}
             onDownloadPdf={downloadQuotePdf}
             onOpenQuote={openQuoteEditorFromAnotherView}
             onSendInvoiceByWhatsApp={sendInvoiceByWhatsApp}
@@ -3173,14 +3334,30 @@ function CompanyProfileView({
 
 function TreasuryView({
   clients,
+  expenseCategories,
+  expenseEntries,
+  expenseForm,
   isCompactLayout,
+  isSaving,
+  onExpenseFormChange,
+  onExpenseStatusChange,
+  onExpenseSubmit,
+  onManageExpenseCategories,
   onDownloadPdf,
   onOpenQuote,
   onSendInvoiceByWhatsApp,
   quotes,
 }: {
   clients: Client[];
+  expenseCategories: ExpenseCategory[];
+  expenseEntries: ExpenseEntry[];
+  expenseForm: ExpenseForm;
   isCompactLayout: boolean;
+  isSaving: boolean;
+  onExpenseFormChange: (form: ExpenseForm) => void;
+  onExpenseStatusChange: (entry: ExpenseEntry, status: ExpenseStatus) => void;
+  onExpenseSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onManageExpenseCategories: () => void;
   onDownloadPdf: (quote: Quote) => void;
   onOpenQuote: (quoteId: string) => void;
   onSendInvoiceByWhatsApp: (quote: Quote) => void;
@@ -3189,6 +3366,7 @@ function TreasuryView({
   const [activeSection, setActiveSection] = useState<TreasurySection>('overview');
   const [isSmartTreasury, setIsSmartTreasury] = useState(false);
   const [movementFilter, setMovementFilter] = useState<TreasuryMovementFilter>('all');
+  const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
   const acceptedQuotes = quotes.filter((quote) => quote.status === 'accepted');
   const issuedQuotes = quotes.filter((quote) => quote.status === 'issued');
   const rejectedQuotes = quotes.filter((quote) => quote.status === 'rejected');
@@ -3196,6 +3374,7 @@ function TreasuryView({
     { id: 'overview' as const, label: 'Resumen' },
     { id: 'movements' as const, label: 'Movimientos' },
     { id: 'pending' as const, label: 'Cobros pendientes' },
+    { id: 'expenses' as const, label: 'Gastos' },
   ];
   const treasuryMetrics = [
     { label: 'Facturado aceptado', value: formatMoney(sumQuotes(acceptedQuotes)) },
@@ -3221,6 +3400,7 @@ function TreasuryView({
     .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     .slice(0, 12);
   const pendingQuotes = [...issuedQuotes].sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left));
+  const filteredExpenseEntries = expenseEntries.filter((entry) => expenseFilter === 'all' || entry.status === expenseFilter);
   const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes);
 
   if (isSmartTreasury) {
@@ -3528,6 +3708,170 @@ function TreasuryView({
               ))}
             </div>
           )}
+        </section>
+      ) : null}
+
+      {activeSection === 'expenses' ? (
+        <section style={styles.tablePanel} aria-labelledby="treasury-expenses-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="treasury-expenses-title" style={styles.panelTitle}>
+                Gastos
+              </h2>
+              <p style={styles.panelSubtitle}>Registro de gastos e inversiones de la empresa con seguimiento simple.</p>
+            </div>
+            <button onClick={onManageExpenseCategories} style={styles.secondaryButton} type="button">
+              Administrar categorias
+            </button>
+          </div>
+          <div style={styles.quoteEditorSection}>
+            <section style={styles.quoteEditorBlock}>
+              <div>
+                <h3 style={styles.compactTitle}>Nuevo gasto</h3>
+                <p style={styles.helperText}>La fecha queda fija al momento de crear el gasto. Cliente y categoria son opcionales.</p>
+              </div>
+              <form onSubmit={onExpenseSubmit} style={styles.serviceForm}>
+                <div style={styles.formGridTwo}>
+                  <Field
+                    label="Monto"
+                    min="0"
+                    required
+                    step="0.01"
+                    type="number"
+                    value={expenseForm.amount}
+                    onChange={(amount) => onExpenseFormChange({ ...expenseForm, amount })}
+                  />
+                  <Field
+                    label="Detalle"
+                    required
+                    value={expenseForm.detail}
+                    onChange={(detail) => onExpenseFormChange({ ...expenseForm, detail })}
+                  />
+                </div>
+                <div style={styles.formGridTwo}>
+                  <label style={styles.label}>
+                    Cliente
+                    <select
+                      onChange={(event) => onExpenseFormChange({ ...expenseForm, client_id: event.target.value })}
+                      style={styles.input}
+                      value={expenseForm.client_id}
+                    >
+                      <option value="">Sin cliente asociado</option>
+                      {clients.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={styles.label}>
+                    Categoria
+                    <select
+                      onChange={(event) => onExpenseFormChange({ ...expenseForm, category_id: event.target.value })}
+                      style={styles.input}
+                      value={expenseForm.category_id}
+                    >
+                      <option value="">Sin categoria</option>
+                      {expenseCategories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div style={styles.formGridTwo}>
+                  <label style={styles.label}>
+                    Estado
+                    <select
+                      onChange={(event) => onExpenseFormChange({ ...expenseForm, status: event.target.value as ExpenseStatus })}
+                      style={styles.input}
+                      value={expenseForm.status}
+                    >
+                      <option value="pending">Pendiente</option>
+                      <option value="paid">Cobrado</option>
+                    </select>
+                  </label>
+                </div>
+                <label style={styles.label}>
+                  Notas
+                  <textarea
+                    onChange={(event) => onExpenseFormChange({ ...expenseForm, notes: event.target.value })}
+                    rows={3}
+                    style={styles.textarea}
+                    value={expenseForm.notes}
+                  />
+                </label>
+                <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                  Registrar gasto
+                </button>
+              </form>
+            </section>
+
+            <section style={styles.quoteEditorBlock}>
+              <div style={styles.panelHeaderCompact}>
+                <div>
+                  <h3 style={styles.compactTitle}>Historial de gastos</h3>
+                  <p style={styles.helperText}>Consulta y actualiza rapido el estado de cada gasto registrado.</p>
+                </div>
+                <div style={styles.platformFilterBar}>
+                  {[
+                    { key: 'all', label: 'Todos' },
+                    { key: 'pending', label: 'Pendientes' },
+                    { key: 'paid', label: 'Cobrados' },
+                  ].map((filter) => (
+                    <button
+                      key={filter.key}
+                      onClick={() => setExpenseFilter(filter.key as ExpenseFilter)}
+                      style={expenseFilter === filter.key ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                      type="button"
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {filteredExpenseEntries.length === 0 ? (
+                <p style={styles.compactEmpty}>Todavia no hay gastos para ese filtro.</p>
+              ) : (
+                <div style={styles.clientList}>
+                  {filteredExpenseEntries.map((entry) => (
+                    <article key={entry.id} style={styles.treasuryMovementRow}>
+                      <div style={styles.treasuryMovementPrimary}>
+                        <strong>{entry.detail}</strong>
+                        <span style={styles.treasuryMovementMeta}>{formatDate(entry.created_at)}</span>
+                        <span style={styles.mutedText}>
+                          {[entry.client_name, entry.category_name].filter(Boolean).join(' · ') || 'Sin cliente ni categoria'}
+                        </span>
+                        {entry.notes ? <span style={styles.mutedText}>{entry.notes}</span> : null}
+                      </div>
+                      <StatusBadge status={entry.status === 'paid' ? 'accepted' : 'issued'} label={entry.status === 'paid' ? 'Cobrado' : 'Pendiente'} />
+                      <strong style={styles.treasuryMovementAmount}>{formatMoney(entry.amount)}</strong>
+                      <div style={styles.treasuryActionGroup}>
+                        {entry.status === 'pending' ? (
+                          <button
+                            onClick={() => onExpenseStatusChange(entry, 'paid')}
+                            style={styles.primaryButton}
+                            type="button"
+                          >
+                            Marcar cobrado
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onExpenseStatusChange(entry, 'pending')}
+                            style={styles.secondaryButton}
+                            type="button"
+                          >
+                            Volver a pendiente
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
         </section>
       ) : null}
     </section>
@@ -4543,8 +4887,8 @@ function DataTable({
   );
 }
 
-function StatusBadge({ status }: { status: QuoteStatus }) {
-  return <span style={{ ...styles.statusBadge, ...statusBadgeStyle(status) }}>{statusLabels[status]}</span>;
+function StatusBadge({ label, status }: { label?: string; status: QuoteStatus }) {
+  return <span style={{ ...styles.statusBadge, ...statusBadgeStyle(status) }}>{label ?? statusLabels[status]}</span>;
 }
 
 function CategoryBadge({ category }: { category: CostCategory }) {

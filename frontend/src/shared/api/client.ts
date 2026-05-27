@@ -161,6 +161,40 @@ export type ClientServiceRecordPayload = {
   amount?: string | null;
 };
 
+export type ExpenseStatus = 'pending' | 'paid';
+
+export type ExpenseCategory = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
+
+export type ExpenseCategoryPayload = {
+  name: string;
+};
+
+export type ExpenseEntry = {
+  id: string;
+  client_id: string | null;
+  client_name: string | null;
+  category_id: string | null;
+  category_name: string | null;
+  amount: string;
+  detail: string;
+  notes: string | null;
+  status: ExpenseStatus;
+  created_at: string;
+};
+
+export type ExpenseEntryPayload = {
+  amount: string;
+  detail: string;
+  notes?: string | null;
+  status: ExpenseStatus;
+  client_id?: string | null;
+  category_id?: string | null;
+};
+
 export type CostCategory = 'equipment' | 'materials' | 'labor' | 'services';
 
 export type CostItem = {
@@ -404,6 +438,35 @@ export const apiClient = {
   createClientServiceRecord(clientId: string, payload: ClientServiceRecordPayload) {
     return request<ClientServiceRecord>(`/clients/${clientId}/service-records`, {
       method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  listExpenseCategories() {
+    return request<{ items: ExpenseCategory[] }>('/expenses/categories');
+  },
+  createExpenseCategory(payload: ExpenseCategoryPayload) {
+    return request<ExpenseCategory>('/expenses/categories', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteExpenseCategory(id: string) {
+    return request<void>(`/expenses/categories/${id}`, {
+      method: 'DELETE',
+    });
+  },
+  listExpenseEntries() {
+    return request<{ items: ExpenseEntry[] }>('/expenses');
+  },
+  createExpenseEntry(payload: ExpenseEntryPayload) {
+    return request<ExpenseEntry>('/expenses', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updateExpenseEntry(id: string, payload: Partial<ExpenseEntryPayload>) {
+    return request<ExpenseEntry>(`/expenses/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(payload),
     });
   },

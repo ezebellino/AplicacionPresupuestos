@@ -979,6 +979,23 @@ describe('DashboardPage', () => {
     expect(screen.getByText('rejected')).toBeInTheDocument();
   });
 
+  it('renders pending signup requests with contact chips and actions', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Solicitudes (1)' }));
+
+    expect(screen.getByText('AUBASA')).toBeInTheDocument();
+    expect(screen.getByText('Dario Lopez')).toBeInTheDocument();
+    expect(screen.getByText('dario@test.com')).toBeInTheDocument();
+    expect(screen.getByText('2245505050')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crear cuenta' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Contactada' })).toBeInTheDocument();
+  });
+
   it('shows resolved fiscal changes in Historial mode', async () => {
     const user = userEvent.setup();
     mockPlatformAdminSession();

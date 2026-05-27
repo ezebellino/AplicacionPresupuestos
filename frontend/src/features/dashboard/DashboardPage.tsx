@@ -4291,22 +4291,24 @@ function PlatformAdminView({
             {signupViewMode === 'pending' ? (
               <div style={styles.clientList}>
                 {pendingSignupRequests.map((request) => (
-                  <article key={request.id} style={styles.serviceRecord}>
+                  <article key={request.id} style={styles.platformSignupCard}>
                     <div style={styles.historyRecordHeader}>
                       <div style={styles.clientIdentity}>
                         <strong>{request.company_name}</strong>
-                        <span style={styles.mutedText}>
-                          {request.contact_name} - {request.email} - {request.phone}
-                        </span>
-                        {request.business_type ? <span style={styles.mutedText}>{request.business_type}</span> : null}
+                        <div style={styles.platformSignupFacts}>
+                          <span style={styles.clientMetaPill}>{request.contact_name}</span>
+                          <span style={styles.clientMetaPill}>{request.email}</span>
+                          <span style={styles.clientMetaPill}>{request.phone}</span>
+                          {request.business_type ? <span style={styles.clientMetaPill}>{request.business_type}</span> : null}
+                        </div>
                       </div>
                       <span style={styles.categoryBadge}>{request.status}</span>
                     </div>
-                    {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
+                    {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : <p style={styles.compactEmpty}>Sin mensaje adicional.</p>}
                     {request.created_admin_email ? (
                       <p style={styles.serviceDescription}>Cuenta creada: {request.created_admin_email}</p>
                     ) : null}
-                    <div style={styles.actions}>
+                    <div style={styles.platformSignupActions}>
                       <button
                         disabled={isSaving || request.status !== 'pending'}
                         onClick={async () => {
@@ -4370,18 +4372,23 @@ function PlatformAdminView({
             {signupViewMode === 'history' ? (
               <div style={styles.clientList}>
                 {historicalSignupRequests.map((request) => (
-                  <article key={request.id} style={styles.serviceRecord}>
+                  <article key={request.id} style={styles.platformSignupCard}>
                     <div style={styles.historyRecordHeader}>
                       <div style={styles.clientIdentity}>
                         <strong>{request.company_name}</strong>
-                        <span style={styles.mutedText}>
-                          {request.contact_name} - {request.email} - {request.phone}
-                        </span>
-                        {request.business_type ? <span style={styles.mutedText}>{request.business_type}</span> : null}
+                        <div style={styles.platformSignupFacts}>
+                          <span style={styles.clientMetaPill}>{request.contact_name}</span>
+                          <span style={styles.clientMetaPill}>{request.email}</span>
+                          <span style={styles.clientMetaPill}>{request.phone}</span>
+                          {request.business_type ? <span style={styles.clientMetaPill}>{request.business_type}</span> : null}
+                        </div>
                       </div>
                       <span style={styles.categoryBadge}>{request.status}</span>
                     </div>
-                    {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : null}
+                    {request.message ? <p style={styles.serviceDescription}>{request.message}</p> : <p style={styles.compactEmpty}>Sin mensaje adicional.</p>}
+                    {request.created_admin_email ? (
+                      <p style={styles.serviceDescription}>Cuenta creada: {request.created_admin_email}</p>
+                    ) : null}
                     {request.review_notes ? <p style={styles.serviceDescription}>Nota: {request.review_notes}</p> : null}
                   </article>
                 ))}
@@ -6118,6 +6125,25 @@ const styles = {
     color: 'var(--muted)',
     fontSize: '12px',
     fontWeight: 600,
+  },
+  platformSignupCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '14px',
+  },
+  platformSignupFacts: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginTop: '6px',
+  },
+  platformSignupActions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
   },
   buttonWithIcon: {
     alignItems: 'center',

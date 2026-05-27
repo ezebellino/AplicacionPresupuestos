@@ -4440,24 +4440,28 @@ function PlatformAdminView({
             {changeViewMode === 'pending' ? (
               <div style={styles.clientList}>
                 {pendingChangeRequests.map((request) => (
-                  <article key={request.id} style={styles.serviceRecord}>
+                  <article key={request.id} style={styles.platformFiscalCard}>
                     <div style={styles.historyRecordHeader}>
                       <div style={styles.clientIdentity}>
                         <strong>{request.current_name}</strong>
-                        <span style={styles.mutedText}>
+                        <div style={styles.platformSignupFacts}>
                           {[
                             request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
                             request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
                             request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
                           ]
                             .filter(Boolean)
-                            .join(' | ')}
-                        </span>
+                            .map((item) => (
+                              <span key={item} style={styles.clientMetaPill}>
+                                {item}
+                              </span>
+                            ))}
+                        </div>
                       </div>
                       <span style={styles.categoryBadge}>{request.status}</span>
                     </div>
-                    {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : null}
-                    <div style={styles.actions}>
+                    {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : <p style={styles.compactEmpty}>Sin motivo adicional.</p>}
+                    <div style={styles.platformSignupActions}>
                       <button
                         disabled={isSaving || request.status !== 'pending'}
                         onClick={() => onApproveFiscalChange(request)}
@@ -4490,23 +4494,27 @@ function PlatformAdminView({
             {changeViewMode === 'history' ? (
               <div style={styles.clientList}>
                 {historicalChangeRequests.map((request) => (
-                  <article key={request.id} style={styles.serviceRecord}>
+                  <article key={request.id} style={styles.platformFiscalCard}>
                     <div style={styles.historyRecordHeader}>
                       <div style={styles.clientIdentity}>
                         <strong>{request.current_name}</strong>
-                        <span style={styles.mutedText}>
+                        <div style={styles.platformSignupFacts}>
                           {[
                             request.proposed_name ? `Empresa: ${request.proposed_name}` : null,
                             request.proposed_legal_name ? `Razon social: ${request.proposed_legal_name}` : null,
                             request.proposed_tax_id ? `CUIT: ${request.proposed_tax_id}` : null,
                           ]
                             .filter(Boolean)
-                            .join(' | ')}
-                        </span>
+                            .map((item) => (
+                              <span key={item} style={styles.clientMetaPill}>
+                                {item}
+                              </span>
+                            ))}
+                        </div>
                       </div>
                       <span style={styles.categoryBadge}>{request.status}</span>
                     </div>
-                    {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : null}
+                    {request.reason ? <p style={styles.serviceDescription}>{request.reason}</p> : <p style={styles.compactEmpty}>Sin motivo adicional.</p>}
                   </article>
                 ))}
               </div>
@@ -6127,6 +6135,14 @@ const styles = {
     fontWeight: 600,
   },
   platformSignupCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '14px',
+  },
+  platformFiscalCard: {
     background: 'var(--panel-subtle)',
     border: '1px solid var(--border)',
     borderRadius: '8px',

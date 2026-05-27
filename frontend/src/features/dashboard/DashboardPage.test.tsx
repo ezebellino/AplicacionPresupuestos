@@ -475,7 +475,7 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('heading', { name: 'Panel operativo' })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('Servicios activos')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Servicios activos' })).toBeInTheDocument();
       expect(screen.getAllByText('Servicios').length).toBeGreaterThan(0);
       expect(screen.getByText('Presupuestos recientes')).toBeInTheDocument();
     });

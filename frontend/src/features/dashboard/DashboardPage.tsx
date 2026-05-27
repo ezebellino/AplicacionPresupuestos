@@ -4571,66 +4571,82 @@ function PlatformAdminView({
             {membershipViewMode === 'pending' ? (
               <div style={styles.clientList}>
                 {filteredMemberships.map((membership) => (
-                  <article key={membership.id} style={isCompactLayout ? styles.platformMembershipCard : styles.treasuryMovementRow}>
-                <div style={styles.clientIdentity}>
-                  <strong>{membership.name}</strong>
-                  <span style={styles.mutedText}>
-                    Vence: {membership.membership_due_date ? formatDate(membership.membership_due_date) : 'Sin fecha'}
-                  </span>
-                  <span style={styles.mutedText}>
-                    Ultimo pago:{' '}
-                    {membership.membership_last_payment_at ? formatDate(membership.membership_last_payment_at) : 'Sin registro'}
-                  </span>
-                  {membership.payments.some((payment) => payment.status === 'active') ? (
-                    <div style={styles.membershipPaymentList}>
-                      {membership.payments.filter((payment) => payment.status === 'active').slice(0, 4).map((payment) => (
-                        <div key={payment.id} style={styles.membershipPaymentRow}>
-                          <span style={styles.membershipPaymentChip}>
-                            {formatMonthsCovered(payment.months_covered)} - {formatDate(payment.paid_at)}
-                            {payment.amount ? ` - ${formatMoney(payment.amount)}` : ''}
-                            {payment.quote_number ? ` - ${payment.quote_number}` : ''}
+                  <article key={membership.id} style={styles.platformMembershipCard}>
+                    <div style={styles.platformMembershipHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{membership.name}</strong>
+                        <div style={styles.platformMembershipFacts}>
+                          <span style={styles.clientMetaPill}>
+                            Vence {membership.membership_due_date ? formatDate(membership.membership_due_date) : 'sin fecha'}
                           </span>
-                          {payment.quote_id ? (
-                            <div style={styles.membershipPaymentActions}>
-                              <button
-                                aria-label="Enviar por WhatsApp"
-                                onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
-                                style={styles.whatsAppIconButton}
-                                title="Enviar por WhatsApp"
-                                type="button"
-                              >
-                                <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
-                              </button>
-                              <button
-                                onClick={() => onSendMembershipQuoteByEmail(payment)}
-                                style={styles.secondaryButton}
-                                title="Enviar por Email"
-                                type="button"
-                              >
-                                <span style={styles.buttonWithIcon}>
-                                  <Mail aria-hidden="true" size={14} strokeWidth={2.2} />
-                                  <span>Email</span>
-                                </span>
-                              </button>
-                            </div>
-                          ) : null}
+                          <span style={styles.clientMetaPill}>
+                            Ultimo pago {membership.membership_last_payment_at ? formatDate(membership.membership_last_payment_at) : 'sin registro'}
+                          </span>
+                          <span style={styles.clientMetaPill}>
+                            Cuota actual {membership.membership_monthly_fee ? formatMoney(membership.membership_monthly_fee) : 'Sin monto'}
+                          </span>
                         </div>
-                      ))}
+                      </div>
+                      <span
+                        style={{
+                          ...styles.statusBadge,
+                          ...(membership.membership_status === 'active' ? styles.activeMembershipBadge : styles.expiredMembershipBadge),
+                        }}
+                      >
+                        {membership.membership_status === 'active' ? 'Activa' : 'Vencida'}
+                      </span>
                     </div>
-                  ) : null}
-                </div>
-                <span
-                  style={{
-                    ...styles.statusBadge,
-                    ...(membership.membership_status === 'active' ? styles.activeMembershipBadge : styles.expiredMembershipBadge),
-                  }}
-                >
-                  {membership.membership_status === 'active' ? 'Activa' : 'Vencida'}
-                </span>
-                <div style={styles.platformMembershipActions}>
-                  <button
-                    disabled={isSaving}
-                    onClick={async () => {
+
+                    {membership.payments.some((payment) => payment.status === 'active') ? (
+                      <section style={styles.platformMembershipPaymentPanel} aria-label={`Pagos activos de ${membership.name}`}>
+                        <div style={styles.panelHeaderCompact}>
+                          <strong style={styles.compactTitle}>Pagos activos</strong>
+                        </div>
+                        <div style={styles.membershipPaymentList}>
+                          {membership.payments.filter((payment) => payment.status === 'active').slice(0, 4).map((payment) => (
+                            <div key={payment.id} style={styles.membershipPaymentCard}>
+                              <div style={styles.membershipPaymentSummary}>
+                                <span style={styles.membershipPaymentChip}>{formatMonthsCovered(payment.months_covered)}</span>
+                                <span style={styles.membershipPaymentChip}>{formatDate(payment.paid_at)}</span>
+                                {payment.amount ? <span style={styles.membershipPaymentChip}>{formatMoney(payment.amount)}</span> : null}
+                                {payment.quote_number ? <span style={styles.membershipPaymentChip}>{payment.quote_number}</span> : null}
+                              </div>
+                              {payment.quote_id ? (
+                                <div style={styles.membershipPaymentActions}>
+                                  <button
+                                    aria-label="Enviar por WhatsApp"
+                                    onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
+                                    style={styles.whatsAppIconButton}
+                                    title="Enviar por WhatsApp"
+                                    type="button"
+                                  >
+                                    <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
+                                  </button>
+                                  <button
+                                    onClick={() => onSendMembershipQuoteByEmail(payment)}
+                                    style={styles.secondaryButton}
+                                    title="Enviar por Email"
+                                    type="button"
+                                  >
+                                    <span style={styles.buttonWithIcon}>
+                                      <Mail aria-hidden="true" size={14} strokeWidth={2.2} />
+                                      <span>Email</span>
+                                    </span>
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ) : (
+                      <p style={styles.compactEmpty}>Todavia no hay pagos activos registrados para esta empresa.</p>
+                    )}
+
+                    <div style={styles.platformMembershipActions}>
+                      <button
+                        disabled={isSaving}
+                        onClick={async () => {
                       const result = await Swal.fire({
                         title: `Registrar pago de ${membership.name}`,
                         html: `
@@ -4686,26 +4702,24 @@ function PlatformAdminView({
                       if (result.isConfirmed && result.value) {
                         onMarkMembershipPaid(membership, result.value);
                       }
-                    }}
-                    style={styles.primaryButton}
-                    title="Registrar pago"
-                    type="button"
-                  >
-                    <span style={styles.buttonWithIcon}>
-                      <Clock3 aria-hidden="true" size={14} strokeWidth={2.2} />
-                      <span>Registrar pago</span>
-                    </span>
-                  </button>
-                  {!isCompactLayout ? (
-                    <span style={styles.platformMembershipMeta}>
-                      {membershipFilter === 'all'
-                        ? `Activas ${membershipCounts.active} | Por vencer ${membershipCounts.dueSoon} | Vencidas ${membershipCounts.expired}`
-                        : membership.membership_due_date
-                          ? `Vence ${formatDate(membership.membership_due_date)}`
-                          : 'Sin fecha'}
-                    </span>
-                  ) : null}
-                </div>
+                        }}
+                        style={styles.primaryButton}
+                        title="Registrar pago"
+                        type="button"
+                      >
+                        <span style={styles.buttonWithIcon}>
+                          <Clock3 aria-hidden="true" size={14} strokeWidth={2.2} />
+                          <span>Registrar pago</span>
+                        </span>
+                      </button>
+                      <span style={styles.platformMembershipMeta}>
+                        {membershipFilter === 'all'
+                          ? `Activas ${membershipCounts.active} | Por vencer ${membershipCounts.dueSoon} | Vencidas ${membershipCounts.expired}`
+                          : membership.membership_due_date
+                            ? `Vence ${formatDate(membership.membership_due_date)}`
+                            : 'Sin fecha'}
+                      </span>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -4713,13 +4727,15 @@ function PlatformAdminView({
             {membershipViewMode === 'history' ? (
               <div style={styles.clientList}>
                 {membershipPaymentHistory.map(({ membership, payment }) => (
-                  <article key={payment.id} style={styles.serviceRecord}>
+                  <article key={payment.id} style={styles.platformMembershipHistoryCard}>
                     <div style={styles.historyRecordHeader}>
                       <div style={styles.clientIdentity}>
                         <strong>{membership.name}</strong>
-                        <span style={styles.mutedText}>
-                          {formatDate(payment.paid_at)} - {formatMonthsCovered(payment.months_covered)}
-                        </span>
+                        <div style={styles.platformMembershipFacts}>
+                          <span style={styles.clientMetaPill}>{formatDate(payment.paid_at)}</span>
+                          <span style={styles.clientMetaPill}>{formatMonthsCovered(payment.months_covered)}</span>
+                          <span style={styles.clientMetaPill}>{payment.amount ? formatMoney(payment.amount) : 'Sin monto'}</span>
+                        </div>
                       </div>
                       <span
                         style={{
@@ -4730,11 +4746,12 @@ function PlatformAdminView({
                         {payment.status === 'cancelled' ? 'Anulado' : payment.quote_number ?? 'Sin presupuesto'}
                       </span>
                     </div>
-                    <p style={styles.serviceDescription}>
-                      {payment.amount ? formatMoney(payment.amount) : 'Sin monto cargado'}
-                      {payment.notes ? ` | ${payment.notes}` : ''}
-                      {payment.cancel_reason ? ` | Motivo de anulacion: ${payment.cancel_reason}` : ''}
-                    </p>
+                    <div style={styles.platformMembershipHistoryBody}>
+                      {payment.notes ? <p style={styles.serviceDescription}>{payment.notes}</p> : null}
+                      {payment.cancel_reason ? (
+                        <p style={styles.serviceDescription}>Motivo de anulacion: {payment.cancel_reason}</p>
+                      ) : null}
+                    </div>
                     <div style={styles.membershipPaymentActions}>
                       {payment.status === 'active' ? (
                         <>
@@ -6067,8 +6084,29 @@ const styles = {
     border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'grid',
+    gap: '14px',
+    padding: '16px',
+  },
+  platformMembershipHeader: {
+    alignItems: 'start',
+    display: 'flex',
+    flexWrap: 'wrap',
     gap: '12px',
-    padding: '14px',
+    justifyContent: 'space-between',
+  },
+  platformMembershipFacts: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+    marginTop: '6px',
+  },
+  platformMembershipPaymentPanel: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '12px',
   },
   platformMembershipActions: {
     alignItems: 'center',
@@ -7003,6 +7041,22 @@ const styles = {
     gap: '10px',
     marginTop: '4px',
   },
+  membershipPaymentCard: {
+    alignItems: 'center',
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
+  },
+  membershipPaymentSummary: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '8px',
+  },
   membershipPaymentRow: {
     alignItems: 'center',
     display: 'flex',
@@ -7022,6 +7076,18 @@ const styles = {
     display: 'flex',
     flexWrap: 'wrap',
     gap: '8px',
+  },
+  platformMembershipHistoryCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '10px',
+    padding: '14px',
+  },
+  platformMembershipHistoryBody: {
+    display: 'grid',
+    gap: '6px',
   },
   totals: {
     alignItems: 'center',

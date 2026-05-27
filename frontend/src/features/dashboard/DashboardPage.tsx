@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Bell, Clock3, Eye, FileText, History, Mail, MessageCircle, Pencil, Trash2, UserRound } from 'lucide-react';
+import { Bell, Clock3, Eye, FileText, History, Mail, MapPin, MessageCircle, Pencil, Phone, Trash2, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 import {
@@ -1615,6 +1615,11 @@ function ClientsView({
         .filter((quote) => quote.client_id === selectedClient.id)
         .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     : [];
+  const quotesByClientId = quotes.reduce<Record<string, number>>((accumulator, quote) => {
+    accumulator[quote.client_id] = (accumulator[quote.client_id] ?? 0) + 1;
+    return accumulator;
+  }, {});
+  const latestSelectedClientQuote = selectedClientQuotes[0] ?? null;
   useEffect(() => {
     if (!recordRequest || recordRequest.clientId !== selectedClientId) {
       return;
@@ -1634,17 +1639,20 @@ function ClientsView({
     const result = await Swal.fire({
       title: 'Nuevo cliente',
       html: `
+        <p style="margin:0 0 14px;text-align:left;color:#64748b;font-size:13px;">
+          Carga lo minimo para empezar y completa el resto despues desde la ficha.
+        </p>
         <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
           <span>Nombre</span>
-          <input id="client-name" class="swal2-input" style="margin:0;" />
+          <input id="client-name" class="swal2-input" placeholder="Ej. Juan Perez" style="margin:0;" />
         </label>
         <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
           <span>Telefono</span>
-          <input id="client-phone" class="swal2-input" style="margin:0;" />
+          <input id="client-phone" class="swal2-input" placeholder="Ej. 2245 476329" style="margin:0;" />
         </label>
         <label style="display:grid;gap:6px;text-align:left;">
           <span>Direccion</span>
-          <input id="client-address" class="swal2-input" style="margin:0;" />
+          <input id="client-address" class="swal2-input" placeholder="Ej. Ameghino 655" style="margin:0;" />
         </label>
       `,
       focusConfirm: false,
@@ -1735,7 +1743,7 @@ function ClientsView({
               <h2 id="clients-title" style={styles.panelTitle}>
                 Listado
               </h2>
-              <p style={styles.panelSubtitle}>Busca, abre la ficha o ejecuta acciones rapidas sobre cada cliente.</p>
+              <p style={styles.panelSubtitle}>Busca rapido, abre la ficha y manten a mano las acciones mas usadas.</p>
             </div>
           </div>
           <div style={styles.filterBar}>
@@ -1764,11 +1772,21 @@ function ClientsView({
                   >
                     <div style={styles.clientIdentity}>
                       <strong>{client.name}</strong>
-                      <span style={styles.mutedText}>{client.document || 'Sin documento'}</span>
+                      <span style={styles.mutedText}>{client.document || 'Sin documento cargado'}</span>
                     </div>
                     <div style={styles.clientContact}>
-                      <span>{client.phone || client.email || 'Sin contacto'}</span>
-                      <span style={styles.mutedText}>{client.email || client.address || 'Sin direccion cargada'}</span>
+                      <span style={styles.clientContactLine}>
+                        <Phone aria-hidden="true" size={14} strokeWidth={2} />
+                        {client.phone || 'Sin telefono'}
+                      </span>
+                      <span style={styles.clientContactLineMuted}>
+                        <MapPin aria-hidden="true" size={14} strokeWidth={2} />
+                        {client.address || client.email || 'Sin direccion cargada'}
+                      </span>
+                    </div>
+                    <div style={styles.clientMetaStack}>
+                      <span style={styles.clientMetaPill}>{quotesByClientId[client.id] ?? 0} presup.</span>
+                      {client.email ? <span style={styles.mutedText}>{client.email}</span> : null}
                     </div>
                   </button>
                   <div style={styles.clientActions}>
@@ -1897,7 +1915,7 @@ function ClientsView({
                       <div style={styles.panelHeaderCompact}>
                         <div>
                           <h3 style={styles.compactTitle}>Datos</h3>
-                          <p style={styles.helperText}>Identidad y contacto principal del cliente.</p>
+                          <p style={styles.helperText}>Identidad, contacto y contexto operativo del cliente seleccionado.</p>
                         </div>
                         <div style={styles.actions}>
                           <button onClick={() => onCreateQuoteForClient(selectedClient.id)} style={styles.primaryButton} type="button">
@@ -1907,6 +1925,13 @@ function ClientsView({
                             Editar cliente
                           </button>
                         </div>
+                      </div>
+                      <div style={styles.clientOverviewBar}>
+                        <span style={styles.clientMetaPill}>Presupuestos: {selectedClientQuotes.length}</span>
+                        <span style={styles.clientMetaPill}>Servicios: {serviceRecords.length}</span>
+                        <span style={styles.clientMetaPill}>
+                          Ult. mov.: {latestSelectedClientQuote ? formatDate(latestSelectedClientQuote.issued_at ?? latestSelectedClientQuote.created_at) : 'Sin actividad'}
+                        </span>
                       </div>
                       <div style={styles.quoteSummaryGrid}>
                         <div style={styles.quoteSummaryCard}>
@@ -1944,7 +1969,7 @@ function ClientsView({
                   <article style={styles.quoteEditorBlock}>
                     <div>
                       <h3 style={styles.compactTitle}>Servicios realizados</h3>
-                      <p style={styles.helperText}>Registro manual para trabajos ya ejecutados o novedades operativas.</p>
+                      <p style={styles.helperText}>Registro cronologico para trabajos ya ejecutados o novedades operativas.</p>
                     </div>
                     <form onSubmit={onServiceSubmit} style={styles.serviceForm}>
                       <Field
@@ -1987,11 +2012,13 @@ function ClientsView({
                       <div style={styles.serviceList}>
                         {serviceRecords.map((record) => (
                           <article key={record.id} style={styles.serviceRecord}>
-                            <div>
-                              <strong>{record.title}</strong>
-                              <p style={styles.panelSubtitle}>{formatDate(record.performed_at)}</p>
+                            <div style={styles.historyRecordHeader}>
+                              <div>
+                                <strong>{record.title}</strong>
+                                <p style={styles.panelSubtitle}>{formatDate(record.performed_at)}</p>
+                              </div>
+                              {record.amount ? <strong>{formatMoney(record.amount)}</strong> : null}
                             </div>
-                            {record.amount ? <span>{formatMoney(record.amount)}</span> : null}
                             {record.description ? <p style={styles.serviceDescription}>{record.description}</p> : null}
                           </article>
                         ))}
@@ -2006,7 +2033,7 @@ function ClientsView({
                   <article style={styles.quoteEditorBlock}>
                     <div>
                       <h3 style={styles.compactTitle}>Presupuestos</h3>
-                      <p style={styles.helperText}>Todas las veces que se presupuestaron trabajos para este cliente.</p>
+                      <p style={styles.helperText}>Historial completo de presupuestos emitidos para este cliente.</p>
                     </div>
                     {selectedClientQuotes.length === 0 ? (
                       <p style={styles.compactEmpty}>Todavia no hay presupuestos para este cliente.</p>
@@ -2030,8 +2057,14 @@ function ClientsView({
                             )}
                             <div style={styles.panelHeaderCompact}>
                               <strong>{formatMoney(quote.total)}</strong>
-                              <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
-                                Abrir presupuesto
+                              <button
+                                aria-label="Abrir presupuesto"
+                                onClick={() => onOpenQuote(quote.id)}
+                                style={styles.iconActionButton}
+                                title="Abrir presupuesto"
+                                type="button"
+                              >
+                                <FileText aria-hidden="true" size={15} strokeWidth={2.2} />
                               </button>
                             </div>
                           </article>
@@ -5882,13 +5915,13 @@ const styles = {
   },
   clientRow: {
     alignItems: 'center',
-    background: 'var(--panel-bg)',
+    background: 'var(--panel-subtle)',
     border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'grid',
-    gap: '12px',
-    gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.2fr) auto',
-    padding: '12px 14px',
+    gap: '14px',
+    gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 1.1fr) minmax(110px, auto) auto',
+    padding: '14px 16px',
   },
   clientRowButton: {
     alignItems: 'center',
@@ -5897,8 +5930,8 @@ const styles = {
     color: 'var(--text)',
     cursor: 'pointer',
     display: 'grid',
-    gap: '12px',
-    gridTemplateColumns: 'minmax(150px, 1fr) minmax(180px, 1.2fr)',
+    gap: '14px',
+    gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 1.1fr) minmax(110px, auto)',
     minWidth: 0,
     padding: 0,
     textAlign: 'left',
@@ -5914,6 +5947,36 @@ const styles = {
     minWidth: 0,
     overflowWrap: 'anywhere',
   },
+  clientContactLine: {
+    alignItems: 'center',
+    display: 'inline-flex',
+    gap: '8px',
+  },
+  clientContactLineMuted: {
+    alignItems: 'center',
+    color: 'var(--muted)',
+    display: 'inline-flex',
+    fontSize: '13px',
+    gap: '8px',
+  },
+  clientMetaStack: {
+    alignItems: 'start',
+    display: 'grid',
+    gap: '6px',
+    justifyItems: 'start',
+  },
+  clientMetaPill: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '999px',
+    color: 'var(--text)',
+    display: 'inline-flex',
+    fontSize: '12px',
+    fontWeight: 700,
+    lineHeight: 1,
+    padding: '6px 10px',
+    whiteSpace: 'nowrap',
+  },
   clientActions: {
     alignItems: 'center',
     display: 'flex',
@@ -5925,6 +5988,11 @@ const styles = {
     display: 'grid',
     gap: '16px',
     padding: '16px 20px 20px',
+  },
+  clientOverviewBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
   },
   compactEmpty: {
     color: 'var(--muted)',

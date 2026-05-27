@@ -608,7 +608,7 @@ describe('DashboardPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Tesoreria inteligente' }));
 
     expect(screen.getByRole('heading', { name: 'Tesoreria inteligente' })).toBeInTheDocument();
-    expect(screen.getByText('Membresias cobradas por mes')).toBeInTheDocument();
+    expect(screen.getByText('Presupuestos aceptados por mes')).toBeInTheDocument();
     expect(screen.getByText('Meses mas facturados')).toBeInTheDocument();
     expect(screen.getByText('Reporte inteligente')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Volver a tesoreria' })).toBeInTheDocument();

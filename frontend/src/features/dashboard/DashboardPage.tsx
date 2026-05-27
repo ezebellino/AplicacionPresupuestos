@@ -3160,7 +3160,7 @@ function TreasuryView({
         <section style={styles.smartHeader}>
           <div>
             <h2 style={styles.panelTitle}>Tesoreria inteligente</h2>
-            <p style={styles.panelSubtitle}>Lectura rapida de ventas, meses fuertes y oportunidades.</p>
+            <p style={styles.panelSubtitle}>Lectura rapida de cierres, facturacion y oportunidades de seguimiento.</p>
           </div>
           <button onClick={() => setIsSmartTreasury(false)} style={styles.secondaryButton} type="button">
             Volver a tesoreria
@@ -3178,10 +3178,10 @@ function TreasuryView({
 
         <section style={styles.gridTwo}>
           <ChartPanel
-            emptyText="Todavia no hay pagos aceptados."
+            emptyText="Todavia no hay presupuestos aceptados."
             rows={smartTreasury.membershipsByMonth}
-            title="Membresias cobradas por mes"
-            valueFormatter={(value) => `${value.toFixed(0)} pagos`}
+            title="Presupuestos aceptados por mes"
+            valueFormatter={(value) => `${value.toFixed(0)} cierres`}
           />
           <ChartPanel
             emptyText="Todavia no hay facturacion aceptada."
@@ -4803,21 +4803,20 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
   const topMonth = months[0];
   const pendingValue = sumQuotes(allQuotes, 'issued');
   const acceptedCount = acceptedQuotes.length;
-  const projectedMonthlyRevenue = averageTicket * acceptedCount;
 
   return {
     cards: [
-      { label: 'Membresias pagas', value: String(acceptedCount) },
-      { label: 'Ingreso mensual estimado', value: formatMoney(projectedMonthlyRevenue) },
-      { label: 'Pago promedio', value: formatMoney(averageTicket) },
+      { label: 'Presupuestos aceptados', value: String(acceptedCount) },
+      { label: 'Facturacion aceptada', value: formatMoney(totalAccepted) },
+      { label: 'Ticket promedio', value: formatMoney(averageTicket) },
       { label: 'Conversion', value: `${conversionRate.toFixed(0)}%` },
     ],
     insights: [
       {
-        title: 'Membresia recurrente',
+        title: 'Ritmo de cierre',
         text: acceptedCount
-          ? `Hay ${acceptedCount} pagos aceptados registrados. La prioridad es sostener vencimientos mensuales y rehabilitar el acceso cuando el pago ingresa.`
-          : 'Cuando registres pagos aceptados, aca se va a leer la caja recurrente de membresias.',
+          ? `Hay ${acceptedCount} presupuestos aceptados registrados. La lectura mas util es sostener ese ritmo de cierre y convertir mas emitidos en aceptados.`
+          : 'Cuando empiecen a cerrarse presupuestos aceptados, aca vas a ver el ritmo real de conversion del negocio.',
       },
       {
         title: 'Mes mas fuerte',

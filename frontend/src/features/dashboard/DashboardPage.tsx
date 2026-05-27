@@ -4191,9 +4191,14 @@ function PlatformAdminView({
                   <p style={styles.panelSubtitle}>Pendientes reales, proximos vencimientos y caja operativa.</p>
                 </div>
               </div>
+              <div style={styles.treasuryOverviewStrip}>
+                <span style={styles.clientMetaPill}>{pendingSignupRequests.length} solicitudes</span>
+                <span style={styles.clientMetaPill}>{pendingChangeRequests.length} cambios fiscales</span>
+                <span style={styles.clientMetaPill}>{expiredMemberships.length} membresias vencidas</span>
+              </div>
               <div style={styles.platformImmediateList}>
                 <div style={styles.platformImmediatePanel}>
-                  <h3 style={styles.platformImmediateTitle}>Atencion inmediata</h3>
+                  <h3 style={styles.platformImmediateTitle}>Cola operativa</h3>
                   {pendingSignupRequests.length > 0 ? (
                     <button onClick={() => onChangeSection('signups')} style={styles.platformImmediateItem} type="button">
                       <strong>{pendingSignupRequests[0].company_name}</strong>
@@ -4206,6 +4211,12 @@ function PlatformAdminView({
                       <span style={styles.mutedText}>Hay cambios fiscales esperando aprobacion.</span>
                     </button>
                   ) : null}
+                  {pendingSignupRequests.length === 0 && pendingChangeRequests.length === 0 ? (
+                    <p style={styles.compactEmpty}>No hay solicitudes ni cambios fiscales pendientes.</p>
+                  ) : null}
+                </div>
+                <div style={styles.platformImmediatePanel}>
+                  <h3 style={styles.platformImmediateTitle}>Membresias en riesgo</h3>
                   {expiredMemberships.slice(0, 2).map((membership) => (
                     <button
                       key={`expired-${membership.id}`}
@@ -4236,10 +4247,7 @@ function PlatformAdminView({
                       </span>
                     </button>
                   ))}
-                  {pendingSignupRequests.length === 0 &&
-                  pendingChangeRequests.length === 0 &&
-                  expiredMemberships.length === 0 &&
-                  dueSoonMemberships.length === 0 ? (
+                  {expiredMemberships.length === 0 && dueSoonMemberships.length === 0 ? (
                     <p style={styles.emptyState}>No hay pendientes operativos inmediatos.</p>
                   ) : null}
                 </div>

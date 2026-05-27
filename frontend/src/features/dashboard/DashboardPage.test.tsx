@@ -930,7 +930,8 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Membresias vencidas')).toBeInTheDocument();
     expect(screen.getByText('Vencen en 3 dias')).toBeInTheDocument();
     expect(screen.getByText('A cobrar este mes')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Atencion inmediata' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Cola operativa' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Membresias en riesgo' })).toBeInTheDocument();
   });
 
   it('shows pending-only operational content in Solicitudes and Cambios fiscales', async () => {

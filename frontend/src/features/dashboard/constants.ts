@@ -13,3 +13,12 @@ export const statusLabels: Record<QuoteStatus, string> = {
   accepted: 'Aceptado',
   rejected: 'Rechazado',
 };
+
+export const serviceOperationPresets = [
+  'Instalación',
+  'Mantenimiento',
+  'Carga de Gas',
+  'Reparación',
+  'Mano de Obra',
+  'Desinstalación',
+];

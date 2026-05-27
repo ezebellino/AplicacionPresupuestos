@@ -3269,9 +3269,17 @@ function TreasuryView({
           <section style={styles.gridTwo}>
             <section style={styles.tablePanel} aria-labelledby="treasury-health-title">
               <div style={styles.panelHeader}>
-                <h2 id="treasury-health-title" style={styles.panelTitle}>
-                  Resumen de tesoreria
-                </h2>
+                <div>
+                  <h2 id="treasury-health-title" style={styles.panelTitle}>
+                    Resumen de tesoreria
+                  </h2>
+                  <p style={styles.panelSubtitle}>Lectura rapida de conversion, volumen y ticket promedio.</p>
+                </div>
+              </div>
+              <div style={styles.treasuryOverviewStrip}>
+                <span style={styles.clientMetaPill}>{acceptedQuotes.length} aceptados</span>
+                <span style={styles.clientMetaPill}>{issuedQuotes.length} emitidos</span>
+                <span style={styles.clientMetaPill}>{rejectedQuotes.length} rechazados</span>
               </div>
               <div style={styles.categoryGrid}>
                 <div style={styles.categoryRow}>
@@ -3295,9 +3303,12 @@ function TreasuryView({
 
             <section style={styles.tablePanel} aria-labelledby="treasury-attention-title">
               <div style={styles.panelHeader}>
-                <h2 id="treasury-attention-title" style={styles.panelTitle}>
-                  Atencion inmediata
-                </h2>
+                <div>
+                  <h2 id="treasury-attention-title" style={styles.panelTitle}>
+                    Atencion inmediata
+                  </h2>
+                  <p style={styles.panelSubtitle}>Presupuestos emitidos que todavia requieren seguimiento.</p>
+                </div>
               </div>
               {pendingQuotes.length === 0 ? (
                 <p style={styles.emptyState}>No hay presupuestos emitidos pendientes de seguimiento.</p>
@@ -3305,16 +3316,23 @@ function TreasuryView({
                 <div style={styles.clientList}>
                   {pendingQuotes.map((quote) => (
                     <article key={quote.id} style={styles.treasuryMovementRow}>
-                      <div style={styles.clientIdentity}>
+                      <div style={styles.treasuryMovementPrimary}>
                         <strong>{clientName(clients, quote.client_id)}</strong>
-                        <span style={styles.mutedText}>
+                        <span style={styles.treasuryMovementMeta}>
                           {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
                         </span>
+                        <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
                       </div>
                       <StatusBadge status={quote.status} />
-                      <strong>{formatMoney(quote.total)}</strong>
-                      <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
-                        Abrir presupuesto
+                      <strong style={styles.treasuryMovementAmount}>{formatMoney(quote.total)}</strong>
+                      <button
+                        aria-label="Abrir presupuesto"
+                        onClick={() => onOpenQuote(quote.id)}
+                        style={styles.iconActionButton}
+                        title="Abrir presupuesto"
+                        type="button"
+                      >
+                        <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
                       </button>
                     </article>
                   ))}
@@ -3332,7 +3350,7 @@ function TreasuryView({
               <h2 id="treasury-movements-title" style={styles.panelTitle}>
                 Movimientos
               </h2>
-              <p style={styles.panelSubtitle}>Cronologia operativa de presupuestos del negocio.</p>
+              <p style={styles.panelSubtitle}>Cronologia de presupuestos emitidos, aceptados y rechazados.</p>
             </div>
           </div>
           <div style={styles.platformFilterBar}>
@@ -3358,16 +3376,23 @@ function TreasuryView({
             <div style={styles.clientList}>
               {latestMovements.map((quote) => (
                 <article key={quote.id} style={styles.treasuryMovementRow}>
-                  <div style={styles.clientIdentity}>
+                  <div style={styles.treasuryMovementPrimary}>
                     <strong>{clientName(clients, quote.client_id)}</strong>
-                    <span style={styles.mutedText}>
+                    <span style={styles.treasuryMovementMeta}>
                       {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
                     </span>
+                    <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
                   </div>
                   <StatusBadge status={quote.status} />
-                  <strong>{formatMoney(quote.total)}</strong>
-                  <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
-                    Abrir presupuesto
+                  <strong style={styles.treasuryMovementAmount}>{formatMoney(quote.total)}</strong>
+                  <button
+                    aria-label="Abrir presupuesto"
+                    onClick={() => onOpenQuote(quote.id)}
+                    style={styles.iconActionButton}
+                    title="Abrir presupuesto"
+                    type="button"
+                  >
+                    <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
                   </button>
                 </article>
               ))}
@@ -3383,7 +3408,7 @@ function TreasuryView({
               <h2 id="treasury-pending-title" style={styles.panelTitle}>
                 Cobros pendientes
               </h2>
-              <p style={styles.panelSubtitle}>Solo presupuestos emitidos pendientes de resolucion.</p>
+              <p style={styles.panelSubtitle}>Cola operativa para seguimiento, envio y reapertura rapida.</p>
             </div>
           </div>
           {pendingQuotes.length === 0 ? (
@@ -3392,17 +3417,24 @@ function TreasuryView({
             <div style={styles.clientList}>
               {pendingQuotes.map((quote) => (
                 <article key={quote.id} style={styles.treasuryMovementRow}>
-                  <div style={styles.clientIdentity}>
+                  <div style={styles.treasuryMovementPrimary}>
                     <strong>{clientName(clients, quote.client_id)}</strong>
-                    <span style={styles.mutedText}>
+                    <span style={styles.treasuryMovementMeta}>
                       {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
                     </span>
+                    <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
                   </div>
                   <StatusBadge status={quote.status} />
-                  <strong>{formatMoney(quote.total)}</strong>
-                  <div style={styles.clientActions}>
-                    <button onClick={() => onOpenQuote(quote.id)} style={styles.secondaryButton} type="button">
-                      Abrir presupuesto
+                  <strong style={styles.treasuryMovementAmount}>{formatMoney(quote.total)}</strong>
+                  <div style={styles.treasuryActionGroup}>
+                    <button
+                      aria-label="Abrir presupuesto"
+                      onClick={() => onOpenQuote(quote.id)}
+                      style={styles.iconActionButton}
+                      title="Abrir presupuesto"
+                      type="button"
+                    >
+                      <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
                     </button>
                     <button
                       aria-label="Enviar PDF por WhatsApp"
@@ -3413,8 +3445,14 @@ function TreasuryView({
                     >
                       <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
                     </button>
-                    <button onClick={() => onDownloadPdf(quote)} style={styles.secondaryButton} title="PDF" type="button">
-                      PDF
+                    <button
+                      aria-label="Descargar PDF"
+                      onClick={() => onDownloadPdf(quote)}
+                      style={styles.iconActionButton}
+                      title="Descargar PDF"
+                      type="button"
+                    >
+                      <FileText aria-hidden="true" size={15} strokeWidth={2.2} />
                     </button>
                   </div>
                 </article>
@@ -6010,8 +6048,9 @@ const styles = {
     border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'flex',
+    gap: '10px',
     justifyContent: 'space-between',
-    padding: '12px 14px',
+    padding: '13px 15px',
   },
   panelSubtitle: {
     color: 'var(--muted)',
@@ -6066,13 +6105,40 @@ const styles = {
   },
   treasuryMovementRow: {
     alignItems: 'center',
-    background: 'var(--panel-bg)',
+    background: 'var(--panel-subtle)',
     border: '1px solid var(--border)',
     borderRadius: '8px',
     display: 'grid',
-    gap: '12px',
+    gap: '14px',
     gridTemplateColumns: 'minmax(180px, 1fr) auto auto auto',
-    padding: '12px 14px',
+    padding: '14px 16px',
+  },
+  treasuryOverviewStrip: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    padding: '14px 20px 0',
+  },
+  treasuryMovementPrimary: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0,
+  },
+  treasuryMovementMeta: {
+    color: 'var(--muted)',
+    fontSize: '13px',
+    fontWeight: 600,
+  },
+  treasuryMovementAmount: {
+    justifySelf: 'end',
+    whiteSpace: 'nowrap',
+  },
+  treasuryActionGroup: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    justifyContent: 'flex-end',
   },
   invoicePreview: {
     display: 'grid',

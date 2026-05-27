@@ -2,10 +2,11 @@ import '@testing-library/jest-dom/vitest';
 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import Swal from 'sweetalert2';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardPage } from './DashboardPage';
-import type { ExpenseCategory, ExpenseEntry } from '../../shared/api/client';
+import type { ExpenseCategory, ExpenseEntry, Quote } from '../../shared/api/client';
 
 let currentRole: 'admin' | 'platform_admin' = 'admin';
 
@@ -55,6 +56,107 @@ describe('DashboardPage', () => {
         notes: 'Caños y aislacion.',
         status: 'pending',
         created_at: '2026-05-20T11:00:00',
+      },
+    ];
+    const quotes: Quote[] = [
+      {
+        id: 'quote-1',
+        client_id: 'client-1',
+        number: 'Q-000001',
+        status: 'accepted',
+        title: 'Instalacion',
+        notes: null,
+        valid_until: null,
+        created_at: '2026-05-14T10:00:00',
+        subtotal: '0.00',
+        discount_total: '0.00',
+        tax_total: '0.00',
+        total: '121000.00',
+        issued_at: '2026-05-14T11:00:00',
+        items: [
+          {
+            id: 'quote-item-1',
+            source_cost_item_id: 'cost-1',
+            category: 'services',
+            name: 'Instalacion',
+            description: null,
+            unit: 'servicio',
+            quantity: '1.00',
+            unit_price: '100000.00',
+            tax_rate: '21.00',
+            discount_amount: '0.00',
+            line_subtotal: '100000.00',
+            line_tax: '21000.00',
+            line_total: '121000.00',
+            position: 1,
+          },
+        ],
+      },
+      {
+        id: 'quote-2',
+        client_id: 'client-1',
+        number: 'Q-000002',
+        status: 'issued',
+        title: 'Mantenimiento',
+        notes: null,
+        valid_until: null,
+        created_at: '2026-05-16T09:00:00',
+        subtotal: '0.00',
+        discount_total: '0.00',
+        tax_total: '0.00',
+        total: '99000.00',
+        issued_at: '2026-05-16T10:30:00',
+        items: [
+          {
+            id: 'quote-item-2',
+            source_cost_item_id: 'cost-1',
+            category: 'services',
+            name: 'Mantenimiento',
+            description: null,
+            unit: 'servicio',
+            quantity: '1.00',
+            unit_price: '81818.18',
+            tax_rate: '21.00',
+            discount_amount: '0.00',
+            line_subtotal: '81818.18',
+            line_tax: '17181.82',
+            line_total: '99000.00',
+            position: 1,
+          },
+        ],
+      },
+      {
+        id: 'quote-3',
+        client_id: 'client-1',
+        number: 'Q-000003',
+        status: 'rejected',
+        title: 'Reparacion',
+        notes: null,
+        valid_until: null,
+        created_at: '2026-05-12T08:00:00',
+        subtotal: '0.00',
+        discount_total: '0.00',
+        tax_total: '0.00',
+        total: '57000.00',
+        issued_at: '2026-05-12T09:00:00',
+        items: [
+          {
+            id: 'quote-item-3',
+            source_cost_item_id: 'cost-1',
+            category: 'services',
+            name: 'Reparacion',
+            description: null,
+            unit: 'servicio',
+            quantity: '1.00',
+            unit_price: '47107.44',
+            tax_rate: '21.00',
+            discount_amount: '0.00',
+            line_subtotal: '47107.44',
+            line_tax: '9892.56',
+            line_total: '57000.00',
+            position: 1,
+          },
+        ],
       },
     ];
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:factura');
@@ -431,111 +533,18 @@ describe('DashboardPage', () => {
           );
         }
 
+        if (url.endsWith('/quotes/bulk-delete') && options?.method === 'POST') {
+          const payload = JSON.parse(String(options.body));
+          const remainingQuotes = quotes.filter((quote) => !payload.quote_ids.includes(quote.id));
+          quotes.splice(0, quotes.length, ...remainingQuotes);
+          return Promise.resolve(new Response(JSON.stringify({ deleted_count: payload.quote_ids.length }), { status: 200 }));
+        }
+
         if (url.endsWith('/quotes')) {
           return Promise.resolve(
             new Response(
               JSON.stringify({
-                items: [
-                  {
-                    id: 'quote-1',
-                    client_id: 'client-1',
-                    number: 'Q-000001',
-                    status: 'accepted',
-                    title: 'Instalacion',
-                    notes: null,
-                    valid_until: null,
-                    created_at: '2026-05-14T10:00:00',
-                    subtotal: '0.00',
-                    discount_total: '0.00',
-                    tax_total: '0.00',
-                    total: '121000.00',
-                    issued_at: '2026-05-14T11:00:00',
-                    items: [
-                      {
-                        id: 'quote-item-1',
-                        source_cost_item_id: 'cost-1',
-                        category: 'services',
-                        name: 'Instalacion',
-                        description: null,
-                        unit: 'servicio',
-                        quantity: '1.00',
-                        unit_price: '100000.00',
-                        tax_rate: '21.00',
-                        discount_amount: '0.00',
-                        line_subtotal: '100000.00',
-                        line_tax: '21000.00',
-                        line_total: '121000.00',
-                        position: 1,
-                      },
-                    ],
-                  },
-                  {
-                    id: 'quote-2',
-                    client_id: 'client-1',
-                    number: 'Q-000002',
-                    status: 'issued',
-                    title: 'Mantenimiento',
-                    notes: null,
-                    valid_until: null,
-                    created_at: '2026-05-16T09:00:00',
-                    subtotal: '0.00',
-                    discount_total: '0.00',
-                    tax_total: '0.00',
-                    total: '99000.00',
-                    issued_at: '2026-05-16T10:30:00',
-                    items: [
-                      {
-                        id: 'quote-item-2',
-                        source_cost_item_id: 'cost-1',
-                        category: 'services',
-                        name: 'Mantenimiento',
-                        description: null,
-                        unit: 'servicio',
-                        quantity: '1.00',
-                        unit_price: '81818.18',
-                        tax_rate: '21.00',
-                        discount_amount: '0.00',
-                        line_subtotal: '81818.18',
-                        line_tax: '17181.82',
-                        line_total: '99000.00',
-                        position: 1,
-                      },
-                    ],
-                  },
-                  {
-                    id: 'quote-3',
-                    client_id: 'client-1',
-                    number: 'Q-000003',
-                    status: 'rejected',
-                    title: 'Reparacion',
-                    notes: null,
-                    valid_until: null,
-                    created_at: '2026-05-12T08:00:00',
-                    subtotal: '0.00',
-                    discount_total: '0.00',
-                    tax_total: '0.00',
-                    total: '57000.00',
-                    issued_at: '2026-05-12T09:00:00',
-                    items: [
-                      {
-                        id: 'quote-item-3',
-                        source_cost_item_id: 'cost-1',
-                        category: 'services',
-                        name: 'Reparacion',
-                        description: null,
-                        unit: 'servicio',
-                        quantity: '1.00',
-                        unit_price: '47107.44',
-                        tax_rate: '21.00',
-                        discount_amount: '0.00',
-                        line_subtotal: '47107.44',
-                        line_tax: '9892.56',
-                        line_total: '57000.00',
-                        position: 1,
-                      },
-                    ],
-                  },
-                ],
+                items: quotes,
               }),
               { status: 200 },
             ),
@@ -724,6 +733,27 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'Marcar cobrado' })[0]);
     expect(await screen.findByRole('button', { name: 'Volver a pendiente' })).toBeInTheDocument();
+  });
+
+  it('bulk deletes quotes and treasury updates automatically', async () => {
+    const user = userEvent.setup();
+    const swalSpy = vi.spyOn(Swal, 'fire').mockResolvedValue({ isConfirmed: true } as never);
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.click(screen.getByLabelText('Seleccionar Q-000001'));
+    await user.click(screen.getByLabelText('Seleccionar Q-000002'));
+    await user.click(screen.getByRole('button', { name: 'Eliminar seleccionados' }));
+
+    expect(await screen.findByText('Q-000003')).toBeInTheDocument();
+    expect(screen.queryByText('Q-000001')).not.toBeInTheDocument();
+    expect(screen.queryByText('Q-000002')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
+    await user.click(screen.getByRole('button', { name: 'Cobros pendientes' }));
+    expect(await screen.findByText('No hay cobros pendientes en este momento.')).toBeInTheDocument();
+    swalSpy.mockRestore();
   });
 
   it('opens whatsapp with a prefilled invoice message from pending collections', async () => {

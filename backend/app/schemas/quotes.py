@@ -116,3 +116,11 @@ class QuoteList(BaseModel):
 class QuoteShareLinkRead(BaseModel):
     token: str
     url: str
+
+
+class QuoteBulkDelete(BaseModel):
+    quote_ids: list[UUID] = Field(min_length=1)
+
+
+class QuoteBulkDeleteResult(BaseModel):
+    deleted_count: int

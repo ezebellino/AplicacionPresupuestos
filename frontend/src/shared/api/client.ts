@@ -259,6 +259,10 @@ export type QuoteShareLink = {
   url: string;
 };
 
+export type QuoteBulkDeletePayload = {
+  quote_ids: string[];
+};
+
 export type QuotePayload = {
   client_id: string;
   title?: string | null;
@@ -519,6 +523,12 @@ export const apiClient = {
   },
   rejectQuote(id: string) {
     return request<Quote>(`/quotes/${id}/reject`, { method: 'POST' });
+  },
+  bulkDeleteQuotes(payload: QuoteBulkDeletePayload) {
+    return request<{ deleted_count: number }>('/quotes/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
   async downloadQuotePdf(id: string) {
     const token = localStorage.getItem('auth_token');

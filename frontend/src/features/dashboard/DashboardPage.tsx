@@ -910,6 +910,48 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
+  const deleteQuotes = async (quotesToDelete: Quote[]) => {
+    if (quotesToDelete.length === 0) {
+      return false;
+    }
+
+    const riskyQuotes = quotesToDelete.filter((quote) => quote.status === 'issued' || quote.status === 'accepted');
+    const result = await Swal.fire({
+      title: `Eliminar ${quotesToDelete.length} presupuesto${quotesToDelete.length === 1 ? '' : 's'}`,
+      text: riskyQuotes.length
+        ? 'Se eliminaran definitivamente. Incluye presupuestos emitidos o aceptados, asi que la tesoreria y los historiales se recalcularan sin posibilidad de recuperarlos.'
+        : 'Se eliminaran definitivamente de la base y la tesoreria se recalculara automaticamente.',
+      icon: 'warning',
+      confirmButtonText: riskyQuotes.length ? 'Eliminar definitivamente' : 'Eliminar',
+      cancelButtonText: 'Cancelar',
+      showCancelButton: true,
+    });
+
+    if (!result.isConfirmed) {
+      return false;
+    }
+
+    setIsSaving(true);
+    try {
+      await apiClient.bulkDeleteQuotes({ quote_ids: quotesToDelete.map((quote) => quote.id) });
+      await loadWorkspace();
+      showSuccessToast(
+        `${quotesToDelete.length} presupuesto${quotesToDelete.length === 1 ? '' : 's'} eliminado${quotesToDelete.length === 1 ? '' : 's'}`,
+      );
+      return true;
+    } catch {
+      await Swal.fire({
+        title: 'No se pudieron eliminar los presupuestos',
+        text: 'Intenta nuevamente en unos segundos. La tesoreria solo se actualiza cuando la eliminacion termina correctamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const downloadQuotePdf = async (quote: Quote) => {
     try {
       const blob = await apiClient.downloadQuotePdf(quote.id);
@@ -1387,6 +1429,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             newQuoteClientIdRequest={quoteCreateClientRequestId}
             onAddCostItem={addQuoteItemFromCatalog}
             onDeleteItem={deleteQuoteItem}
+            onDeleteQuotes={deleteQuotes}
             onDownloadPdf={downloadQuotePdf}
             onEditClient={openClientRecordFromAnotherView}
             onEditorRequestHandled={() => setQuoteEditorRequestId(null)}
@@ -2471,6 +2514,7 @@ function QuotesView({
   newQuoteClientIdRequest,
   onAddCostItem,
   onDeleteItem,
+  onDeleteQuotes,
   onDownloadPdf,
   onEditClient,
   onEditorRequestHandled,
@@ -2491,6 +2535,7 @@ function QuotesView({
   newQuoteClientIdRequest: string | null;
   onAddCostItem: (quote: Quote, item: CostItem) => void;
   onDeleteItem: (quote: Quote, itemId: string) => void;
+  onDeleteQuotes: (quotes: Quote[]) => Promise<boolean>;
   onDownloadPdf: (quote: Quote) => void;
   onEditClient: (clientId: string, section?: ClientRecordSection) => Promise<void>;
   onEditorRequestHandled: () => void;
@@ -2507,6 +2552,7 @@ function QuotesView({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
   useEffect(() => {
     if (!newQuoteClientIdRequest) {
       return;
@@ -2528,6 +2574,10 @@ function QuotesView({
     onEditorRequestHandled();
   }, [editorRequestId, onEditorRequestHandled, selectedQuoteId]);
 
+  useEffect(() => {
+    setSelectedQuoteIds((current) => current.filter((quoteId) => quotes.some((quote) => quote.id === quoteId)));
+  }, [quotes]);
+
   const filteredQuotes = [...quotes]
     .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     .filter((quote) => {
@@ -2548,6 +2598,7 @@ function QuotesView({
     );
     });
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
+  const selectedQuotesForDeletion = quotes.filter((quote) => selectedQuoteIds.includes(quote.id));
   const canEditSelected = selectedQuote?.status === 'draft';
   const filteredCatalogItems = costItems.filter((item) =>
     matchesSearch([item.name, item.description], catalogSearch),
@@ -2573,6 +2624,17 @@ function QuotesView({
     setIsCreatingNew(false);
     onSelectQuote(quoteId);
     setActiveSection('editor');
+  };
+  const toggleQuoteSelection = (quoteId: string) => {
+    setSelectedQuoteIds((current) =>
+      current.includes(quoteId) ? current.filter((id) => id !== quoteId) : [...current, quoteId],
+    );
+  };
+  const handleDeleteSelectedQuotes = async () => {
+    const deleted = await onDeleteQuotes(selectedQuotesForDeletion);
+    if (deleted) {
+      setSelectedQuoteIds([]);
+    }
   };
 
   return (
@@ -2659,6 +2721,21 @@ function QuotesView({
                 </button>
               ))}
             </div>
+            {selectedQuoteIds.length > 0 ? (
+              <div style={styles.bulkActionBar}>
+                <span style={styles.bulkActionText}>
+                  {selectedQuoteIds.length} seleccionado{selectedQuoteIds.length === 1 ? '' : 's'}
+                </span>
+                <button
+                  disabled={isSaving}
+                  onClick={handleDeleteSelectedQuotes}
+                  style={styles.dangerOutlineButton}
+                  type="button"
+                >
+                  Eliminar seleccionados
+                </button>
+              </div>
+            ) : null}
           </div>
           {quotes.length === 0 ? (
             <p style={styles.emptyState}>Todavia no hay presupuestos.</p>
@@ -2667,13 +2744,25 @@ function QuotesView({
           ) : (
             <div style={styles.quoteList}>
               {filteredQuotes.map((quote) => (
-                <button
+                <article
                   key={quote.id}
-                  onClick={() => openExistingQuote(quote.id)}
                   style={quote.id === selectedQuoteId ? styles.quoteListActive : styles.quoteListButton}
-                  type="button"
                 >
                   <div style={styles.quoteListCard}>
+                    <label style={styles.quoteSelectionControl}>
+                      <input
+                        aria-label={`Seleccionar ${quote.number}`}
+                        checked={selectedQuoteIds.includes(quote.id)}
+                        onChange={() => toggleQuoteSelection(quote.id)}
+                        style={styles.checkbox}
+                        type="checkbox"
+                      />
+                    </label>
+                    <button
+                      onClick={() => openExistingQuote(quote.id)}
+                      style={styles.quoteOpenButton}
+                      type="button"
+                    >
                     <div style={styles.quoteRowMain}>
                       <span style={styles.quoteNumber}>{quote.number}</span>
                       <strong>{clientName(clients, quote.client_id)}</strong>
@@ -2684,8 +2773,9 @@ function QuotesView({
                       <StatusBadge status={quote.status} />
                       <strong>{formatMoney(quote.total)}</strong>
                     </div>
+                    </button>
                   </div>
-                </button>
+                </article>
               ))}
             </div>
           )}
@@ -3370,6 +3460,8 @@ function TreasuryView({
   const acceptedQuotes = quotes.filter((quote) => quote.status === 'accepted');
   const issuedQuotes = quotes.filter((quote) => quote.status === 'issued');
   const rejectedQuotes = quotes.filter((quote) => quote.status === 'rejected');
+  const pendingExpenses = expenseEntries.filter((entry) => entry.status === 'pending');
+  const paidExpenses = expenseEntries.filter((entry) => entry.status === 'paid');
   const treasurySections = [
     { id: 'overview' as const, label: 'Resumen' },
     { id: 'movements' as const, label: 'Movimientos' },
@@ -3380,6 +3472,8 @@ function TreasuryView({
     { label: 'Facturado aceptado', value: formatMoney(sumQuotes(acceptedQuotes)) },
     { label: 'Pendiente emitido', value: formatMoney(sumQuotes(issuedQuotes)) },
     { label: 'Rechazado', value: formatMoney(sumQuotes(rejectedQuotes)) },
+    { label: 'Gastos pendientes', value: formatMoney(sumExpenses(pendingExpenses)) },
+    { label: 'Gastos cobrados', value: formatMoney(sumExpenses(paidExpenses)) },
     { label: 'Total de presupuestos', value: String(quotes.length) },
     {
       label: 'Mes actual',
@@ -3394,6 +3488,7 @@ function TreasuryView({
     ? sumQuotes(acceptedQuotes) / acceptedQuotes.length
     : 0;
   const conversionRate = quotes.length ? (acceptedQuotes.length / quotes.length) * 100 : 0;
+  const netBalance = sumQuotes(acceptedQuotes) - sumExpenses(expenseEntries);
   const latestMovements = [...quotes]
     .filter((quote) => quote.status !== 'draft')
     .filter((quote) => movementFilter === 'all' || quote.status === movementFilter)
@@ -3401,7 +3496,7 @@ function TreasuryView({
     .slice(0, 12);
   const pendingQuotes = [...issuedQuotes].sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left));
   const filteredExpenseEntries = expenseEntries.filter((entry) => expenseFilter === 'all' || entry.status === expenseFilter);
-  const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes);
+  const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes, expenseEntries);
 
   if (isSmartTreasury) {
     return (
@@ -3428,7 +3523,7 @@ function TreasuryView({
         <section style={styles.gridTwo}>
           <ChartPanel
             emptyText="Todavia no hay presupuestos aceptados."
-            rows={smartTreasury.membershipsByMonth}
+            rows={smartTreasury.acceptedByMonth}
             title="Presupuestos aceptados por mes"
             valueFormatter={(value) => `${value.toFixed(0)} cierres`}
           />
@@ -3522,7 +3617,7 @@ function TreasuryView({
                   <h2 id="treasury-health-title" style={styles.panelTitle}>
                     Resumen de tesoreria
                   </h2>
-                  <p style={styles.panelSubtitle}>Lectura rapida de conversion, volumen y ticket promedio.</p>
+                  <p style={styles.panelSubtitle}>Lectura rapida de conversion, volumen, ticket promedio y gasto acumulado.</p>
                 </div>
               </div>
               <div style={styles.treasuryOverviewStrip}>
@@ -3546,6 +3641,14 @@ function TreasuryView({
                 <div style={styles.categoryRow}>
                   <span>Presupuestos emitidos</span>
                   <strong>{issuedQuotes.length}</strong>
+                </div>
+                <div style={styles.categoryRow}>
+                  <span>Gasto pendiente</span>
+                  <strong>{formatMoney(String(sumExpenses(pendingExpenses)))}</strong>
+                </div>
+                <div style={styles.categoryRow}>
+                  <span>Balance neto</span>
+                  <strong>{formatMoney(String(netBalance))}</strong>
                 </div>
               </div>
             </section>
@@ -5162,6 +5265,16 @@ function sumQuotes(quotes: Quote[], status?: QuoteStatus): number {
   }, 0);
 }
 
+function sumExpenses(expenses: ExpenseEntry[], status?: ExpenseStatus): number {
+  return expenses.reduce((total, expense) => {
+    if (status && expense.status !== status) {
+      return total;
+    }
+
+    return total + Number(expense.amount);
+  }, 0);
+}
+
 function quoteTimestamp(quote: Quote): number {
   return new Date(quote.issued_at ?? quote.created_at).getTime();
 }
@@ -5189,7 +5302,7 @@ function buildMonthlyTreasuryRows(quotes: Quote[]): string[][] {
     .map(([month, value]) => [formatMonth(month), String(value.count), formatMoney(value.total)]);
 }
 
-function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
+function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[], expenses: ExpenseEntry[]) {
   const monthlyTotals = acceptedQuotes.reduce<Record<string, number>>((totals, quote) => {
     const date = new Date(quote.issued_at ?? quote.created_at);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -5215,6 +5328,9 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
   const conversionRate = allQuotes.length ? (acceptedQuotes.length / allQuotes.length) * 100 : 0;
   const topMonth = months[0];
   const pendingValue = sumQuotes(allQuotes, 'issued');
+  const totalExpenses = sumExpenses(expenses);
+  const pendingExpenses = sumExpenses(expenses, 'pending');
+  const netBalance = totalAccepted - totalExpenses;
   const acceptedCount = acceptedQuotes.length;
 
   return {
@@ -5223,6 +5339,8 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
       { label: 'Facturacion aceptada', value: formatMoney(totalAccepted) },
       { label: 'Ticket promedio', value: formatMoney(averageTicket) },
       { label: 'Conversion', value: `${conversionRate.toFixed(0)}%` },
+      { label: 'Gastos registrados', value: formatMoney(totalExpenses) },
+      { label: 'Balance neto', value: formatMoney(netBalance) },
     ],
     insights: [
       {
@@ -5243,8 +5361,14 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
           ? `Hay ${formatMoney(pendingValue)} en presupuestos emitidos pendientes de aceptacion. Es el primer lugar donde conviene hacer seguimiento.`
           : 'No hay monto emitido pendiente. La tesoreria actual no muestra caja inmediata por cerrar.',
       },
+      {
+        title: 'Presion de gastos',
+        text: totalExpenses > 0
+          ? `Se registran ${formatMoney(totalExpenses)} en gastos totales, con ${formatMoney(pendingExpenses)} todavia pendientes. Esto conviene leerlo junto con la facturacion aceptada para medir margen real.`
+          : 'Todavia no hay gastos cargados. Cuando se empiecen a registrar, aca vas a ver el peso real de caja e inversion.',
+      },
     ],
-    membershipsByMonth,
+    acceptedByMonth: membershipsByMonth,
     months,
   };
 }
@@ -6725,7 +6849,31 @@ const styles = {
     alignItems: 'start',
     display: 'grid',
     gap: '16px',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+  },
+  quoteSelectionControl: {
+    alignItems: 'flex-start',
+    display: 'flex',
+    paddingTop: '4px',
+  },
+  checkbox: {
+    accentColor: 'var(--accent)',
+    cursor: 'pointer',
+    height: '16px',
+    width: '16px',
+  },
+  quoteOpenButton: {
+    alignItems: 'start',
+    background: 'transparent',
+    border: 0,
+    color: 'inherit',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '16px',
     gridTemplateColumns: 'minmax(0, 1fr) auto',
+    padding: 0,
+    textAlign: 'left',
+    width: '100%',
   },
   quoteRowMain: {
     display: 'grid',
@@ -6896,6 +7044,18 @@ const styles = {
     display: 'grid',
     gap: '10px',
     padding: '14px 20px',
+  },
+  bulkActionBar: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    justifyContent: 'space-between',
+  },
+  bulkActionText: {
+    color: 'var(--muted)',
+    fontSize: '13px',
+    fontWeight: 700,
   },
   compactLabel: {
     color: 'var(--muted)',

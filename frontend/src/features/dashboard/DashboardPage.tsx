@@ -12,6 +12,10 @@ import {
   CostItem,
   CostItemPayload,
   CurrentUser,
+  ExpenseCategory,
+  ExpenseEntry,
+  ExpenseEntryPayload,
+  ExpenseStatus,
   Quote,
   QuoteItemPayload,
   QuotePayload,
@@ -34,8 +38,9 @@ type CompanySection = 'data' | 'billing' | 'preview';
 type QuoteSection = 'list' | 'editor';
 type ClientSection = 'list' | 'record';
 type ClientRecordSection = 'data' | 'services' | 'quotes';
-type TreasurySection = 'overview' | 'movements' | 'pending';
+type TreasurySection = 'overview' | 'movements' | 'pending' | 'expenses';
 type TreasuryMovementFilter = 'all' | 'accepted' | 'issued' | 'rejected';
+type ExpenseFilter = 'all' | ExpenseStatus;
 type ClientRecordRequest = {
   clientId: string;
   section: ClientRecordSection;
@@ -127,6 +132,15 @@ type QuoteForm = {
   valid_until: string;
 };
 
+type ExpenseForm = {
+  amount: string;
+  detail: string;
+  notes: string;
+  status: ExpenseStatus;
+  client_id: string;
+  category_id: string;
+};
+
 const emptyClientForm: ClientForm = {
   name: '',
   document: '',
@@ -179,6 +193,15 @@ const emptyQuoteForm: QuoteForm = {
   valid_until: '',
 };
 
+const emptyExpenseForm: ExpenseForm = {
+  amount: '',
+  detail: '',
+  notes: '',
+  status: 'pending',
+  client_id: '',
+  category_id: '',
+};
+
 const categoryLabels: Record<CostCategory, string> = {
   equipment: 'Equipos',
   materials: 'Materiales',
@@ -218,6 +241,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [platformChangeRequests, setPlatformChangeRequests] = useState<TenantChangeRequest[]>([]);
   const [platformSignupRequests, setPlatformSignupRequests] = useState<TenantSignupRequest[]>([]);
   const [platformMemberships, setPlatformMemberships] = useState<PlatformTenantMembership[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
+  const [expenseEntries, setExpenseEntries] = useState<ExpenseEntry[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
@@ -228,6 +253,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [serviceRecordForm, setServiceRecordForm] = useState<ServiceRecordForm>(emptyServiceRecordForm);
   const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
   const [quoteForm, setQuoteForm] = useState<QuoteForm>(emptyQuoteForm);
+  const [expenseForm, setExpenseForm] = useState<ExpenseForm>(emptyExpenseForm);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
@@ -252,13 +278,24 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setLoadError(null);
 
     try {
-      const [userResponse, profileResponse, changeRequestsResponse, clientsResponse, costsResponse, quotesResponse] = await Promise.all([
+      const [
+        userResponse,
+        profileResponse,
+        changeRequestsResponse,
+        clientsResponse,
+        costsResponse,
+        quotesResponse,
+        expenseCategoriesResponse,
+        expenseEntriesResponse,
+      ] = await Promise.all([
         apiClient.getCurrentUser(),
         apiClient.getTenantProfile(),
         apiClient.listTenantChangeRequests(),
         apiClient.listClients(),
         apiClient.listCostItems(),
         apiClient.listQuotes(),
+        apiClient.listExpenseCategories(),
+        apiClient.listExpenseEntries(),
       ]);
       setCurrentUser(userResponse);
       setCompanyProfile(profileResponse);
@@ -267,6 +304,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       setClients(clientsResponse.items);
       setCostItems(costsResponse.items);
       setQuotes(quotesResponse.items);
+      setExpenseCategories(expenseCategoriesResponse.items);
+      setExpenseEntries(expenseEntriesResponse.items);
       setSelectedQuoteId((current) => {
         if (current && quotesResponse.items.some((quote) => quote.id === current)) {
           return current;
@@ -417,6 +456,120 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       await Swal.fire({
         title: 'No se pudo guardar el servicio',
         text: 'Revisá importe, unidad e IVA. El IVA vacío usa el valor general de la empresa.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExpenseSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!expenseForm.amount || !expenseForm.detail.trim()) {
+      await Swal.fire({
+        title: 'Faltan datos del gasto',
+        text: 'Completa monto y detalle para registrar el gasto.',
+        icon: 'warning',
+        confirmButtonText: 'Cerrar',
+      });
+      return;
+    }
+
+    const payload: ExpenseEntryPayload = {
+      amount: expenseForm.amount,
+      detail: expenseForm.detail.trim(),
+      notes: nullable(expenseForm.notes),
+      status: expenseForm.status,
+      client_id: expenseForm.client_id || null,
+      category_id: expenseForm.category_id || null,
+    };
+
+    setIsSaving(true);
+    try {
+      await apiClient.createExpenseEntry(payload);
+      setExpenseForm(emptyExpenseForm);
+      await loadWorkspace();
+      showSuccessToast('Gasto registrado');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo registrar el gasto',
+        text: 'Revisa el monto, detalle y los datos opcionales antes de intentar nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExpenseStatusChange = async (entry: ExpenseEntry, status: ExpenseStatus) => {
+    setIsSaving(true);
+    try {
+      await apiClient.updateExpenseEntry(entry.id, { status });
+      await loadWorkspace();
+      showSuccessToast(status === 'paid' ? 'Gasto marcado como cobrado' : 'Gasto marcado como pendiente');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo actualizar el gasto',
+        text: 'Intenta nuevamente en unos segundos.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleManageExpenseCategories = async () => {
+    const currentCategories = expenseCategories
+      .map((category) => `<li style="margin:0 0 6px;">${escapeHtml(category.name)}</li>`)
+      .join('');
+
+    const result = await Swal.fire({
+      title: 'Administrar categorias',
+      html: `
+        <div style="display:grid;gap:12px;text-align:left;">
+          <div>
+            <strong style="display:block;margin-bottom:8px;">Categorias actuales</strong>
+            <ul style="margin:0;padding-left:18px;color:#64748b;">
+              ${currentCategories || '<li>Sin categorias cargadas</li>'}
+            </ul>
+          </div>
+          <label style="display:grid;gap:6px;">
+            <span>Nueva categoria</span>
+            <input id="expense-category-name" class="swal2-input" placeholder="Ej. Materiales de stock" style="margin:0;" />
+          </label>
+        </div>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Agregar categoria',
+      cancelButtonText: 'Cerrar',
+      preConfirm: () => {
+        const nameValue = (document.getElementById('expense-category-name') as HTMLInputElement | null)?.value.trim() ?? '';
+        if (!nameValue) {
+          Swal.showValidationMessage('Escribe un nombre para la categoria.');
+          return undefined;
+        }
+        return { name: nameValue };
+      },
+    });
+
+    if (!result.isConfirmed || !result.value) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await apiClient.createExpenseCategory(result.value);
+      await loadWorkspace();
+      showSuccessToast('Categoria creada');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo crear la categoria',
+        text: 'Intenta nuevamente con otro nombre.',
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });
@@ -754,6 +907,48 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });
+    }
+  };
+
+  const deleteQuotes = async (quotesToDelete: Quote[]) => {
+    if (quotesToDelete.length === 0) {
+      return false;
+    }
+
+    const riskyQuotes = quotesToDelete.filter((quote) => quote.status === 'issued' || quote.status === 'accepted');
+    const result = await Swal.fire({
+      title: `Eliminar ${quotesToDelete.length} presupuesto${quotesToDelete.length === 1 ? '' : 's'}`,
+      text: riskyQuotes.length
+        ? 'Se eliminaran definitivamente. Incluye presupuestos emitidos o aceptados, asi que la tesoreria y los historiales se recalcularan sin posibilidad de recuperarlos.'
+        : 'Se eliminaran definitivamente de la base y la tesoreria se recalculara automaticamente.',
+      icon: 'warning',
+      confirmButtonText: riskyQuotes.length ? 'Eliminar definitivamente' : 'Eliminar',
+      cancelButtonText: 'Cancelar',
+      showCancelButton: true,
+    });
+
+    if (!result.isConfirmed) {
+      return false;
+    }
+
+    setIsSaving(true);
+    try {
+      await apiClient.bulkDeleteQuotes({ quote_ids: quotesToDelete.map((quote) => quote.id) });
+      await loadWorkspace();
+      showSuccessToast(
+        `${quotesToDelete.length} presupuesto${quotesToDelete.length === 1 ? '' : 's'} eliminado${quotesToDelete.length === 1 ? '' : 's'}`,
+      );
+      return true;
+    } catch {
+      await Swal.fire({
+        title: 'No se pudieron eliminar los presupuestos',
+        text: 'Intenta nuevamente en unos segundos. La tesoreria solo se actualiza cuando la eliminacion termina correctamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+      return false;
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1234,6 +1429,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             newQuoteClientIdRequest={quoteCreateClientRequestId}
             onAddCostItem={addQuoteItemFromCatalog}
             onDeleteItem={deleteQuoteItem}
+            onDeleteQuotes={deleteQuotes}
             onDownloadPdf={downloadQuotePdf}
             onEditClient={openClientRecordFromAnotherView}
             onEditorRequestHandled={() => setQuoteEditorRequestId(null)}
@@ -1250,7 +1446,15 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         {activeView === 'treasury' ? (
           <TreasuryView
             clients={clients}
+            expenseCategories={expenseCategories}
+            expenseEntries={expenseEntries}
+            expenseForm={expenseForm}
             isCompactLayout={isCompactLayout}
+            isSaving={isSaving}
+            onExpenseFormChange={setExpenseForm}
+            onExpenseStatusChange={handleExpenseStatusChange}
+            onExpenseSubmit={handleExpenseSubmit}
+            onManageExpenseCategories={handleManageExpenseCategories}
             onDownloadPdf={downloadQuotePdf}
             onOpenQuote={openQuoteEditorFromAnotherView}
             onSendInvoiceByWhatsApp={sendInvoiceByWhatsApp}
@@ -2310,6 +2514,7 @@ function QuotesView({
   newQuoteClientIdRequest,
   onAddCostItem,
   onDeleteItem,
+  onDeleteQuotes,
   onDownloadPdf,
   onEditClient,
   onEditorRequestHandled,
@@ -2330,6 +2535,7 @@ function QuotesView({
   newQuoteClientIdRequest: string | null;
   onAddCostItem: (quote: Quote, item: CostItem) => void;
   onDeleteItem: (quote: Quote, itemId: string) => void;
+  onDeleteQuotes: (quotes: Quote[]) => Promise<boolean>;
   onDownloadPdf: (quote: Quote) => void;
   onEditClient: (clientId: string, section?: ClientRecordSection) => Promise<void>;
   onEditorRequestHandled: () => void;
@@ -2346,6 +2552,7 @@ function QuotesView({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
   useEffect(() => {
     if (!newQuoteClientIdRequest) {
       return;
@@ -2367,6 +2574,10 @@ function QuotesView({
     onEditorRequestHandled();
   }, [editorRequestId, onEditorRequestHandled, selectedQuoteId]);
 
+  useEffect(() => {
+    setSelectedQuoteIds((current) => current.filter((quoteId) => quotes.some((quote) => quote.id === quoteId)));
+  }, [quotes]);
+
   const filteredQuotes = [...quotes]
     .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     .filter((quote) => {
@@ -2387,6 +2598,7 @@ function QuotesView({
     );
     });
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
+  const selectedQuotesForDeletion = quotes.filter((quote) => selectedQuoteIds.includes(quote.id));
   const canEditSelected = selectedQuote?.status === 'draft';
   const filteredCatalogItems = costItems.filter((item) =>
     matchesSearch([item.name, item.description], catalogSearch),
@@ -2412,6 +2624,17 @@ function QuotesView({
     setIsCreatingNew(false);
     onSelectQuote(quoteId);
     setActiveSection('editor');
+  };
+  const toggleQuoteSelection = (quoteId: string) => {
+    setSelectedQuoteIds((current) =>
+      current.includes(quoteId) ? current.filter((id) => id !== quoteId) : [...current, quoteId],
+    );
+  };
+  const handleDeleteSelectedQuotes = async () => {
+    const deleted = await onDeleteQuotes(selectedQuotesForDeletion);
+    if (deleted) {
+      setSelectedQuoteIds([]);
+    }
   };
 
   return (
@@ -2498,6 +2721,21 @@ function QuotesView({
                 </button>
               ))}
             </div>
+            {selectedQuoteIds.length > 0 ? (
+              <div style={styles.bulkActionBar}>
+                <span style={styles.bulkActionText}>
+                  {selectedQuoteIds.length} seleccionado{selectedQuoteIds.length === 1 ? '' : 's'}
+                </span>
+                <button
+                  disabled={isSaving}
+                  onClick={handleDeleteSelectedQuotes}
+                  style={styles.dangerOutlineButton}
+                  type="button"
+                >
+                  Eliminar seleccionados
+                </button>
+              </div>
+            ) : null}
           </div>
           {quotes.length === 0 ? (
             <p style={styles.emptyState}>Todavia no hay presupuestos.</p>
@@ -2506,13 +2744,25 @@ function QuotesView({
           ) : (
             <div style={styles.quoteList}>
               {filteredQuotes.map((quote) => (
-                <button
+                <article
                   key={quote.id}
-                  onClick={() => openExistingQuote(quote.id)}
                   style={quote.id === selectedQuoteId ? styles.quoteListActive : styles.quoteListButton}
-                  type="button"
                 >
                   <div style={styles.quoteListCard}>
+                    <label style={styles.quoteSelectionControl}>
+                      <input
+                        aria-label={`Seleccionar ${quote.number}`}
+                        checked={selectedQuoteIds.includes(quote.id)}
+                        onChange={() => toggleQuoteSelection(quote.id)}
+                        style={styles.checkbox}
+                        type="checkbox"
+                      />
+                    </label>
+                    <button
+                      onClick={() => openExistingQuote(quote.id)}
+                      style={styles.quoteOpenButton}
+                      type="button"
+                    >
                     <div style={styles.quoteRowMain}>
                       <span style={styles.quoteNumber}>{quote.number}</span>
                       <strong>{clientName(clients, quote.client_id)}</strong>
@@ -2523,8 +2773,9 @@ function QuotesView({
                       <StatusBadge status={quote.status} />
                       <strong>{formatMoney(quote.total)}</strong>
                     </div>
+                    </button>
                   </div>
-                </button>
+                </article>
               ))}
             </div>
           )}
@@ -3173,14 +3424,30 @@ function CompanyProfileView({
 
 function TreasuryView({
   clients,
+  expenseCategories,
+  expenseEntries,
+  expenseForm,
   isCompactLayout,
+  isSaving,
+  onExpenseFormChange,
+  onExpenseStatusChange,
+  onExpenseSubmit,
+  onManageExpenseCategories,
   onDownloadPdf,
   onOpenQuote,
   onSendInvoiceByWhatsApp,
   quotes,
 }: {
   clients: Client[];
+  expenseCategories: ExpenseCategory[];
+  expenseEntries: ExpenseEntry[];
+  expenseForm: ExpenseForm;
   isCompactLayout: boolean;
+  isSaving: boolean;
+  onExpenseFormChange: (form: ExpenseForm) => void;
+  onExpenseStatusChange: (entry: ExpenseEntry, status: ExpenseStatus) => void;
+  onExpenseSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onManageExpenseCategories: () => void;
   onDownloadPdf: (quote: Quote) => void;
   onOpenQuote: (quoteId: string) => void;
   onSendInvoiceByWhatsApp: (quote: Quote) => void;
@@ -3189,18 +3456,24 @@ function TreasuryView({
   const [activeSection, setActiveSection] = useState<TreasurySection>('overview');
   const [isSmartTreasury, setIsSmartTreasury] = useState(false);
   const [movementFilter, setMovementFilter] = useState<TreasuryMovementFilter>('all');
+  const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
   const acceptedQuotes = quotes.filter((quote) => quote.status === 'accepted');
   const issuedQuotes = quotes.filter((quote) => quote.status === 'issued');
   const rejectedQuotes = quotes.filter((quote) => quote.status === 'rejected');
+  const pendingExpenses = expenseEntries.filter((entry) => entry.status === 'pending');
+  const paidExpenses = expenseEntries.filter((entry) => entry.status === 'paid');
   const treasurySections = [
     { id: 'overview' as const, label: 'Resumen' },
     { id: 'movements' as const, label: 'Movimientos' },
     { id: 'pending' as const, label: 'Cobros pendientes' },
+    { id: 'expenses' as const, label: 'Gastos' },
   ];
   const treasuryMetrics = [
     { label: 'Facturado aceptado', value: formatMoney(sumQuotes(acceptedQuotes)) },
     { label: 'Pendiente emitido', value: formatMoney(sumQuotes(issuedQuotes)) },
     { label: 'Rechazado', value: formatMoney(sumQuotes(rejectedQuotes)) },
+    { label: 'Gastos pendientes', value: formatMoney(sumExpenses(pendingExpenses)) },
+    { label: 'Gastos cobrados', value: formatMoney(sumExpenses(paidExpenses)) },
     { label: 'Total de presupuestos', value: String(quotes.length) },
     {
       label: 'Mes actual',
@@ -3215,13 +3488,15 @@ function TreasuryView({
     ? sumQuotes(acceptedQuotes) / acceptedQuotes.length
     : 0;
   const conversionRate = quotes.length ? (acceptedQuotes.length / quotes.length) * 100 : 0;
+  const netBalance = sumQuotes(acceptedQuotes) - sumExpenses(expenseEntries);
   const latestMovements = [...quotes]
     .filter((quote) => quote.status !== 'draft')
     .filter((quote) => movementFilter === 'all' || quote.status === movementFilter)
     .sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left))
     .slice(0, 12);
   const pendingQuotes = [...issuedQuotes].sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left));
-  const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes);
+  const filteredExpenseEntries = expenseEntries.filter((entry) => expenseFilter === 'all' || entry.status === expenseFilter);
+  const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes, expenseEntries);
 
   if (isSmartTreasury) {
     return (
@@ -3248,7 +3523,7 @@ function TreasuryView({
         <section style={styles.gridTwo}>
           <ChartPanel
             emptyText="Todavia no hay presupuestos aceptados."
-            rows={smartTreasury.membershipsByMonth}
+            rows={smartTreasury.acceptedByMonth}
             title="Presupuestos aceptados por mes"
             valueFormatter={(value) => `${value.toFixed(0)} cierres`}
           />
@@ -3342,7 +3617,7 @@ function TreasuryView({
                   <h2 id="treasury-health-title" style={styles.panelTitle}>
                     Resumen de tesoreria
                   </h2>
-                  <p style={styles.panelSubtitle}>Lectura rapida de conversion, volumen y ticket promedio.</p>
+                  <p style={styles.panelSubtitle}>Lectura rapida de conversion, volumen, ticket promedio y gasto acumulado.</p>
                 </div>
               </div>
               <div style={styles.treasuryOverviewStrip}>
@@ -3366,6 +3641,14 @@ function TreasuryView({
                 <div style={styles.categoryRow}>
                   <span>Presupuestos emitidos</span>
                   <strong>{issuedQuotes.length}</strong>
+                </div>
+                <div style={styles.categoryRow}>
+                  <span>Gasto pendiente</span>
+                  <strong>{formatMoney(String(sumExpenses(pendingExpenses)))}</strong>
+                </div>
+                <div style={styles.categoryRow}>
+                  <span>Balance neto</span>
+                  <strong>{formatMoney(String(netBalance))}</strong>
                 </div>
               </div>
             </section>
@@ -3528,6 +3811,170 @@ function TreasuryView({
               ))}
             </div>
           )}
+        </section>
+      ) : null}
+
+      {activeSection === 'expenses' ? (
+        <section style={styles.tablePanel} aria-labelledby="treasury-expenses-title">
+          <div style={styles.panelHeader}>
+            <div>
+              <h2 id="treasury-expenses-title" style={styles.panelTitle}>
+                Gastos
+              </h2>
+              <p style={styles.panelSubtitle}>Registro de gastos e inversiones de la empresa con seguimiento simple.</p>
+            </div>
+            <button onClick={onManageExpenseCategories} style={styles.secondaryButton} type="button">
+              Administrar categorias
+            </button>
+          </div>
+          <div style={styles.quoteEditorSection}>
+            <section style={styles.quoteEditorBlock}>
+              <div>
+                <h3 style={styles.compactTitle}>Nuevo gasto</h3>
+                <p style={styles.helperText}>La fecha queda fija al momento de crear el gasto. Cliente y categoria son opcionales.</p>
+              </div>
+              <form onSubmit={onExpenseSubmit} style={styles.serviceForm}>
+                <div style={styles.formGridTwo}>
+                  <Field
+                    label="Monto"
+                    min="0"
+                    required
+                    step="0.01"
+                    type="number"
+                    value={expenseForm.amount}
+                    onChange={(amount) => onExpenseFormChange({ ...expenseForm, amount })}
+                  />
+                  <Field
+                    label="Detalle"
+                    required
+                    value={expenseForm.detail}
+                    onChange={(detail) => onExpenseFormChange({ ...expenseForm, detail })}
+                  />
+                </div>
+                <div style={styles.formGridTwo}>
+                  <label style={styles.label}>
+                    Cliente
+                    <select
+                      onChange={(event) => onExpenseFormChange({ ...expenseForm, client_id: event.target.value })}
+                      style={styles.input}
+                      value={expenseForm.client_id}
+                    >
+                      <option value="">Sin cliente asociado</option>
+                      {clients.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={styles.label}>
+                    Categoria
+                    <select
+                      onChange={(event) => onExpenseFormChange({ ...expenseForm, category_id: event.target.value })}
+                      style={styles.input}
+                      value={expenseForm.category_id}
+                    >
+                      <option value="">Sin categoria</option>
+                      {expenseCategories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div style={styles.formGridTwo}>
+                  <label style={styles.label}>
+                    Estado
+                    <select
+                      onChange={(event) => onExpenseFormChange({ ...expenseForm, status: event.target.value as ExpenseStatus })}
+                      style={styles.input}
+                      value={expenseForm.status}
+                    >
+                      <option value="pending">Pendiente</option>
+                      <option value="paid">Cobrado</option>
+                    </select>
+                  </label>
+                </div>
+                <label style={styles.label}>
+                  Notas
+                  <textarea
+                    onChange={(event) => onExpenseFormChange({ ...expenseForm, notes: event.target.value })}
+                    rows={3}
+                    style={styles.textarea}
+                    value={expenseForm.notes}
+                  />
+                </label>
+                <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                  Registrar gasto
+                </button>
+              </form>
+            </section>
+
+            <section style={styles.quoteEditorBlock}>
+              <div style={styles.panelHeaderCompact}>
+                <div>
+                  <h3 style={styles.compactTitle}>Historial de gastos</h3>
+                  <p style={styles.helperText}>Consulta y actualiza rapido el estado de cada gasto registrado.</p>
+                </div>
+                <div style={styles.platformFilterBar}>
+                  {[
+                    { key: 'all', label: 'Todos' },
+                    { key: 'pending', label: 'Pendientes' },
+                    { key: 'paid', label: 'Cobrados' },
+                  ].map((filter) => (
+                    <button
+                      key={filter.key}
+                      onClick={() => setExpenseFilter(filter.key as ExpenseFilter)}
+                      style={expenseFilter === filter.key ? styles.platformFilterButtonActive : styles.platformFilterButton}
+                      type="button"
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {filteredExpenseEntries.length === 0 ? (
+                <p style={styles.compactEmpty}>Todavia no hay gastos para ese filtro.</p>
+              ) : (
+                <div style={styles.clientList}>
+                  {filteredExpenseEntries.map((entry) => (
+                    <article key={entry.id} style={styles.treasuryMovementRow}>
+                      <div style={styles.treasuryMovementPrimary}>
+                        <strong>{entry.detail}</strong>
+                        <span style={styles.treasuryMovementMeta}>{formatDate(entry.created_at)}</span>
+                        <span style={styles.mutedText}>
+                          {[entry.client_name, entry.category_name].filter(Boolean).join(' · ') || 'Sin cliente ni categoria'}
+                        </span>
+                        {entry.notes ? <span style={styles.mutedText}>{entry.notes}</span> : null}
+                      </div>
+                      <StatusBadge status={entry.status === 'paid' ? 'accepted' : 'issued'} label={entry.status === 'paid' ? 'Cobrado' : 'Pendiente'} />
+                      <strong style={styles.treasuryMovementAmount}>{formatMoney(entry.amount)}</strong>
+                      <div style={styles.treasuryActionGroup}>
+                        {entry.status === 'pending' ? (
+                          <button
+                            onClick={() => onExpenseStatusChange(entry, 'paid')}
+                            style={styles.primaryButton}
+                            type="button"
+                          >
+                            Marcar cobrado
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onExpenseStatusChange(entry, 'pending')}
+                            style={styles.secondaryButton}
+                            type="button"
+                          >
+                            Volver a pendiente
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
         </section>
       ) : null}
     </section>
@@ -4543,8 +4990,8 @@ function DataTable({
   );
 }
 
-function StatusBadge({ status }: { status: QuoteStatus }) {
-  return <span style={{ ...styles.statusBadge, ...statusBadgeStyle(status) }}>{statusLabels[status]}</span>;
+function StatusBadge({ label, status }: { label?: string; status: QuoteStatus }) {
+  return <span style={{ ...styles.statusBadge, ...statusBadgeStyle(status) }}>{label ?? statusLabels[status]}</span>;
 }
 
 function CategoryBadge({ category }: { category: CostCategory }) {
@@ -4818,6 +5265,16 @@ function sumQuotes(quotes: Quote[], status?: QuoteStatus): number {
   }, 0);
 }
 
+function sumExpenses(expenses: ExpenseEntry[], status?: ExpenseStatus): number {
+  return expenses.reduce((total, expense) => {
+    if (status && expense.status !== status) {
+      return total;
+    }
+
+    return total + Number(expense.amount);
+  }, 0);
+}
+
 function quoteTimestamp(quote: Quote): number {
   return new Date(quote.issued_at ?? quote.created_at).getTime();
 }
@@ -4845,7 +5302,7 @@ function buildMonthlyTreasuryRows(quotes: Quote[]): string[][] {
     .map(([month, value]) => [formatMonth(month), String(value.count), formatMoney(value.total)]);
 }
 
-function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
+function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[], expenses: ExpenseEntry[]) {
   const monthlyTotals = acceptedQuotes.reduce<Record<string, number>>((totals, quote) => {
     const date = new Date(quote.issued_at ?? quote.created_at);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -4871,6 +5328,9 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
   const conversionRate = allQuotes.length ? (acceptedQuotes.length / allQuotes.length) * 100 : 0;
   const topMonth = months[0];
   const pendingValue = sumQuotes(allQuotes, 'issued');
+  const totalExpenses = sumExpenses(expenses);
+  const pendingExpenses = sumExpenses(expenses, 'pending');
+  const netBalance = totalAccepted - totalExpenses;
   const acceptedCount = acceptedQuotes.length;
 
   return {
@@ -4879,6 +5339,8 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
       { label: 'Facturacion aceptada', value: formatMoney(totalAccepted) },
       { label: 'Ticket promedio', value: formatMoney(averageTicket) },
       { label: 'Conversion', value: `${conversionRate.toFixed(0)}%` },
+      { label: 'Gastos registrados', value: formatMoney(totalExpenses) },
+      { label: 'Balance neto', value: formatMoney(netBalance) },
     ],
     insights: [
       {
@@ -4899,8 +5361,14 @@ function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[]) {
           ? `Hay ${formatMoney(pendingValue)} en presupuestos emitidos pendientes de aceptacion. Es el primer lugar donde conviene hacer seguimiento.`
           : 'No hay monto emitido pendiente. La tesoreria actual no muestra caja inmediata por cerrar.',
       },
+      {
+        title: 'Presion de gastos',
+        text: totalExpenses > 0
+          ? `Se registran ${formatMoney(totalExpenses)} en gastos totales, con ${formatMoney(pendingExpenses)} todavia pendientes. Esto conviene leerlo junto con la facturacion aceptada para medir margen real.`
+          : 'Todavia no hay gastos cargados. Cuando se empiecen a registrar, aca vas a ver el peso real de caja e inversion.',
+      },
     ],
-    membershipsByMonth,
+    acceptedByMonth: membershipsByMonth,
     months,
   };
 }
@@ -6381,7 +6849,31 @@ const styles = {
     alignItems: 'start',
     display: 'grid',
     gap: '16px',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+  },
+  quoteSelectionControl: {
+    alignItems: 'flex-start',
+    display: 'flex',
+    paddingTop: '4px',
+  },
+  checkbox: {
+    accentColor: 'var(--accent)',
+    cursor: 'pointer',
+    height: '16px',
+    width: '16px',
+  },
+  quoteOpenButton: {
+    alignItems: 'start',
+    background: 'transparent',
+    border: 0,
+    color: 'inherit',
+    cursor: 'pointer',
+    display: 'grid',
+    gap: '16px',
     gridTemplateColumns: 'minmax(0, 1fr) auto',
+    padding: 0,
+    textAlign: 'left',
+    width: '100%',
   },
   quoteRowMain: {
     display: 'grid',
@@ -6552,6 +7044,18 @@ const styles = {
     display: 'grid',
     gap: '10px',
     padding: '14px 20px',
+  },
+  bulkActionBar: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    justifyContent: 'space-between',
+  },
+  bulkActionText: {
+    color: 'var(--muted)',
+    fontSize: '13px',
+    fontWeight: 700,
   },
   compactLabel: {
     color: 'var(--muted)',

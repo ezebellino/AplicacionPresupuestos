@@ -567,3 +567,35 @@ def test_quotes_are_scoped_to_authenticated_tenant(api_context) -> None:
         json={"source_cost_item_id": tenant_a_cost_item["id"], "quantity": "1.00"},
     )
     assert add_tenant_a_cost_item_to_tenant_b_quote.status_code == 404
+
+
+def test_bulk_delete_quotes_removes_rows_and_keeps_number_sequence(api_context) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(
+        client,
+        name="Acme Clima",
+        email="admin-bulk-delete@acme.test",
+    )
+    tenant_client = create_client(client, headers)
+    cost_item = create_cost_item(client, headers)
+
+    first_quote = create_quote(client, headers, tenant_client["id"], title="Primero")
+    add_quote_item(client, headers, first_quote["id"], cost_item["id"])
+    second_quote = create_quote(client, headers, tenant_client["id"], title="Segundo")
+    third_quote = create_quote(client, headers, tenant_client["id"], title="Tercero")
+
+    delete_response = client.post(
+        "/quotes/bulk-delete",
+        headers=headers,
+        json={"quote_ids": [first_quote["id"], second_quote["id"]]},
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json()["deleted_count"] == 2
+
+    remaining_quotes = client.get("/quotes", headers=headers)
+    assert remaining_quotes.status_code == 200
+    remaining_items = remaining_quotes.json()["items"]
+    assert [quote["id"] for quote in remaining_items] == [third_quote["id"]]
+
+    next_quote = create_quote(client, headers, tenant_client["id"], title="Cuarto")
+    assert next_quote["number"] == "Q-000004"

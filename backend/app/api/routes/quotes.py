@@ -9,6 +9,8 @@ from app.core.config import settings
 from app.infra.models import User
 from app.infra.pdf import build_quote_pdf
 from app.schemas.quotes import (
+    QuoteBulkDelete,
+    QuoteBulkDeleteResult,
     QuoteCreate,
     QuoteItemCreate,
     QuoteItemRead,
@@ -24,6 +26,7 @@ from app.services.quotes_service import (
     accept_quote,
     add_quote_item,
     create_quote,
+    delete_quotes,
     delete_quote_item,
     ensure_quote_share_token,
     get_quote_by_share_token,
@@ -92,6 +95,16 @@ def create_current_tenant_quote(
         )
 
     return serialize_quote(quote)
+
+
+@router.post("/bulk-delete", response_model=QuoteBulkDeleteResult)
+def bulk_delete_current_tenant_quotes(
+    payload: QuoteBulkDelete,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> QuoteBulkDeleteResult:
+    deleted_count = delete_quotes(db, current_user.tenant_id, payload.quote_ids)
+    return QuoteBulkDeleteResult(deleted_count=deleted_count)
 
 
 @router.get("/{quote_id}", response_model=QuoteRead)

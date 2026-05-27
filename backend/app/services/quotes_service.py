@@ -10,14 +10,7 @@ from sqlalchemy.orm import Session
 from app.domain.enums import QuoteStatus
 from app.domain.quote_calculator import QuoteLineInput, calculate_quote
 from app.infra.models import Client, CostItem, Quote, QuoteItem, Tenant
-from app.schemas.quotes import (
-    QuoteCreate,
-    QuoteItemCreate,
-    QuoteItemRead,
-    QuoteItemUpdate,
-    QuoteRead,
-    QuoteUpdate,
-)
+from app.schemas.quotes import QuoteCreate, QuoteItemCreate, QuoteItemRead, QuoteItemUpdate, QuoteRead, QuoteUpdate
 
 
 ZERO = Decimal("0.00")
@@ -268,6 +261,43 @@ def delete_quote_item(
     return True
 
 
+def delete_quotes(
+    db: Session,
+    tenant_id: UUID,
+    quote_ids: list[UUID],
+) -> int:
+    if not quote_ids:
+        return 0
+
+    quotes = list(
+        db.scalars(
+            select(Quote).where(
+                Quote.tenant_id == tenant_id,
+                Quote.id.in_(quote_ids),
+            )
+        )
+    )
+    if not quotes:
+        return 0
+
+    quote_id_set = {quote.id for quote in quotes}
+    items = list(
+        db.scalars(
+            select(QuoteItem).where(
+                QuoteItem.tenant_id == tenant_id,
+                QuoteItem.quote_id.in_(quote_id_set),
+            )
+        )
+    )
+    for item in items:
+        db.delete(item)
+    for quote in quotes:
+        db.delete(quote)
+
+    db.commit()
+    return len(quotes)
+
+
 def issue_quote(db: Session, tenant_id: UUID, quote_id: UUID) -> Quote | None:
     quote = get_quote(db, tenant_id, quote_id)
 
@@ -348,9 +378,16 @@ def _recalculate_quote(quote: Quote, items: list[QuoteItem]) -> None:
 
 
 def _next_quote_number(db: Session, tenant_id: UUID) -> str:
-    count = db.scalar(select(func.count()).select_from(Quote).where(Quote.tenant_id == tenant_id))
+    latest_number = db.scalar(select(func.max(Quote.number)).where(Quote.tenant_id == tenant_id))
+    if not latest_number:
+        return "Q-000001"
 
-    return f"Q-{(count or 0) + 1:06d}"
+    try:
+        latest_value = int(str(latest_number).split("-")[-1])
+    except (TypeError, ValueError):
+        latest_value = 0
+
+    return f"Q-{latest_value + 1:06d}"
 
 
 def _get_client(db: Session, tenant_id: UUID, client_id: UUID) -> Client | None:

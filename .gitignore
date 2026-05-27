@@ -16,3 +16,5 @@ AGENTS.md
 .codex/
 .gemini/
 openspec/
+.codegraph/
+.cursor/

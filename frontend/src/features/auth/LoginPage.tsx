@@ -151,69 +151,101 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           style={loginStyles.secondaryButton(isDarkMode)}
           type="button"
         >
-          {isSignupOpen ? 'Ocultar solicitud' : 'Solicitar alta SaaS'}
+          Solicitar cuenta para mi empresa
         </button>
 
         {isSignupOpen ? (
-          <form onSubmit={handleSignupRequest} style={styles.signupForm}>
-            <label style={loginStyles.label(isDarkMode)}>
-              Empresa
-              <input
-                onChange={(event) => setSignupForm({ ...signupForm, company_name: event.target.value })}
-                required
-                style={loginStyles.input(isDarkMode)}
-                value={signupForm.company_name}
-              />
-            </label>
-            <label style={loginStyles.label(isDarkMode)}>
-              Responsable
-              <input
-                onChange={(event) => setSignupForm({ ...signupForm, contact_name: event.target.value })}
-                required
-                style={loginStyles.input(isDarkMode)}
-                value={signupForm.contact_name}
-              />
-            </label>
-            <label style={loginStyles.label(isDarkMode)}>
-              Email
-              <input
-                onChange={(event) => setSignupForm({ ...signupForm, email: event.target.value })}
-                required
-                style={loginStyles.input(isDarkMode)}
-                type="email"
-                value={signupForm.email}
-              />
-            </label>
-            <label style={loginStyles.label(isDarkMode)}>
-              Celular / WhatsApp
-              <input
-                onChange={(event) => setSignupForm({ ...signupForm, phone: event.target.value })}
-                required
-                style={loginStyles.input(isDarkMode)}
-                value={signupForm.phone}
-              />
-            </label>
-            <label style={loginStyles.label(isDarkMode)}>
-              Rubro
-              <input
-                onChange={(event) => setSignupForm({ ...signupForm, business_type: event.target.value })}
-                style={loginStyles.input(isDarkMode)}
-                value={signupForm.business_type}
-              />
-            </label>
-            <label style={loginStyles.label(isDarkMode)}>
-              Comentario
-              <textarea
-                onChange={(event) => setSignupForm({ ...signupForm, message: event.target.value })}
-                rows={3}
-                style={loginStyles.input(isDarkMode)}
-                value={signupForm.message}
-              />
-            </label>
-            <button disabled={isRequestingSignup} style={loginStyles.button} type="submit">
-              {isRequestingSignup ? 'Enviando...' : 'Enviar solicitud'}
-            </button>
-          </form>
+          <div
+            aria-modal="true"
+            onClick={() => setIsSignupOpen(false)}
+            role="dialog"
+            style={loginStyles.modalOverlay(isDarkMode)}
+          >
+            <section
+              aria-labelledby="signup-modal-title"
+              onClick={(event) => event.stopPropagation()}
+              style={loginStyles.modalCard(isDarkMode)}
+            >
+              <div style={styles.modalHeader}>
+                <div>
+                  <h2 id="signup-modal-title" style={loginStyles.modalTitle(isDarkMode)}>
+                    Solicitar cuenta SaaS
+                  </h2>
+                  <p style={loginStyles.modalSubtitle(isDarkMode)}>
+                    Carganos los datos base y te contactamos para habilitar la empresa.
+                  </p>
+                </div>
+                <button
+                  aria-label="Cerrar solicitud"
+                  onClick={() => setIsSignupOpen(false)}
+                  style={loginStyles.modalCloseButton(isDarkMode)}
+                  type="button"
+                >
+                  X
+                </button>
+              </div>
+
+              <form onSubmit={handleSignupRequest} style={styles.signupForm}>
+                <label style={loginStyles.label(isDarkMode)}>
+                  Empresa
+                  <input
+                    onChange={(event) => setSignupForm({ ...signupForm, company_name: event.target.value })}
+                    required
+                    style={loginStyles.input(isDarkMode)}
+                    value={signupForm.company_name}
+                  />
+                </label>
+                <label style={loginStyles.label(isDarkMode)}>
+                  Responsable
+                  <input
+                    onChange={(event) => setSignupForm({ ...signupForm, contact_name: event.target.value })}
+                    required
+                    style={loginStyles.input(isDarkMode)}
+                    value={signupForm.contact_name}
+                  />
+                </label>
+                <label style={loginStyles.label(isDarkMode)}>
+                  Email
+                  <input
+                    onChange={(event) => setSignupForm({ ...signupForm, email: event.target.value })}
+                    required
+                    style={loginStyles.input(isDarkMode)}
+                    type="email"
+                    value={signupForm.email}
+                  />
+                </label>
+                <label style={loginStyles.label(isDarkMode)}>
+                  Celular / WhatsApp
+                  <input
+                    onChange={(event) => setSignupForm({ ...signupForm, phone: event.target.value })}
+                    required
+                    style={loginStyles.input(isDarkMode)}
+                    value={signupForm.phone}
+                  />
+                </label>
+                <label style={loginStyles.label(isDarkMode)}>
+                  Rubro
+                  <input
+                    onChange={(event) => setSignupForm({ ...signupForm, business_type: event.target.value })}
+                    style={loginStyles.input(isDarkMode)}
+                    value={signupForm.business_type}
+                  />
+                </label>
+                <label style={loginStyles.label(isDarkMode)}>
+                  Comentario
+                  <textarea
+                    onChange={(event) => setSignupForm({ ...signupForm, message: event.target.value })}
+                    rows={3}
+                    style={loginStyles.input(isDarkMode)}
+                    value={signupForm.message}
+                  />
+                </label>
+                <button disabled={isRequestingSignup} style={loginStyles.button} type="submit">
+                  {isRequestingSignup ? 'Enviando...' : 'Enviar solicitud'}
+                </button>
+              </form>
+            </section>
+          </div>
         ) : null}
       </section>
     </main>
@@ -247,11 +279,14 @@ const styles = {
     gap: '16px',
   },
   signupForm: {
-    borderTop: '1px solid rgba(148, 163, 184, 0.24)',
     display: 'grid',
     gap: '12px',
-    marginTop: '18px',
-    paddingTop: '18px',
+  },
+  modalHeader: {
+    alignItems: 'start',
+    display: 'flex',
+    gap: '12px',
+    justifyContent: 'space-between',
   },
 } satisfies Record<string, React.CSSProperties>;
 
@@ -356,5 +391,53 @@ const loginStyles = {
     marginTop: '14px',
     padding: '11px 12px',
     width: '100%',
+  }),
+  modalOverlay: (isDarkMode: boolean): React.CSSProperties => ({
+    alignItems: 'center',
+    background: isDarkMode ? 'rgba(7, 7, 12, 0.74)' : 'rgba(15, 23, 42, 0.22)',
+    display: 'flex',
+    inset: 0,
+    justifyContent: 'center',
+    padding: '20px',
+    position: 'fixed',
+    zIndex: 60,
+  }),
+  modalCard: (isDarkMode: boolean): React.CSSProperties => ({
+    background: isDarkMode ? 'rgba(14, 17, 24, 0.98)' : '#ffffff',
+    border: isDarkMode ? '1px solid rgba(218, 165, 32, 0.28)' : '1px solid #d8e0ea',
+    borderRadius: '10px',
+    boxShadow: isDarkMode
+      ? '0 28px 80px rgba(0, 0, 0, 0.5)'
+      : '0 24px 60px rgba(15, 23, 42, 0.16)',
+    display: 'grid',
+    gap: '18px',
+    maxHeight: 'min(88vh, 760px)',
+    maxWidth: '520px',
+    overflowY: 'auto',
+    padding: '24px',
+    width: 'min(100%, 520px)',
+  }),
+  modalTitle: (isDarkMode: boolean): React.CSSProperties => ({
+    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    fontSize: '24px',
+    lineHeight: 1.15,
+    margin: 0,
+  }),
+  modalSubtitle: (isDarkMode: boolean): React.CSSProperties => ({
+    color: isDarkMode ? '#a7b0c0' : '#475569',
+    fontSize: '14px',
+    lineHeight: 1.45,
+    margin: '8px 0 0',
+  }),
+  modalCloseButton: (isDarkMode: boolean): React.CSSProperties => ({
+    background: isDarkMode ? '#111827' : '#f8fafc',
+    border: isDarkMode ? '1px solid rgba(218, 165, 32, 0.34)' : '1px solid #cbd5e1',
+    borderRadius: '6px',
+    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: 800,
+    minHeight: '36px',
+    minWidth: '36px',
   }),
 };

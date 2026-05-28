@@ -11,6 +11,7 @@ export function CostsView({
   costItems,
   editingCostId,
   form,
+  isCompactLayout,
   isSaving,
   onCancel,
   onDelete,
@@ -105,6 +106,37 @@ export function CostsView({
           <p style={styles.emptyState}>Todavia no hay servicios cargados.</p>
         ) : filteredCostItems.length === 0 ? (
           <p style={styles.emptyState}>No hay servicios para esa busqueda.</p>
+        ) : isCompactLayout ? (
+          <div style={styles.costCatalogList}>
+            {filteredCostItems.map((item) => (
+              <article key={item.id} style={styles.costCatalogCard}>
+                <div style={styles.costCatalogCardHeader}>
+                  <div style={styles.costCatalogCardTitle}>
+                    <strong>{item.name}</strong>
+                    {item.description ? <span style={styles.mutedText}>{item.description}</span> : null}
+                  </div>
+                </div>
+                <div style={styles.costCatalogCardFacts}>
+                  <div style={styles.costCatalogFact}>
+                    <span style={styles.costCatalogFactLabel}>Importe</span>
+                    <strong>{formatMoney(item.unit_cost)}</strong>
+                  </div>
+                  <div style={styles.costCatalogFact}>
+                    <span style={styles.costCatalogFactLabel}>IVA</span>
+                    <strong>{item.tax_rate ? `${item.tax_rate}%` : `${item.effective_tax_rate}% general`}</strong>
+                  </div>
+                </div>
+                <div style={styles.costCatalogCardActions}>
+                  <button onClick={() => onEdit(item)} style={styles.linkButton} type="button">
+                    Editar
+                  </button>
+                  <button onClick={() => onDelete(item)} style={styles.dangerButton} type="button">
+                    Desactivar
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
         ) : (
           <table style={styles.table}>
             <thead>

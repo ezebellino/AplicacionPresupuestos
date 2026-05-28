@@ -137,6 +137,7 @@ export type CostsViewProps = {
   costItems: CostItem[];
   editingCostId: string | null;
   form: CostForm;
+  isCompactLayout: boolean;
   isSaving: boolean;
   onCancel: () => void;
   onDelete: (item: CostItem) => void;

@@ -1560,6 +1560,53 @@ export const styles = {
     fontWeight: 800,
     whiteSpace: 'nowrap',
   },
+  costCatalogList: {
+    display: 'grid',
+    gap: '10px',
+    padding: '12px',
+  },
+  costCatalogCard: {
+    background: 'var(--panel-subtle)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '12px',
+    padding: '14px',
+  },
+  costCatalogCardHeader: {
+    alignItems: 'start',
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'space-between',
+  },
+  costCatalogCardTitle: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0,
+  },
+  costCatalogCardFacts: {
+    display: 'grid',
+    gap: '8px',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  },
+  costCatalogFact: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0,
+  },
+  costCatalogFactLabel: {
+    color: 'var(--muted)',
+    fontSize: '11px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+  },
+  costCatalogCardActions: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    justifyContent: 'flex-start',
+  },
   mutedText: {
     color: 'var(--muted)',
     fontSize: '13px',

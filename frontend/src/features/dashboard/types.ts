@@ -202,6 +202,37 @@ export type CompanyProfileViewProps = {
   requests: TenantChangeRequest[];
 };
 
+export type PlatformAdminViewProps = {
+  activeSection: PlatformSection;
+  changeRequests: TenantChangeRequest[];
+  isCompactLayout: boolean;
+  isSaving: boolean;
+  memberships: PlatformTenantMembership[];
+  onChangeSection: (section: PlatformSection) => void;
+  onApproveFiscalChange: (request: TenantChangeRequest) => void;
+  onApproveSignup: (request: TenantSignupRequest, adminPassword: string) => void;
+  onMarkMembershipPaid: (
+    membership: PlatformTenantMembership,
+    payload: { months_covered: number; amount?: string | null; notes?: string | null },
+  ) => void;
+  onUpdateMembershipPayment: (
+    membership: PlatformTenantMembership,
+    payment: PlatformTenantMembership['payments'][number],
+    payload: { paid_at: string; months_covered: number; amount?: string | null; notes?: string | null },
+  ) => void;
+  onCancelMembershipPayment: (
+    membership: PlatformTenantMembership,
+    payment: PlatformTenantMembership['payments'][number],
+    payload: { reason: string },
+  ) => void;
+  onMarkSignupContacted: (request: TenantSignupRequest) => void;
+  onRejectFiscalChange: (request: TenantChangeRequest) => void;
+  onRejectSignup: (request: TenantSignupRequest) => void;
+  onSendMembershipQuoteByEmail: (payment: PlatformTenantMembership['payments'][number]) => void;
+  onSendMembershipQuoteByWhatsApp: (payment: PlatformTenantMembership['payments'][number]) => void;
+  signupRequests: TenantSignupRequest[];
+};
+
 export type TreasuryViewProps = {
   clients: Client[];
   expenseCategories: ExpenseCategory[];

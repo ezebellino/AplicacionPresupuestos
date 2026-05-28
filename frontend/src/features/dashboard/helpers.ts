@@ -85,6 +85,12 @@ export function formatMonthsCovered(value: number): string {
   return `${value} meses`;
 }
 
+export function daysUntilDate(dateValue: string, now = new Date()): number {
+  const target = new Date(`${dateValue}T00:00:00`);
+  const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((target.getTime() - current.getTime()) / 86400000);
+}
+
 export function quoteTimestamp(quote: Quote): number {
   return new Date(quote.issued_at ?? quote.created_at).getTime();
 }

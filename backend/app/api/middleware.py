@@ -12,6 +12,18 @@ from app.core.logging import get_logger, log_event
 logger = get_logger("http")
 
 
+def _request_auth_context(request: Request) -> dict[str, str | None]:
+    context = getattr(request.state, "auth_context", None)
+    if not isinstance(context, dict):
+        return {}
+    return {
+        "user_id": context.get("user_id"),
+        "tenant_id": context.get("tenant_id"),
+        "actor_email": context.get("email"),
+        "actor_role": context.get("role"),
+    }
+
+
 async def request_logging_middleware(request: Request, call_next) -> Response:
     request_id = str(uuid4())
     request.state.request_id = request_id
@@ -41,6 +53,7 @@ async def request_logging_middleware(request: Request, call_next) -> Response:
             duration_ms=duration_ms,
             error_type=type(exc).__name__,
             error_message=str(exc),
+            **_request_auth_context(request),
         )
         raise
 
@@ -54,5 +67,6 @@ async def request_logging_middleware(request: Request, call_next) -> Response:
         path=request.url.path,
         status_code=response.status_code,
         duration_ms=duration_ms,
+        **_request_auth_context(request),
     )
     return response

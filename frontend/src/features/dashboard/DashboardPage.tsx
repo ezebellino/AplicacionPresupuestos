@@ -53,6 +53,7 @@ import {
 import { buildPlatformNotifications } from './platformNotifications';
 import { createPlatformAdminHandlers } from './platformAdminActions';
 import { createQuoteActionHandlers } from './quoteActions';
+import { createClientActionHandlers } from './clientActions';
 import {
   emptyClientForm,
   emptyCompanyProfileForm,
@@ -217,72 +218,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     });
   };
 
-  const handleClientSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const payload: ClientPayload = compactPayload(clientForm);
-
-    if (!payload.name || !payload.phone || !payload.address) {
-      await Swal.fire({
-        title: 'Faltan datos del cliente',
-        text: 'Para guardar un cliente completa nombre, telefono y direccion.',
-        icon: 'warning',
-        confirmButtonText: 'Cerrar',
-      });
-      return;
-    }
-
-    setIsSaving(true);
-
-    try {
-      const wasEditing = Boolean(editingClientId);
-      if (editingClientId) {
-        await apiClient.updateClient(editingClientId, payload);
-      } else {
-        await apiClient.createClient(payload);
-      }
-
-      setClientForm(emptyClientForm);
-      setEditingClientId(null);
-      await loadWorkspace();
-      showSuccessToast(wasEditing ? 'Cliente actualizado' : 'Cliente creado');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo guardar el cliente',
-        text: 'Validá los datos e intentá nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleQuickClientCreate = async (payload: Pick<ClientPayload, 'name' | 'phone' | 'address'>) => {
-    setIsSaving(true);
-
-    try {
-      const createdClient = await apiClient.createClient(payload);
-      setClientForm(emptyClientForm);
-      setEditingClientId(null);
-      setSelectedClientId(createdClient.id);
-      setClientServiceRecords([]);
-      await loadWorkspace();
-      showSuccessToast('Cliente creado');
-      return createdClient;
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo crear el cliente',
-        text: 'Revisa nombre, telefono y direccion antes de intentar nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-      return null;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const handleCostSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -445,18 +380,45 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
-  const editClient = (client: Client) => {
-    setEditingClientId(client.id);
-    setSelectedClientId(client.id);
-    setClientForm({
-      name: client.name,
-      document: client.document ?? '',
-      email: client.email ?? '',
-      phone: client.phone ?? '',
-      address: client.address ?? '',
-      notes: client.notes ?? '',
+  const editCost = (item: CostItem) => {
+    setEditingCostId(item.id);
+    setCostForm({
+      category: item.category,
+      name: item.name,
+      description: item.description ?? '',
+      unit: item.unit,
+      unit_cost: item.unit_cost,
+      tax_rate: item.tax_rate ?? '',
     });
-    setActiveView('clients');
+    setActiveView('costs');
+  };
+
+  const deleteCost = async (item: CostItem) => {
+    const result = await Swal.fire({
+      title: `Desactivar ${item.name}`,
+      text: 'El costo no se usara para nuevos presupuestos, pero mantiene el historial.',
+      icon: 'warning',
+      confirmButtonText: 'Desactivar',
+      cancelButtonText: 'Cancelar',
+      showCancelButton: true,
+    });
+
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    try {
+      await apiClient.deleteCostItem(item.id);
+      await loadWorkspace();
+      showSuccessToast('Servicio desactivado');
+    } catch {
+      await Swal.fire({
+        title: 'No se pudo desactivar el servicio',
+        text: 'Revisa que tu sesion siga vigente e intenta nuevamente.',
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    }
   };
 
   const handleCompanyProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -534,152 +496,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     }
   };
 
-  const openClientHistory = async (client: Client) => {
-    setSelectedClientId(client.id);
-    setActiveView('clients');
-
-    try {
-      const response = await apiClient.listClientServiceRecords(client.id);
-      setClientServiceRecords(response.items);
-    } catch {
-      setClientServiceRecords([]);
-      await Swal.fire({
-        title: 'No se pudo cargar el historial',
-        text: 'Verifica que tu sesion siga vigente e intenta nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    }
-  };
-
-  const handleServiceRecordSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!selectedClientId) {
-      return;
-    }
-
-    setIsSaving(true);
-
-    const payload: ClientServiceRecordPayload = {
-      performed_at: `${serviceRecordForm.performed_at}T00:00:00`,
-      title: serviceRecordForm.title.trim(),
-      description: nullable(serviceRecordForm.description),
-      amount: nullable(serviceRecordForm.amount),
-    };
-
-    if (!serviceRecordForm.performed_at || !payload.title) {
-      await Swal.fire({
-        title: 'Faltan datos del historial',
-        text: 'Carga fecha y titulo del servicio realizado.',
-        icon: 'warning',
-        confirmButtonText: 'Cerrar',
-      });
-      return;
-    }
-
-    try {
-      await apiClient.createClientServiceRecord(selectedClientId, payload);
-      const response = await apiClient.listClientServiceRecords(selectedClientId);
-      setClientServiceRecords(response.items);
-      setServiceRecordForm(emptyServiceRecordForm);
-      showSuccessToast('Historial actualizado');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo guardar el servicio',
-        text: 'Revisa fecha, titulo e importe e intenta nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const editCost = (item: CostItem) => {
-    setEditingCostId(item.id);
-    setCostForm({
-      category: item.category,
-      name: item.name,
-      description: item.description ?? '',
-      unit: item.unit,
-      unit_cost: item.unit_cost,
-      tax_rate: item.tax_rate ?? '',
-    });
-    setActiveView('costs');
-  };
-
-  const deleteClient = async (client: Client) => {
-    const result = await Swal.fire({
-        title: `Eliminar ${client.name}`,
-        text: 'El cliente dejara de estar disponible para nuevos presupuestos, manteniendo su historial.',
-      icon: 'warning',
-      confirmButtonText: 'Eliminar',
-      cancelButtonText: 'Cancelar',
-      showCancelButton: true,
-    });
-
-    if (!result.isConfirmed) {
-      return;
-    }
-
-    try {
-      await apiClient.deleteClient(client.id);
-      if (selectedClientId === client.id) {
-        setSelectedClientId(null);
-        setClientServiceRecords([]);
-      }
-      await loadWorkspace();
-      showSuccessToast('Cliente eliminado');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo eliminar el cliente',
-        text: 'Revisa que tu sesion siga vigente e intenta nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    }
-  };
-
-  const deleteCost = async (item: CostItem) => {
-    const result = await Swal.fire({
-      title: `Desactivar ${item.name}`,
-      text: 'El costo no se usará para nuevos presupuestos, pero mantiene el historial.',
-      icon: 'warning',
-      confirmButtonText: 'Desactivar',
-      cancelButtonText: 'Cancelar',
-      showCancelButton: true,
-    });
-
-    if (!result.isConfirmed) {
-      return;
-    }
-
-    try {
-      await apiClient.deleteCostItem(item.id);
-      await loadWorkspace();
-      showSuccessToast('Servicio desactivado');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo desactivar el servicio',
-        text: 'Revisa que tu sesion siga vigente e intenta nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    }
-  };
-
-  const openClientRecordFromAnotherView = async (clientId: string, section: ClientRecordSection = 'data') => {
-    const client = clients.find((currentClient) => currentClient.id === clientId);
-
-    if (!client) {
-      return;
-    }
-
-    setClientRecordRequest({ clientId, section });
-    await openClientHistory(client);
-  };
-
   const {
     bottomNavigationItems,
     currentViewLabel,
@@ -709,6 +525,25 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setIsNotificationsOpen(false);
     setIsMobileMenuOpen(false);
   };
+  const clientActionHandlers = createClientActionHandlers({
+    clientForm,
+    clients,
+    editingClientId,
+    loadWorkspace,
+    selectedClientId,
+    serviceRecordForm,
+    setActiveView,
+    setClientForm,
+    setClientRecordRequest,
+    setClientServiceRecords,
+    setEditingClientId,
+    setIsSaving,
+    setQuoteCreateClientRequestId,
+    setQuoteForm,
+    setSelectedClientId,
+    setSelectedQuoteId,
+    setServiceRecordForm,
+  });
   const quoteActionHandlers = createQuoteActionHandlers({
     clients,
     companyProfile,
@@ -831,17 +666,17 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               setClientForm(emptyClientForm);
               setEditingClientId(null);
             }}
-            onCreateQuoteForClient={quoteActionHandlers.openQuoteDraftForClient}
-            onDelete={deleteClient}
-            onEdit={editClient}
+            onCreateQuoteForClient={clientActionHandlers.openQuoteDraftForClient}
+            onDelete={clientActionHandlers.deleteClient}
+            onEdit={clientActionHandlers.editClient}
             onFormChange={setClientForm}
-            onHistory={openClientHistory}
+            onHistory={clientActionHandlers.openClientHistory}
             onOpenQuote={quoteActionHandlers.openQuoteEditorFromAnotherView}
-            onQuickCreate={handleQuickClientCreate}
+            onQuickCreate={clientActionHandlers.handleQuickClientCreate}
             onRecordRequestHandled={() => setClientRecordRequest(null)}
             onServiceFormChange={setServiceRecordForm}
-            onServiceSubmit={handleServiceRecordSubmit}
-            onSubmit={handleClientSubmit}
+            onServiceSubmit={clientActionHandlers.handleServiceRecordSubmit}
+            onSubmit={clientActionHandlers.handleClientSubmit}
           />
         ) : null}
 
@@ -876,7 +711,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onDeleteItem={quoteActionHandlers.deleteQuoteItem}
             onDeleteQuotes={quoteActionHandlers.deleteQuotes}
             onDownloadPdf={quoteActionHandlers.downloadQuotePdf}
-            onEditClient={openClientRecordFromAnotherView}
+            onEditClient={clientActionHandlers.openClientRecordFromAnotherView}
             onEditorRequestHandled={() => setQuoteEditorRequestId(null)}
             onFormChange={setQuoteForm}
             onNewQuoteClientRequestHandled={() => setQuoteCreateClientRequestId(null)}

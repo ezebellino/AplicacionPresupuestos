@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,6 +9,7 @@ from uuid import UUID
 from app.api.deps import get_db, require_platform_admin
 from app.infra.models import User
 from app.api.deps import get_current_user
+from app.schemas.audit import AuditEventList
 from app.schemas.tenants import (
     PlatformMembershipPaymentCancel,
     TenantChangeRequestCreate,
@@ -27,6 +29,7 @@ from app.schemas.tenants import (
     TenantSignupRequestList,
     TenantSignupRequestRead,
 )
+from app.services.audit_service import list_audit_events
 from app.services.tenants_service import (
     approve_tenant_change_request,
     approve_tenant_signup_request,
@@ -220,6 +223,32 @@ def list_platform_tenant_memberships(
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     return {"items": list_platform_memberships(db)}
+
+
+@router.get("/platform/audit-events", response_model=AuditEventList)
+def list_platform_audit_events(
+    _platform_admin: Annotated[User, Depends(require_platform_admin)],
+    db: Annotated[Session, Depends(get_db)],
+    actor_email: str | None = None,
+    tenant_id: UUID | None = None,
+    entity_type: str | None = None,
+    action: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: int = 200,
+) -> dict[str, object]:
+    return {
+        "items": list_audit_events(
+            db,
+            actor_email=actor_email,
+            tenant_id=tenant_id,
+            entity_type=entity_type,
+            action=action,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+    }
 
 
 @router.post(

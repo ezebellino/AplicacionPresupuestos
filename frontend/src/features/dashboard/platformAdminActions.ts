@@ -2,7 +2,15 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import Swal from 'sweetalert2';
 
-import { apiClient, type Client, type PlatformTenantMembership, type Quote, type TenantChangeRequest, type TenantSignupRequest } from '../../shared/api/client';
+import {
+  apiClient,
+  type AuditEvent,
+  type Client,
+  type PlatformTenantMembership,
+  type Quote,
+  type TenantChangeRequest,
+  type TenantSignupRequest,
+} from '../../shared/api/client';
 import { showSuccessToast } from './dashboardUtils';
 import type { PlatformAdminViewProps } from './types';
 
@@ -26,6 +34,7 @@ type CreatePlatformAdminHandlersArgs = {
   sendQuoteByEmail: (quote: Quote) => Promise<void>;
   setClients: Dispatch<SetStateAction<Client[]>>;
   setIsSaving: Dispatch<SetStateAction<boolean>>;
+  setPlatformAuditEvents: Dispatch<SetStateAction<AuditEvent[]>>;
   setPlatformChangeRequests: Dispatch<SetStateAction<TenantChangeRequest[]>>;
   setPlatformMemberships: Dispatch<SetStateAction<PlatformTenantMembership[]>>;
   setPlatformSignupRequests: Dispatch<SetStateAction<TenantSignupRequest[]>>;
@@ -39,12 +48,18 @@ export function createPlatformAdminHandlers({
   sendQuoteByEmail,
   setClients,
   setIsSaving,
+  setPlatformAuditEvents,
   setPlatformChangeRequests,
   setPlatformMemberships,
   setPlatformSignupRequests,
   setQuotes,
   setSelectedQuoteId,
 }: CreatePlatformAdminHandlersArgs): PlatformActionHandlers {
+  const refreshAuditEvents = async () => {
+    const auditEvents = await apiClient.listPlatformAuditEvents();
+    setPlatformAuditEvents(auditEvents.items);
+  };
+
   const findQuoteOrWarn = async (quoteId: string | null | undefined) => {
     if (!quoteId) {
       return null;
@@ -77,6 +92,7 @@ export function createPlatformAdminHandlers({
         if (latestPayment?.quote_id) {
           setSelectedQuoteId(latestPayment.quote_id);
         }
+        await refreshAuditEvents();
         showSuccessToast(
           latestPayment?.quote_number ? `Pago registrado con presupuesto ${latestPayment.quote_number}` : 'Pago registrado',
         );
@@ -95,6 +111,7 @@ export function createPlatformAdminHandlers({
         if (updatedPayment?.quote_id) {
           setSelectedQuoteId(updatedPayment.quote_id);
         }
+        await refreshAuditEvents();
         showSuccessToast('Pago actualizado');
       } finally {
         setIsSaving(false);
@@ -105,6 +122,7 @@ export function createPlatformAdminHandlers({
       try {
         const updated = await apiClient.cancelPlatformMembershipPayment(membership.id, payment.id, payload);
         setPlatformMemberships((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        await refreshAuditEvents();
         showSuccessToast('Pago anulado');
       } finally {
         setIsSaving(false);
@@ -117,6 +135,7 @@ export function createPlatformAdminHandlers({
         setPlatformSignupRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         const memberships = await apiClient.listPlatformMemberships();
         setPlatformMemberships(memberships.items);
+        await refreshAuditEvents();
         showSuccessToast('Cuenta creada');
       } finally {
         setIsSaving(false);
@@ -127,6 +146,7 @@ export function createPlatformAdminHandlers({
       try {
         const updated = await apiClient.approvePlatformChangeRequest(request.id);
         setPlatformChangeRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        await refreshAuditEvents();
         showSuccessToast('Cambio fiscal aprobado');
       } finally {
         setIsSaving(false);
@@ -137,6 +157,7 @@ export function createPlatformAdminHandlers({
       try {
         const updated = await apiClient.markPlatformSignupRequestContacted(request.id);
         setPlatformSignupRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        await refreshAuditEvents();
         showSuccessToast('Alta marcada como contactada');
       } finally {
         setIsSaving(false);
@@ -147,6 +168,7 @@ export function createPlatformAdminHandlers({
       try {
         const updated = await apiClient.rejectPlatformChangeRequest(request.id);
         setPlatformChangeRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        await refreshAuditEvents();
         showSuccessToast('Cambio fiscal rechazado');
       } finally {
         setIsSaving(false);
@@ -157,6 +179,7 @@ export function createPlatformAdminHandlers({
       try {
         const updated = await apiClient.rejectPlatformSignupRequest(request.id);
         setPlatformSignupRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        await refreshAuditEvents();
         showSuccessToast('Alta rechazada');
       } finally {
         setIsSaving(false);

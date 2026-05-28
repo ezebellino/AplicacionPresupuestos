@@ -398,6 +398,50 @@ describe('DashboardPage', () => {
           );
         }
 
+        if (url.endsWith('/admin/tenants/platform/audit-events')) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: 'audit-1',
+                    created_at: '2026-05-28T10:00:00',
+                    actor_user_id: 'user-platform-1',
+                    actor_email: 'platform@factureasy.test',
+                    actor_role: 'platform_admin',
+                    tenant_id: 'tenant-customer-1',
+                    entity_type: 'tenant_signup_request',
+                    entity_id: 'signup-1',
+                    action: 'approved',
+                    summary: 'Solicitud de alta aprobada para AUBASA',
+                    metadata_json: {
+                      company_name: 'AUBASA',
+                      admin_email: 'dario@test.com',
+                    },
+                  },
+                  {
+                    id: 'audit-2',
+                    created_at: '2026-05-27T16:30:00',
+                    actor_user_id: 'user-platform-1',
+                    actor_email: 'platform@factureasy.test',
+                    actor_role: 'platform_admin',
+                    tenant_id: 'tenant-customer-2',
+                    entity_type: 'membership_payment',
+                    entity_id: 'payment-2',
+                    action: 'created',
+                    summary: 'Pago de membresia registrado para DM Refrigeracion',
+                    metadata_json: {
+                      tenant_name: 'DM Refrigeracion',
+                      months_covered: 1,
+                    },
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          );
+        }
+
         if (url.endsWith('/clients/client-1') && options?.method === 'DELETE') {
           return Promise.resolve(new Response(null, { status: 204 }));
         }
@@ -897,6 +941,7 @@ describe('DashboardPage', () => {
     expect(within(platformNavigation).getByRole('button', { name: 'Solicitudes (1)' })).toBeInTheDocument();
     expect(within(platformNavigation).getByRole('button', { name: 'Cambios fiscales (1)' })).toBeInTheDocument();
     expect(within(platformNavigation).getByRole('button', { name: 'Membresias (2)' })).toBeInTheDocument();
+    expect(within(platformNavigation).getByRole('button', { name: 'Auditoria' })).toBeInTheDocument();
   });
 
   it('switches platform subsections from the internal navigation', async () => {
@@ -914,6 +959,10 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Membresias (2)' }));
     expect(await screen.findByRole('heading', { name: 'Membresias SaaS' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Auditoria' }));
+    expect(await screen.findByRole('heading', { name: 'Auditoria' })).toBeInTheDocument();
+    expect(screen.getByText('Solicitud de alta aprobada para AUBASA')).toBeInTheDocument();
   });
 
   it('renders platform overview KPIs and immediate attention items', async () => {

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.infra.models import AuditEvent, User
@@ -39,6 +40,41 @@ def record_audit_event(
     )
     db.add(event)
     return event
+
+
+def list_audit_events(
+    db: Session,
+    *,
+    actor_email: str | None = None,
+    tenant_id: UUID | None = None,
+    entity_type: str | None = None,
+    action: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: int = 200,
+) -> list[AuditEvent]:
+    query = select(AuditEvent)
+
+    if actor_email:
+        query = query.where(AuditEvent.actor_email.ilike(f"%{actor_email.strip().lower()}%"))
+    if tenant_id is not None:
+        query = query.where(AuditEvent.tenant_id == tenant_id)
+    if entity_type:
+        query = query.where(AuditEvent.entity_type == entity_type)
+    if action:
+        query = query.where(AuditEvent.action == action)
+    if date_from is not None:
+        query = query.where(
+            AuditEvent.created_at >= datetime.combine(date_from, datetime.min.time(), tzinfo=timezone.utc)
+        )
+    if date_to is not None:
+        query = query.where(
+            AuditEvent.created_at <= datetime.combine(date_to, datetime.max.time(), tzinfo=timezone.utc)
+        )
+
+    safe_limit = min(max(limit, 1), 500)
+    query = query.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(safe_limit)
+    return list(db.scalars(query))
 
 
 def _normalize_mapping(value: Mapping[str, object]) -> dict[str, JsonValue]:

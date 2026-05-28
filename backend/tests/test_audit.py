@@ -149,3 +149,36 @@ def test_signup_and_membership_actions_write_platform_audit_events(api_context) 
     membership_events = [event.action for event in events if event.entity_type == "membership_payment"]
     assert signup_events == ["created", "approved"]
     assert membership_events == ["created"]
+
+
+def test_platform_admin_can_list_audit_events_with_filters(api_context) -> None:
+    client, SessionLocal = api_context
+    platform_headers = create_tenant_and_login(
+        client,
+        name="FacturEasy",
+        email="platform-audit-list@factureasy.test",
+    )
+
+    with SessionLocal() as db:
+        from app.infra.models import User
+
+        platform_admin = db.scalar(select(User).where(User.email == "platform-audit-list@factureasy.test"))
+        assert platform_admin is not None
+        platform_admin.role = "platform_admin"
+        db.commit()
+
+    tenant_headers = create_tenant_and_login(client, name="DM Refrigeracion", email="tenant-audit@test.com")
+    create_response = client.post("/clients", headers=tenant_headers, json={"name": "Cliente Auditado"})
+    assert create_response.status_code == 201
+
+    forbidden_response = client.get("/admin/tenants/platform/audit-events", headers=tenant_headers)
+    assert forbidden_response.status_code == 403
+
+    listed = client.get(
+        "/admin/tenants/platform/audit-events?entity_type=client&action=created",
+        headers=platform_headers,
+    )
+    assert listed.status_code == 200
+    assert listed.json()["items"]
+    assert listed.json()["items"][0]["entity_type"] == "client"
+    assert listed.json()["items"][0]["action"] == "created"

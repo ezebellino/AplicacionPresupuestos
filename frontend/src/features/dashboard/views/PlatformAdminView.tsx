@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clock3, History, Mail, MessageCircle, Pencil, Trash2, UserRound } from 'lucide-react';
+import { Clock3, History, Mail, MessageCircle, Pencil, Search, Trash2, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 import { formatDate, formatMoney, formatMonthsCovered, daysUntilDate } from '../helpers';
@@ -8,6 +8,7 @@ import type { MembershipFilter, PlatformAdminViewProps, PlatformSection } from '
 
 export function PlatformAdminView({
   activeSection,
+  auditEvents,
   changeRequests,
   isCompactLayout,
   isSaving,
@@ -53,6 +54,9 @@ export function PlatformAdminView({
   const [changeViewMode, setChangeViewMode] = useState<'pending' | 'history'>('pending');
   const [membershipFilter, setMembershipFilter] = useState<MembershipFilter>('all');
   const [membershipViewMode, setMembershipViewMode] = useState<'pending' | 'history'>('pending');
+  const [auditEntityFilter, setAuditEntityFilter] = useState('all');
+  const [auditActionFilter, setAuditActionFilter] = useState('all');
+  const [auditActorFilter, setAuditActorFilter] = useState('');
   const membershipCounts = {
     active: activeMemberships.filter((membership) => {
       if (!membership.membership_due_date) {
@@ -94,7 +98,19 @@ export function PlatformAdminView({
     { id: 'signups', label: `Solicitudes (${pendingSignupRequests.length})` },
     { id: 'changes', label: `Cambios fiscales (${pendingChangeRequests.length})` },
     { id: 'memberships', label: `Membresias (${expiredMemberships.length + dueSoonMemberships.length})` },
+    { id: 'audit', label: 'Auditoria' },
   ];
+  const auditEntityOptions = Array.from(new Set(auditEvents.map((event) => event.entity_type))).sort();
+  const auditActionOptions = Array.from(new Set(auditEvents.map((event) => event.action))).sort();
+  const filteredAuditEvents = auditEvents.filter((event) => {
+    const matchesEntity = auditEntityFilter === 'all' || event.entity_type === auditEntityFilter;
+    const matchesAction = auditActionFilter === 'all' || event.action === auditActionFilter;
+    const matchesActor =
+      auditActorFilter.trim() === '' ||
+      (event.actor_email ?? '').toLowerCase().includes(auditActorFilter.trim().toLowerCase());
+
+    return matchesEntity && matchesAction && matchesActor;
+  });
 
   useEffect(() => {
     if (activeSection === 'signups') {
@@ -922,6 +938,87 @@ export function PlatformAdminView({
                 ))}
               </div>
             ) : null}
+          </section>
+        ) : null}
+
+        {activeSection === 'audit' ? (
+          <section style={styles.tablePanel}>
+            <div style={styles.panelHeader}>
+              <div>
+                <h2 style={styles.panelTitle}>Auditoria</h2>
+                <p style={styles.panelSubtitle}>Registro cronologico de acciones criticas del sistema.</p>
+              </div>
+            </div>
+            <div style={styles.platformFilterBar}>
+              <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 180 }}>
+                <span>Entidad</span>
+                <select
+                  value={auditEntityFilter}
+                  onChange={(event) => setAuditEntityFilter(event.target.value)}
+                  style={styles.input}
+                >
+                  <option value="all">Todas</option>
+                  {auditEntityOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 180 }}>
+                <span>Accion</span>
+                <select
+                  value={auditActionFilter}
+                  onChange={(event) => setAuditActionFilter(event.target.value)}
+                  style={styles.input}
+                >
+                  <option value="all">Todas</option>
+                  {auditActionOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 260 }}>
+                <span>Actor</span>
+                <div style={{ ...styles.searchWrap, width: '100%' }}>
+                  <Search aria-hidden="true" size={14} strokeWidth={2.2} />
+                  <input
+                    value={auditActorFilter}
+                    onChange={(event) => setAuditActorFilter(event.target.value)}
+                    placeholder="Email del actor"
+                    style={styles.searchInput}
+                  />
+                </div>
+              </label>
+            </div>
+            {filteredAuditEvents.length === 0 ? (
+              <p style={styles.emptyState}>No hay eventos para los filtros seleccionados.</p>
+            ) : (
+              <div style={styles.clientList}>
+                {filteredAuditEvents.map((event) => (
+                  <article key={event.id} style={styles.historyQuoteRecord}>
+                    <div style={styles.historyRecordHeader}>
+                      <div style={styles.clientIdentity}>
+                        <strong>{event.summary}</strong>
+                        <div style={styles.platformSignupFacts}>
+                          <span style={styles.clientMetaPill}>{event.entity_type}</span>
+                          <span style={styles.clientMetaPill}>{event.action}</span>
+                          <span style={styles.clientMetaPill}>{event.actor_email ?? 'sistema'}</span>
+                          <span style={styles.clientMetaPill}>{formatDate(event.created_at)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    {event.metadata_json ? (
+                      <pre style={styles.auditMetadataBlock}>{JSON.stringify(event.metadata_json, null, 2)}</pre>
+                    ) : (
+                      <p style={styles.compactEmpty}>Sin metadata adicional.</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
         ) : null}
       </section>

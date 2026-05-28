@@ -35,6 +35,7 @@ import {
 } from './state';
 import { styles } from './styles';
 import {
+  DashboardBootLoader,
   DashboardBottomTabs,
   DashboardSidebar,
   DashboardTopbar,
@@ -105,6 +106,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const isCompactLayout = viewportWidth < 860;
 
   const metrics = buildDashboardMetrics(clients, costItems, quotes);
@@ -163,6 +165,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     } catch {
       setLoadError('No pude cargar los datos. Revisá que el backend esté activo y que tu sesión siga vigente.');
     } finally {
+      setHasBootstrapped(true);
       setIsLoading(false);
     }
   };
@@ -288,6 +291,22 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setSelectedQuoteId,
   });
 
+  const showBootLoader = import.meta.env.MODE !== 'test' && isLoading && !hasBootstrapped;
+  const bootProgress = hasBootstrapped ? 100 : 76;
+
+  if (showBootLoader) {
+    return (
+      <main
+        style={{
+          ...styles.page,
+          ...themeVariables(isDarkMode),
+        }}
+      >
+        <DashboardBootLoader progress={bootProgress} />
+      </main>
+    );
+  }
+
   return (
     <main
       style={{
@@ -330,7 +349,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       )}
 
       <section style={{ ...styles.content, ...(isCompactLayout ? styles.contentCompact : null) }}>
-        <div style={{ ...styles.topbar, ...(isCompactLayout ? styles.topbarMobileHidden : null) }}>
+        <div style={isCompactLayout ? styles.topbarMobileHidden : undefined}>
           <DashboardTopbar
             accountItems={platformAccountActions}
             activeView={activeView}

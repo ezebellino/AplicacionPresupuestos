@@ -224,7 +224,7 @@ export function DashboardTopbar({
 }: TopbarProps) {
   return (
     <header style={styles.topbar}>
-      <div>
+      <div style={styles.topbarIntro}>
         <h1 style={styles.title}>Panel operativo</h1>
         <p style={styles.subtitle}>Clientes, catalogo de servicios y facturacion aislados por empresa.</p>
       </div>
@@ -263,6 +263,30 @@ export function DashboardTopbar({
         </button>
       </div>
     </header>
+  );
+}
+
+type BootLoaderProps = {
+  progress: number;
+};
+
+export function DashboardBootLoader({ progress }: BootLoaderProps) {
+  return (
+    <main style={styles.bootLoaderPage}>
+      <section style={styles.bootLoaderCard} aria-label="Cargando panel">
+        <div style={styles.bootLoaderLogoFrame}>
+          <img alt="" src="/FacturEasy-icon.png" style={styles.bootLoaderLogo} />
+        </div>
+        <div style={styles.topbarIntro}>
+          <h1 style={styles.bootLoaderTitle}>Iniciando FacturEasy</h1>
+          <p style={styles.bootLoaderSubtitle}>Cargando tu espacio de trabajo y actualizando la sesión activa.</p>
+        </div>
+        <div style={styles.bootLoaderProgressTrack}>
+          <div style={{ ...styles.bootLoaderProgressFill, width: `${progress}%` }} />
+        </div>
+        <span style={styles.bootLoaderProgressText}>{progress}% listo</span>
+      </section>
+    </main>
   );
 }
 

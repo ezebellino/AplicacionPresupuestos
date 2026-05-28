@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Bell, Eye, FileText, MapPin, Phone, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 import {
@@ -30,14 +29,12 @@ import {
 } from '../../shared/api/client';
 import { categoryLabels, statusLabels } from './constants';
 import {
-  bottomTabIcon,
   buildGreetingByBuenosAiresTime,
   buildInvoiceHtml,
   buildWhatsAppInvoiceMessage,
   companyProfileToForm,
   compactPayload,
   escapeHtml,
-  navStyle,
   quoteTransitionSuccessMessage,
   showSuccessToast,
   themeVariables,
@@ -68,6 +65,14 @@ import {
   emptyTenantLegalChangeForm,
 } from './state';
 import { styles } from './styles';
+import {
+  DashboardBottomTabs,
+  DashboardSidebar,
+  DashboardTopbar,
+  MobileDashboardDrawer,
+  MobileDashboardHeader,
+  PlatformNotificationsPanel,
+} from './shell';
 import { Field, QuoteProgress, StatusBadge } from './ui';
 import type {
   ClientForm,
@@ -100,16 +105,6 @@ import { PlatformAdminView } from './views/PlatformAdminView';
 
 type DashboardPageProps = {
   onLogout: () => void;
-};
-
-const NAV_SHORTCUTS: Record<View, string> = {
-  clients: 'CL',
-  company: 'EM',
-  costs: 'SV',
-  platform: 'PF',
-  quotes: 'PR',
-  summary: 'IN',
-  treasury: 'TS',
 };
 
 export function DashboardPage({ onLogout }: DashboardPageProps) {
@@ -979,7 +974,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     currentUser?.role === 'platform_admin'
       ? [{ label: 'Perfil', view: 'company' as View }]
       : [];
-  const shouldHideSidebarText = isSidebarCollapsed && !isCompactLayout;
   const currentViewLabel = navigationItems.find((item) => item.view === activeView)?.label ?? 'Resumen';
   const goToView = (view: View) => {
     setActiveView(view);
@@ -1005,244 +999,63 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     >
       {isCompactLayout ? (
         <>
-          <header style={styles.mobileHeader}>
-            <div style={styles.mobileBrand}>
-              <img alt="" src="/FacturEasy-icon.png" style={styles.mobileLogo} />
-              <div style={styles.mobileBrandText}>
-                <strong>FacturEasy</strong>
-                <span style={styles.mobileCurrentView}>{currentViewLabel}</span>
-              </div>
-            </div>
-            <div style={styles.mobileHeaderActions}>
-              {currentUser?.role === 'platform_admin' ? (
-                <button
-                  aria-label="Notificaciones"
-                  onClick={() => setIsNotificationsOpen((current) => !current)}
-                  style={styles.notificationButton}
-                  title="Notificaciones"
-                  type="button"
-                >
-                  <Bell aria-hidden="true" size={16} strokeWidth={2.2} />
-                  {pendingNotificationCount > 0 ? <span style={styles.notificationBadge}>{pendingNotificationCount}</span> : null}
-                </button>
-              ) : null}
-            <button
-              aria-label="Abrir menu"
-              onClick={() => setIsMobileMenuOpen(true)}
-              style={styles.hamburgerButton}
-              type="button"
-            >
-              <span style={styles.hamburgerGlyph}>Menu</span>
-            </button>
-            </div>
-          </header>
+          <MobileDashboardHeader
+            currentUser={currentUser}
+            currentViewLabel={currentViewLabel}
+            onOpenMenu={() => setIsMobileMenuOpen(true)}
+            onToggleNotifications={() => setIsNotificationsOpen((current) => !current)}
+            pendingNotificationCount={pendingNotificationCount}
+          />
           {isMobileMenuOpen ? (
-            <div onClick={() => setIsMobileMenuOpen(false)} style={styles.mobileDrawerOverlay}>
-              <aside onClick={(event) => event.stopPropagation()} style={styles.mobileDrawer} aria-label="Menu movil">
-                <div style={styles.mobileDrawerHeader}>
-                  <strong>Mas opciones</strong>
-                  <button
-                    aria-label="Cerrar menu"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    style={styles.sidebarToggle}
-                    type="button"
-                  >
-                    X
-                  </button>
-                </div>
-                <nav style={styles.mobileDrawerNav}>
-                  {mobileDrawerNavigationItems.map((item) => (
-                    <button
-                      key={item.view}
-                      onClick={() => goToView(item.view)}
-                      style={{ ...navStyle(activeView === item.view), ...styles.mobileDrawerNavButton }}
-                      type="button"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                  {mobileDrawerAccountItems.map((item) => (
-                    <button
-                      key={item.view}
-                      onClick={() => goToView(item.view)}
-                      style={{ ...navStyle(activeView === item.view), ...styles.mobileDrawerNavButton }}
-                      type="button"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </nav>
-                <div style={styles.mobileDrawerActions}>
-                  <button onClick={toggleTheme} style={styles.secondaryButton} type="button">
-                    {isDarkMode ? 'Modo claro' : 'Dark mode'}
-                  </button>
-                  <button onClick={onLogout} style={styles.secondaryButton} type="button">
-                    Salir
-                  </button>
-                </div>
-              </aside>
-            </div>
+            <MobileDashboardDrawer
+              accountItems={mobileDrawerAccountItems}
+              activeView={activeView}
+              isDarkMode={isDarkMode}
+              navigationItems={mobileDrawerNavigationItems}
+              onClose={() => setIsMobileMenuOpen(false)}
+              onLogout={onLogout}
+              onToggleTheme={toggleTheme}
+              onViewChange={goToView}
+            />
           ) : null}
         </>
       ) : (
-        <aside
-          style={{
-            ...styles.sidebar,
-            ...(isSidebarCollapsed ? styles.sidebarCollapsed : null),
-          }}
-          aria-label="Navegacion principal"
-        >
-          <div style={{ ...styles.logoRow, ...(shouldHideSidebarText ? styles.logoRowCollapsed : null) }}>
-            <img
-              alt=""
-              src="/FacturEasy-icon.png"
-              style={{ ...styles.logoMark, ...(shouldHideSidebarText ? styles.logoMarkCollapsed : null) }}
-            />
-            {shouldHideSidebarText ? null : <strong style={styles.logoText}>FacturEasy</strong>}
-            <button
-              aria-label={isSidebarCollapsed ? 'Expandir menu' : 'Minimizar menu'}
-              onClick={() => setIsSidebarCollapsed((current) => !current)}
-              style={{ ...styles.sidebarToggle, ...(shouldHideSidebarText ? styles.sidebarToggleCollapsed : null) }}
-              type="button"
-            >
-              {isSidebarCollapsed ? '>' : '<'}
-            </button>
-          </div>
-          <nav style={styles.nav}>
-            {navigationItems.map((item) => (
-              <button
-                key={item.view}
-                onClick={() => goToView(item.view)}
-                style={{
-                  ...navStyle(activeView === item.view),
-                  ...(shouldHideSidebarText ? styles.navItemCollapsed : null),
-                }}
-                aria-label={item.label}
-                title={item.label}
-                type="button"
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    ...styles.navMonogram,
-                    ...(activeView === item.view ? styles.navMonogramActive : null),
-                    ...(shouldHideSidebarText ? styles.navMonogramCollapsed : null),
-                  }}
-                >
-                  {NAV_SHORTCUTS[item.view]}
-                </span>
-                {shouldHideSidebarText ? null : <span style={styles.navLabel}>{item.label}</span>}
-              </button>
-            ))}
-          </nav>
-        </aside>
+        <DashboardSidebar
+          activeView={activeView}
+          isCollapsed={isSidebarCollapsed}
+          isCompactLayout={isCompactLayout}
+          items={navigationItems}
+          onToggleCollapsed={() => setIsSidebarCollapsed((current) => !current)}
+          onViewChange={goToView}
+        />
       )}
 
       <section style={{ ...styles.content, ...(isCompactLayout ? styles.contentCompact : null) }}>
-        <header style={{ ...styles.topbar, ...(isCompactLayout ? styles.topbarMobileHidden : null) }}>
-          <div>
-            <h1 style={styles.title}>Panel operativo</h1>
-            <p style={styles.subtitle}>Clientes, catalogo de servicios y facturacion aislados por empresa.</p>
-          </div>
-          <div style={styles.topbarActions}>
-            {currentUser?.role === 'platform_admin' ? (
-              <button
-                aria-label="Notificaciones"
-                onClick={() => setIsNotificationsOpen((current) => !current)}
-                style={styles.notificationButton}
-                title="Notificaciones"
-                type="button"
-              >
-                <Bell aria-hidden="true" size={16} strokeWidth={2.2} />
-                {pendingNotificationCount > 0 ? <span style={styles.notificationBadge}>{pendingNotificationCount}</span> : null}
-              </button>
-            ) : null}
-            {platformAccountActions.map((item) => (
-              <button
-                key={item.view}
-                onClick={() => goToView(item.view)}
-                style={activeView === item.view ? styles.secondaryButtonActive : styles.secondaryButton}
-                title={item.label}
-                type="button"
-              >
-                <span style={styles.buttonWithIcon}>
-                  <UserRound aria-hidden="true" size={15} strokeWidth={2.2} />
-                  <span>{item.label}</span>
-                </span>
-              </button>
-            ))}
-            <button
-              onClick={toggleTheme}
-              style={styles.secondaryButton}
-              type="button"
-            >
-              {isDarkMode ? 'Modo claro' : 'Dark mode'}
-            </button>
-            <button onClick={onLogout} style={styles.secondaryButton} type="button">
-              Salir
-            </button>
-          </div>
-        </header>
+        <div style={{ ...styles.topbar, ...(isCompactLayout ? styles.topbarMobileHidden : null) }}>
+          <DashboardTopbar
+            accountItems={platformAccountActions}
+            activeView={activeView}
+            currentUser={currentUser}
+            isDarkMode={isDarkMode}
+            onLogout={onLogout}
+            onToggleNotifications={() => setIsNotificationsOpen((current) => !current)}
+            onToggleTheme={toggleTheme}
+            onViewChange={goToView}
+            pendingNotificationCount={pendingNotificationCount}
+          />
+        </div>
 
         {loadError ? <p style={styles.errorBanner}>{loadError}</p> : null}
 
         {isNotificationsOpen && currentUser?.role === 'platform_admin' ? (
-          <aside style={styles.notificationPanel} aria-label="Panel de notificaciones">
-            <div style={styles.panelHeaderCompact}>
-              <h2 style={styles.panelTitle}>Pendientes de plataforma</h2>
-              <button
-                aria-label="Cerrar notificaciones"
-                onClick={() => setIsNotificationsOpen(false)}
-                style={styles.sidebarToggle}
-                type="button"
-              >
-                X
-              </button>
-            </div>
-            {signupNotifications.length > 0 ? (
-              <section style={styles.notificationSection}>
-                <strong>Altas pendientes</strong>
-                {signupNotifications.map((item) => (
-                  <article key={item.id} style={styles.notificationItem}>
-                    <strong>{item.title}</strong>
-                    <span style={styles.mutedText}>{item.description}</span>
-                    <button onClick={() => openPlatformNotifications('signups')} style={styles.linkButton} type="button">
-                      {item.actionLabel}
-                    </button>
-                  </article>
-                ))}
-              </section>
-            ) : null}
-            {changeNotifications.length > 0 ? (
-              <section style={styles.notificationSection}>
-                <strong>Cambios fiscales</strong>
-                {changeNotifications.map((item) => (
-                  <article key={item.id} style={styles.notificationItem}>
-                    <strong>{item.title}</strong>
-                    <span style={styles.mutedText}>{item.description}</span>
-                    <button onClick={() => openPlatformNotifications('changes')} style={styles.linkButton} type="button">
-                      {item.actionLabel}
-                    </button>
-                  </article>
-                ))}
-              </section>
-            ) : null}
-            {membershipNotifications.length > 0 ? (
-              <section style={styles.notificationSection}>
-                <strong>Membresias por vencer o vencidas</strong>
-                {membershipNotifications.map((item) => (
-                  <article key={item.id} style={styles.notificationItem}>
-                    <strong>{item.title}</strong>
-                    <span style={styles.mutedText}>{item.description}</span>
-                    <button onClick={() => openPlatformNotifications('memberships')} style={styles.linkButton} type="button">
-                      {item.actionLabel}
-                    </button>
-                  </article>
-                ))}
-              </section>
-            ) : null}
-            {pendingNotificationCount === 0 ? <p style={styles.compactEmpty}>No hay pendientes operativos.</p> : null}
-          </aside>
+          <PlatformNotificationsPanel
+            changeNotifications={changeNotifications}
+            membershipNotifications={membershipNotifications}
+            onClose={() => setIsNotificationsOpen(false)}
+            onOpenSection={openPlatformNotifications}
+            pendingNotificationCount={pendingNotificationCount}
+            signupNotifications={signupNotifications}
+          />
         ) : null}
 
         {activeView === 'summary' ? (
@@ -1531,19 +1344,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         ) : null}
       </section>
       {isCompactLayout ? (
-        <nav style={styles.bottomTabBar} aria-label="Accesos rapidos">
-          {bottomNavigationItems.map((item) => (
-            <button
-              key={item.view}
-              onClick={() => goToView(item.view)}
-              style={activeView === item.view ? styles.bottomTabActive : styles.bottomTab}
-              type="button"
-            >
-              <span>{bottomTabIcon(item.view)}</span>
-              {item.label === 'Presupuestos' ? 'Presup.' : item.label}
-            </button>
-          ))}
-        </nav>
+        <DashboardBottomTabs activeView={activeView} items={bottomNavigationItems} onViewChange={goToView} />
       ) : null}
     </main>
   );

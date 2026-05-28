@@ -1028,6 +1028,11 @@ export const styles = {
     gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 1.1fr) minmax(110px, auto) auto',
     padding: '14px 16px',
   },
+  clientRowCompact: {
+    alignItems: 'stretch',
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    gap: '12px',
+  },
   clientRowButton: {
     alignItems: 'center',
     background: 'transparent',
@@ -1040,6 +1045,11 @@ export const styles = {
     minWidth: 0,
     padding: 0,
     textAlign: 'left',
+  },
+  clientRowButtonCompact: {
+    alignItems: 'start',
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    gap: '10px',
   },
   clientIdentity: {
     display: 'grid',
@@ -1054,21 +1064,28 @@ export const styles = {
   },
   clientContactLine: {
     alignItems: 'center',
-    display: 'inline-flex',
+    display: 'flex',
     gap: '8px',
+    minWidth: 0,
   },
   clientContactLineMuted: {
     alignItems: 'center',
     color: 'var(--muted)',
-    display: 'inline-flex',
+    display: 'flex',
     fontSize: '13px',
     gap: '8px',
+    minWidth: 0,
+  },
+  clientContactValue: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   clientMetaStack: {
     alignItems: 'start',
     display: 'grid',
     gap: '6px',
     justifyItems: 'start',
+    minWidth: 0,
   },
   clientMetaPill: {
     background: 'var(--panel-bg)',
@@ -1088,6 +1105,9 @@ export const styles = {
     flexWrap: 'wrap',
     gap: '10px',
     justifyContent: 'flex-end',
+  },
+  clientActionsCompact: {
+    justifyContent: 'flex-start',
   },
   clientRecordShell: {
     display: 'grid',

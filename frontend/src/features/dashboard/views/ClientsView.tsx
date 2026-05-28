@@ -213,10 +213,19 @@ export function ClientsView({
           ) : (
             <div style={styles.clientList}>
               {filteredClients.map((client) => (
-                <article key={client.id} style={styles.clientRow}>
+                <article
+                  key={client.id}
+                  style={{
+                    ...styles.clientRow,
+                    ...(isCompactLayout ? styles.clientRowCompact : null),
+                  }}
+                >
                   <button
                     onClick={() => void openClientRecord(client, 'data')}
-                    style={styles.clientRowButton}
+                    style={{
+                      ...styles.clientRowButton,
+                      ...(isCompactLayout ? styles.clientRowButtonCompact : null),
+                    }}
                     type="button"
                   >
                     <div style={styles.clientIdentity}>
@@ -226,19 +235,24 @@ export function ClientsView({
                     <div style={styles.clientContact}>
                       <span style={styles.clientContactLine}>
                         <Phone aria-hidden="true" size={14} strokeWidth={2} />
-                        {client.phone || 'Sin telefono'}
+                        <span style={styles.clientContactValue}>{client.phone || 'Sin telefono'}</span>
                       </span>
                       <span style={styles.clientContactLineMuted}>
                         <MapPin aria-hidden="true" size={14} strokeWidth={2} />
-                        {client.address || client.email || 'Sin direccion cargada'}
+                        <span style={styles.clientContactValue}>{client.address || client.email || 'Sin direccion cargada'}</span>
                       </span>
                     </div>
                     <div style={styles.clientMetaStack}>
                       <span style={styles.clientMetaPill}>{quotesByClientId[client.id] ?? 0} presup.</span>
-                      {client.email ? <span style={styles.mutedText}>{client.email}</span> : null}
+                      {client.email ? <span style={{ ...styles.mutedText, ...styles.clientContactValue }}>{client.email}</span> : null}
                     </div>
                   </button>
-                  <div style={styles.clientActions}>
+                  <div
+                    style={{
+                      ...styles.clientActions,
+                      ...(isCompactLayout ? styles.clientActionsCompact : null),
+                    }}
+                  >
                     <button
                       aria-label="Editar"
                       onClick={() => {

@@ -1,10 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.middleware import request_logging_middleware
 from app.api.routes import auth, clients, cost_items, expenses, quotes, tenants
 from app.core.config import settings
+from app.core.logging import configure_logging
 
 
+configure_logging()
 app = FastAPI(title="Presupuestos SaaS API")
 
 app.add_middleware(
@@ -14,6 +17,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.middleware("http")(request_logging_middleware)
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])

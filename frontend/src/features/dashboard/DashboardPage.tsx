@@ -54,6 +54,8 @@ import { buildPlatformNotifications } from './platformNotifications';
 import { createPlatformAdminHandlers } from './platformAdminActions';
 import { createQuoteActionHandlers } from './quoteActions';
 import { createClientActionHandlers } from './clientActions';
+import { createCostExpenseActionHandlers } from './costExpenseActions';
+import { createCompanyProfileActionHandlers } from './companyProfileActions';
 import {
   emptyClientForm,
   emptyCompanyProfileForm,
@@ -218,283 +220,13 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     });
   };
 
-  const handleCostSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
 
-    const payload: CostItemPayload = {
-      category: 'services',
-      name: costForm.name.trim(),
-      description: nullable(costForm.description),
-      unit: 'servicio',
-      unit_cost: costForm.unit_cost,
-      tax_rate: nullable(costForm.tax_rate),
-    };
 
-    if (!payload.name || !payload.unit_cost) {
-      await Swal.fire({
-        title: 'Faltan datos del servicio',
-        text: 'Carga el nombre del servicio y el precio antes de guardar.',
-        icon: 'warning',
-        confirmButtonText: 'Cerrar',
-      });
-      return;
-    }
 
-    setIsSaving(true);
 
-    try {
-      const wasEditing = Boolean(editingCostId);
-      if (editingCostId) {
-        await apiClient.updateCostItem(editingCostId, payload);
-      } else {
-        await apiClient.createCostItem(payload);
-      }
 
-      setCostForm(emptyCostForm);
-      setEditingCostId(null);
-      await loadWorkspace();
-      showSuccessToast(wasEditing ? 'Servicio actualizado' : 'Servicio creado');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo guardar el servicio',
-        text: 'Revisá importe, unidad e IVA. El IVA vacío usa el valor general de la empresa.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
-  const handleExpenseSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
 
-    if (!expenseForm.amount || !expenseForm.detail.trim()) {
-      await Swal.fire({
-        title: 'Faltan datos del gasto',
-        text: 'Completa monto y detalle para registrar el gasto.',
-        icon: 'warning',
-        confirmButtonText: 'Cerrar',
-      });
-      return;
-    }
-
-    const payload: ExpenseEntryPayload = {
-      amount: expenseForm.amount,
-      detail: expenseForm.detail.trim(),
-      notes: nullable(expenseForm.notes),
-      status: expenseForm.status,
-      client_id: expenseForm.client_id || null,
-      category_id: expenseForm.category_id || null,
-    };
-
-    setIsSaving(true);
-    try {
-      await apiClient.createExpenseEntry(payload);
-      setExpenseForm(emptyExpenseForm);
-      await loadWorkspace();
-      showSuccessToast('Gasto registrado');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo registrar el gasto',
-        text: 'Revisa el monto, detalle y los datos opcionales antes de intentar nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleExpenseStatusChange = async (entry: ExpenseEntry, status: ExpenseStatus) => {
-    setIsSaving(true);
-    try {
-      await apiClient.updateExpenseEntry(entry.id, { status });
-      await loadWorkspace();
-      showSuccessToast(status === 'paid' ? 'Gasto marcado como cobrado' : 'Gasto marcado como pendiente');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo actualizar el gasto',
-        text: 'Intenta nuevamente en unos segundos.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleManageExpenseCategories = async () => {
-    const currentCategories = expenseCategories
-      .map((category) => `<li style="margin:0 0 6px;">${escapeHtml(category.name)}</li>`)
-      .join('');
-
-    const result = await Swal.fire({
-      title: 'Administrar categorias',
-      html: `
-        <div style="display:grid;gap:12px;text-align:left;">
-          <div>
-            <strong style="display:block;margin-bottom:8px;">Categorias actuales</strong>
-            <ul style="margin:0;padding-left:18px;color:#64748b;">
-              ${currentCategories || '<li>Sin categorias cargadas</li>'}
-            </ul>
-          </div>
-          <label style="display:grid;gap:6px;">
-            <span>Nueva categoria</span>
-            <input id="expense-category-name" class="swal2-input" placeholder="Ej. Materiales de stock" style="margin:0;" />
-          </label>
-        </div>
-      `,
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: 'Agregar categoria',
-      cancelButtonText: 'Cerrar',
-      preConfirm: () => {
-        const nameValue = (document.getElementById('expense-category-name') as HTMLInputElement | null)?.value.trim() ?? '';
-        if (!nameValue) {
-          Swal.showValidationMessage('Escribe un nombre para la categoria.');
-          return undefined;
-        }
-        return { name: nameValue };
-      },
-    });
-
-    if (!result.isConfirmed || !result.value) {
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      await apiClient.createExpenseCategory(result.value);
-      await loadWorkspace();
-      showSuccessToast('Categoria creada');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo crear la categoria',
-        text: 'Intenta nuevamente con otro nombre.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const editCost = (item: CostItem) => {
-    setEditingCostId(item.id);
-    setCostForm({
-      category: item.category,
-      name: item.name,
-      description: item.description ?? '',
-      unit: item.unit,
-      unit_cost: item.unit_cost,
-      tax_rate: item.tax_rate ?? '',
-    });
-    setActiveView('costs');
-  };
-
-  const deleteCost = async (item: CostItem) => {
-    const result = await Swal.fire({
-      title: `Desactivar ${item.name}`,
-      text: 'El costo no se usara para nuevos presupuestos, pero mantiene el historial.',
-      icon: 'warning',
-      confirmButtonText: 'Desactivar',
-      cancelButtonText: 'Cancelar',
-      showCancelButton: true,
-    });
-
-    if (!result.isConfirmed) {
-      return;
-    }
-
-    try {
-      await apiClient.deleteCostItem(item.id);
-      await loadWorkspace();
-      showSuccessToast('Servicio desactivado');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo desactivar el servicio',
-        text: 'Revisa que tu sesion siga vigente e intenta nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    }
-  };
-
-  const handleCompanyProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsSaving(true);
-
-    const payload: TenantProfilePayload = {
-      address: nullable(companyProfileForm.address),
-      phone: nullable(companyProfileForm.phone),
-      email: nullable(companyProfileForm.email),
-      website: nullable(companyProfileForm.website),
-      logo_url: nullable(companyProfileForm.logo_url),
-      invoice_notes: nullable(companyProfileForm.invoice_notes),
-      default_tax_rate: nullable(companyProfileForm.default_tax_rate),
-    };
-
-    try {
-      const updatedProfile = await apiClient.updateTenantProfile(payload);
-      setCompanyProfile(updatedProfile);
-      setCompanyProfileForm(companyProfileToForm(updatedProfile));
-      await Swal.fire({
-        title: 'Perfil actualizado',
-        text: 'Los datos de empresa ya estan disponibles para impresiones y facturas.',
-        icon: 'success',
-        confirmButtonText: 'Cerrar',
-      });
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo guardar el perfil',
-        text: 'Revisa los datos e intenta nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleTenantLegalChangeSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const payload: TenantChangeRequestPayload = {
-      proposed_name: nullable(tenantLegalChangeForm.proposed_name),
-      proposed_legal_name: nullable(tenantLegalChangeForm.proposed_legal_name),
-      proposed_tax_id: nullable(tenantLegalChangeForm.proposed_tax_id),
-      reason: nullable(tenantLegalChangeForm.reason),
-    };
-
-    if (!payload.proposed_name && !payload.proposed_legal_name && !payload.proposed_tax_id) {
-      await Swal.fire({
-        title: 'Faltan datos',
-        text: 'Indica al menos un cambio fiscal para enviar la solicitud.',
-        icon: 'warning',
-        confirmButtonText: 'Cerrar',
-      });
-      return;
-    }
-
-    setIsSaving(true);
-
-    try {
-      const request = await apiClient.createTenantChangeRequest(payload);
-      setTenantChangeRequests((current) => [request, ...current]);
-      setTenantLegalChangeForm(emptyTenantLegalChangeForm);
-      showSuccessToast('Solicitud enviada');
-    } catch {
-      await Swal.fire({
-        title: 'No se pudo enviar la solicitud',
-        text: 'Revisa los datos e intenta nuevamente.',
-        icon: 'error',
-        confirmButtonText: 'Cerrar',
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const {
     bottomNavigationItems,
@@ -544,6 +276,18 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setSelectedQuoteId,
     setServiceRecordForm,
   });
+  const costExpenseActionHandlers = createCostExpenseActionHandlers({
+    costForm,
+    editingCostId,
+    expenseCategories,
+    expenseForm,
+    loadWorkspace,
+    setActiveView,
+    setCostForm,
+    setEditingCostId,
+    setExpenseForm,
+    setIsSaving,
+  });
   const quoteActionHandlers = createQuoteActionHandlers({
     clients,
     companyProfile,
@@ -555,6 +299,15 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setQuoteEditorRequestId,
     setQuoteForm,
     setSelectedQuoteId,
+  });
+  const companyProfileActionHandlers = createCompanyProfileActionHandlers({
+    companyProfileForm,
+    setCompanyProfile,
+    setCompanyProfileForm,
+    setIsSaving,
+    setTenantChangeRequests,
+    setTenantLegalChangeForm,
+    tenantLegalChangeForm,
   });
   const platformAdminHandlers = createPlatformAdminHandlers({
     quotes,
@@ -690,10 +443,10 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               setCostForm(emptyCostForm);
               setEditingCostId(null);
             }}
-            onDelete={deleteCost}
-            onEdit={editCost}
+            onDelete={costExpenseActionHandlers.deleteCost}
+            onEdit={costExpenseActionHandlers.editCost}
             onFormChange={setCostForm}
-            onSubmit={handleCostSubmit}
+            onSubmit={costExpenseActionHandlers.handleCostSubmit}
             showOperationPresets={currentUser?.role !== 'platform_admin'}
           />
         ) : null}
@@ -732,9 +485,9 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             onExpenseFormChange={setExpenseForm}
-            onExpenseStatusChange={handleExpenseStatusChange}
-            onExpenseSubmit={handleExpenseSubmit}
-            onManageExpenseCategories={handleManageExpenseCategories}
+            onExpenseStatusChange={costExpenseActionHandlers.handleExpenseStatusChange}
+            onExpenseSubmit={costExpenseActionHandlers.handleExpenseSubmit}
+            onManageExpenseCategories={costExpenseActionHandlers.handleManageExpenseCategories}
             onDownloadPdf={quoteActionHandlers.downloadQuotePdf}
             onOpenQuote={quoteActionHandlers.openQuoteEditorFromAnotherView}
             onSendInvoiceByWhatsApp={quoteActionHandlers.sendInvoiceByWhatsApp}
@@ -751,8 +504,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             mode={currentUser?.role === 'platform_admin' ? 'platform' : 'tenant'}
             onFormChange={setCompanyProfileForm}
             onLegalChangeFormChange={setTenantLegalChangeForm}
-            onLegalChangeSubmit={handleTenantLegalChangeSubmit}
-            onSubmit={handleCompanyProfileSubmit}
+            onLegalChangeSubmit={companyProfileActionHandlers.handleTenantLegalChangeSubmit}
+            onSubmit={companyProfileActionHandlers.handleCompanyProfileSubmit}
             requests={tenantChangeRequests}
           />
         ) : null}

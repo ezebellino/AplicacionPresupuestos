@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react';
 
 import type {
+  Client,
   ClientPayload,
   ClientServiceRecord,
   CostCategory,
@@ -118,7 +119,7 @@ export type ExpenseForm = {
 };
 
 export type SummaryViewProps = {
-  clients: import('../../shared/api/client').Client[];
+  clients: Client[];
   costItems: CostItem[];
   isLoading: boolean;
   metrics: { label: string; value: string }[];
@@ -140,8 +141,69 @@ export type CostsViewProps = {
   showOperationPresets: boolean;
 };
 
+export type ClientsViewProps = {
+  clients: Client[];
+  editingClientId: string | null;
+  form: ClientForm;
+  isCompactLayout: boolean;
+  isSaving: boolean;
+  recordRequest: ClientRecordRequest | null;
+  quotes: Quote[];
+  selectedClientId: string | null;
+  serviceRecordForm: ServiceRecordForm;
+  serviceRecords: ClientServiceRecord[];
+  onCancel: () => void;
+  onCreateQuoteForClient: (clientId: string) => void;
+  onDelete: (client: Client) => void;
+  onEdit: (client: Client) => void;
+  onHistory: (client: Client) => Promise<void>;
+  onOpenQuote: (quoteId: string) => void;
+  onQuickCreate: (payload: Pick<ClientPayload, 'name' | 'phone' | 'address'>) => Promise<Client | null>;
+  onRecordRequestHandled: () => void;
+  onFormChange: (form: ClientForm) => void;
+  onServiceFormChange: (form: ServiceRecordForm) => void;
+  onServiceSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+export type QuotesViewProps = {
+  clients: Client[];
+  costItems: CostItem[];
+  editorRequestId: string | null;
+  form: QuoteForm;
+  isCompactLayout: boolean;
+  isSaving: boolean;
+  newQuoteClientIdRequest: string | null;
+  onAddCostItem: (quote: Quote, item: CostItem) => void;
+  onDeleteItem: (quote: Quote, itemId: string) => void;
+  onDeleteQuotes: (quotes: Quote[]) => Promise<boolean>;
+  onDownloadPdf: (quote: Quote) => void;
+  onEditClient: (clientId: string, section?: ClientRecordSection) => Promise<void>;
+  onEditorRequestHandled: () => void;
+  onFormChange: (form: QuoteForm) => void;
+  onNewQuoteClientRequestHandled: () => void;
+  onSelectQuote: (quoteId: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => boolean | Promise<boolean>;
+  onTransition: (quote: Quote, action: 'issue' | 'accept' | 'reject') => void;
+  quotes: Quote[];
+  selectedQuoteId: string | null;
+};
+
+export type CompanyProfileViewProps = {
+  form: CompanyProfileForm;
+  isCompactLayout: boolean;
+  isSaving: boolean;
+  legalChangeForm: TenantLegalChangeForm;
+  mode: 'tenant' | 'platform';
+  onFormChange: (form: CompanyProfileForm) => void;
+  onLegalChangeFormChange: (form: TenantLegalChangeForm) => void;
+  onLegalChangeSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  requests: TenantChangeRequest[];
+};
+
 export type TreasuryViewProps = {
-  clients: import('../../shared/api/client').Client[];
+  clients: Client[];
   expenseCategories: ExpenseCategory[];
   expenseEntries: ExpenseEntry[];
   expenseForm: ExpenseForm;

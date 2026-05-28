@@ -23,6 +23,11 @@ export function formatMonth(value: string): string {
   }).format(new Date(year, month - 1, 1));
 }
 
+export function nullable(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export function formatMoney(value: number | string): string {
   return new Intl.NumberFormat('es-AR', {
     currency: 'ARS',
@@ -36,6 +41,48 @@ export function formatDate(value: string): string {
     month: '2-digit',
     year: 'numeric',
   }).format(new Date(value));
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function openWhatsAppMessage(phone: string, message: string): void {
+  const target = phone
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+    : `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+  window.open(target, '_blank', 'noopener,noreferrer');
+}
+
+export function openMailTo(email: string, subject: string, body: string): void {
+  const target = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = target;
+}
+
+export function formatMonthsCovered(value: number): string {
+  if (value === 1) {
+    return 'Mensual';
+  }
+
+  if (value === 3) {
+    return 'Trimestral';
+  }
+
+  if (value === 6) {
+    return 'Semestral';
+  }
+
+  if (value === 12) {
+    return 'Anual';
+  }
+
+  return `${value} meses`;
 }
 
 export function quoteTimestamp(quote: Quote): number {

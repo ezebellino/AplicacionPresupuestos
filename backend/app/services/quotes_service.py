@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.domain.enums import QuoteStatus
 from app.domain.quote_calculator import QuoteLineInput, calculate_quote
-from app.infra.models import Client, CostItem, Quote, QuoteItem, Tenant
+from app.infra.models import Client, CostItem, Quote, QuoteItem, Tenant, User
 from app.schemas.quotes import QuoteCreate, QuoteItemCreate, QuoteItemRead, QuoteItemUpdate, QuoteRead, QuoteUpdate
+from app.services.audit_service import record_audit_event
 
 
 ZERO = Decimal("0.00")
@@ -100,7 +101,12 @@ def ensure_quote_share_token(db: Session, tenant_id: UUID, quote_id: UUID) -> Qu
     raise QuoteConflictError("Could not create quote share token")
 
 
-def create_quote(db: Session, tenant_id: UUID, payload: QuoteCreate) -> Quote | None:
+def create_quote(
+    db: Session,
+    tenant_id: UUID,
+    payload: QuoteCreate,
+    actor: User | None = None,
+) -> Quote | None:
     if _get_client(db, tenant_id, payload.client_id) is None:
         return None
 
@@ -120,6 +126,18 @@ def create_quote(db: Session, tenant_id: UUID, payload: QuoteCreate) -> Quote | 
         )
 
         db.add(quote)
+        db.flush()
+        if actor is not None:
+            record_audit_event(
+                db,
+                actor=actor,
+                tenant_id=tenant_id,
+                entity_type="quote",
+                entity_id=quote.id,
+                action="created",
+                summary=f"Presupuesto creado: {quote.number}",
+                metadata={"number": quote.number, "client_id": quote.client_id, "title": quote.title},
+            )
         try:
             db.commit()
         except IntegrityError:
@@ -141,6 +159,7 @@ def update_quote(
     tenant_id: UUID,
     quote_id: UUID,
     payload: QuoteUpdate,
+    actor: User | None = None,
 ) -> Quote | None:
     quote = get_quote(db, tenant_id, quote_id)
 
@@ -151,9 +170,21 @@ def update_quote(
     if payload.client_id is not None and _get_client(db, tenant_id, payload.client_id) is None:
         return None
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(quote, field, value)
 
+    if actor is not None:
+        record_audit_event(
+            db,
+            actor=actor,
+            tenant_id=tenant_id,
+            entity_type="quote",
+            entity_id=quote.id,
+            action="updated",
+            summary=f"Presupuesto actualizado: {quote.number}",
+            metadata={"number": quote.number, "changes": changes},
+        )
     db.commit()
     db.refresh(quote)
 
@@ -265,6 +296,7 @@ def delete_quotes(
     db: Session,
     tenant_id: UUID,
     quote_ids: list[UUID],
+    actor: User | None = None,
 ) -> int:
     if not quote_ids:
         return 0
@@ -292,13 +324,26 @@ def delete_quotes(
     for item in items:
         db.delete(item)
     for quote in quotes:
+        if actor is not None:
+            record_audit_event(
+                db,
+                actor=actor,
+                tenant_id=tenant_id,
+                entity_type="quote",
+                entity_id=quote.id,
+                action="deleted",
+                summary=f"Presupuesto eliminado: {quote.number}",
+                metadata={"number": quote.number, "status": quote.status},
+            )
         db.delete(quote)
 
     db.commit()
     return len(quotes)
 
 
-def issue_quote(db: Session, tenant_id: UUID, quote_id: UUID) -> Quote | None:
+def issue_quote(
+    db: Session, tenant_id: UUID, quote_id: UUID, actor: User | None = None
+) -> Quote | None:
     quote = get_quote(db, tenant_id, quote_id)
 
     if quote is None:
@@ -310,18 +355,33 @@ def issue_quote(db: Session, tenant_id: UUID, quote_id: UUID) -> Quote | None:
     if quote.issued_at is None:
         quote.issued_at = datetime.now(timezone.utc)
 
+    if actor is not None:
+        record_audit_event(
+            db,
+            actor=actor,
+            tenant_id=tenant_id,
+            entity_type="quote",
+            entity_id=quote.id,
+            action="issued",
+            summary=f"Presupuesto emitido: {quote.number}",
+            metadata={"number": quote.number},
+        )
     db.commit()
     db.refresh(quote)
 
     return quote
 
 
-def accept_quote(db: Session, tenant_id: UUID, quote_id: UUID) -> Quote | None:
-    return _transition_from_issued(db, tenant_id, quote_id, QuoteStatus.ACCEPTED)
+def accept_quote(
+    db: Session, tenant_id: UUID, quote_id: UUID, actor: User | None = None
+) -> Quote | None:
+    return _transition_from_issued(db, tenant_id, quote_id, QuoteStatus.ACCEPTED, actor)
 
 
-def reject_quote(db: Session, tenant_id: UUID, quote_id: UUID) -> Quote | None:
-    return _transition_from_issued(db, tenant_id, quote_id, QuoteStatus.REJECTED)
+def reject_quote(
+    db: Session, tenant_id: UUID, quote_id: UUID, actor: User | None = None
+) -> Quote | None:
+    return _transition_from_issued(db, tenant_id, quote_id, QuoteStatus.REJECTED, actor)
 
 
 def _transition_from_issued(
@@ -329,6 +389,7 @@ def _transition_from_issued(
     tenant_id: UUID,
     quote_id: UUID,
     target_status: QuoteStatus,
+    actor: User | None = None,
 ) -> Quote | None:
     quote = get_quote(db, tenant_id, quote_id)
 
@@ -338,6 +399,17 @@ def _transition_from_issued(
         raise QuoteConflictError("Quote can only transition from issued")
 
     quote.status = target_status
+    if actor is not None:
+        record_audit_event(
+            db,
+            actor=actor,
+            tenant_id=tenant_id,
+            entity_type="quote",
+            entity_id=quote.id,
+            action=target_status.value,
+            summary=f"Presupuesto {target_status.value}: {quote.number}",
+            metadata={"number": quote.number, "status": target_status},
+        )
     db.commit()
     db.refresh(quote)
 

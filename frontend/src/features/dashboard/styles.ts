@@ -1124,6 +1124,19 @@ export const styles = {
     fontSize: '14px',
     margin: 0,
   },
+  auditMetadataBlock: {
+    margin: 0,
+    padding: '0.85rem 1rem',
+    borderRadius: '12px',
+    border: '1px solid rgba(212, 160, 23, 0.16)',
+    background: 'rgba(12, 18, 30, 0.84)',
+    color: '#c9d4f0',
+    fontSize: '0.78rem',
+    lineHeight: 1.45,
+    overflowX: 'auto',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+  },
   categoryGrid: {
     display: 'grid',
     gap: '12px',
@@ -1776,6 +1789,11 @@ export const styles = {
     fontWeight: 700,
     gap: '6px',
     textTransform: 'uppercase',
+  },
+  searchWrap: {
+    alignItems: 'center',
+    display: 'flex',
+    gap: '8px',
   },
   searchInput: {
     background: 'var(--input-bg)',

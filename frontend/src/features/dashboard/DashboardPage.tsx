@@ -4,6 +4,7 @@ import Swal from 'sweetalert2';
 
 import {
   apiClient,
+  AuditEvent,
   Client,
   ClientServiceRecord,
   CostItem,
@@ -83,6 +84,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [platformChangeRequests, setPlatformChangeRequests] = useState<TenantChangeRequest[]>([]);
   const [platformSignupRequests, setPlatformSignupRequests] = useState<TenantSignupRequest[]>([]);
   const [platformMemberships, setPlatformMemberships] = useState<PlatformTenantMembership[]>([]);
+  const [platformAuditEvents, setPlatformAuditEvents] = useState<AuditEvent[]>([]);
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
   const [expenseEntries, setExpenseEntries] = useState<ExpenseEntry[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
@@ -152,14 +154,16 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         return quotesResponse.items[0]?.id ?? null;
       });
       if (userResponse.role === 'platform_admin') {
-        const [signupRequests, changeRequests, memberships] = await Promise.all([
+        const [signupRequests, changeRequests, memberships, auditEvents] = await Promise.all([
           apiClient.listPlatformSignupRequests(),
           apiClient.listPlatformChangeRequests(),
           apiClient.listPlatformMemberships(),
+          apiClient.listPlatformAuditEvents(),
         ]);
         setPlatformSignupRequests(signupRequests.items);
         setPlatformChangeRequests(changeRequests.items);
         setPlatformMemberships(memberships.items);
+        setPlatformAuditEvents(auditEvents.items);
         setActiveView((current) => (current === 'summary' || current === 'company' ? 'platform' : current));
       }
     } catch {
@@ -284,6 +288,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     sendQuoteByEmail: quoteActionHandlers.sendQuoteByEmail,
     setClients,
     setIsSaving,
+    setPlatformAuditEvents,
     setPlatformChangeRequests,
     setPlatformMemberships,
     setPlatformSignupRequests,
@@ -499,6 +504,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         {activeView === 'platform' && currentUser?.role === 'platform_admin' ? (
           <PlatformAdminView
             activeSection={activePlatformSection}
+            auditEvents={platformAuditEvents}
             changeRequests={platformChangeRequests}
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}

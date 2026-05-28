@@ -77,6 +77,30 @@ export type TenantSignupRequest = {
   created_admin_email: string | null;
 };
 
+export type AuditEvent = {
+  id: string;
+  created_at: string;
+  actor_user_id: string | null;
+  actor_email: string | null;
+  actor_role: string | null;
+  tenant_id: string | null;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  summary: string;
+  metadata_json: Record<string, unknown> | null;
+};
+
+export type AuditEventFilters = {
+  actor_email?: string;
+  tenant_id?: string;
+  entity_type?: string;
+  action?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+};
+
 export type PlatformTenantMembership = {
   id: string;
   name: string;
@@ -317,6 +341,18 @@ async function request<TResponse>(
   return response.json() as Promise<TResponse>;
 }
 
+function toQueryString(params: Record<string, string | number | null | undefined>) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value));
+    }
+  });
+
+  const query = search.toString();
+  return query ? `?${query}` : '';
+}
+
 export const apiClient = {
   login(payload: LoginRequest) {
     return request<LoginResponse>('/auth/login', {
@@ -389,6 +425,11 @@ export const apiClient = {
   },
   listPlatformMemberships() {
     return request<{ items: PlatformTenantMembership[] }>('/admin/tenants/platform/memberships');
+  },
+  listPlatformAuditEvents(filters: AuditEventFilters = {}) {
+    return request<{ items: AuditEvent[] }>(
+      `/admin/tenants/platform/audit-events${toQueryString(filters)}`,
+    );
   },
   markPlatformMembershipPaid(id: string, payload: PlatformMembershipPaymentPayload) {
     return request<PlatformTenantMembership>(`/admin/tenants/platform/memberships/${id}/paid`, {

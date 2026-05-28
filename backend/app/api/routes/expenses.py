@@ -49,7 +49,7 @@ def create_current_tenant_expense(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        entry = create_expense_entry(db, current_user.tenant_id, payload)
+        entry = create_expense_entry(db, current_user.tenant_id, payload, current_user)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
     except LookupError as error:
@@ -66,7 +66,7 @@ def update_current_tenant_expense(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        entry = update_expense_entry(db, current_user.tenant_id, expense_id, payload)
+        entry = update_expense_entry(db, current_user.tenant_id, expense_id, payload, current_user)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
     except LookupError as error:
@@ -92,7 +92,7 @@ def create_current_tenant_expense_category(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    return create_expense_category(db, current_user.tenant_id, payload)
+    return create_expense_category(db, current_user.tenant_id, payload, current_user)
 
 
 @router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -101,7 +101,7 @@ def deactivate_current_tenant_expense_category(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> Response:
-    deleted = deactivate_expense_category(db, current_user.tenant_id, category_id)
+    deleted = deactivate_expense_category(db, current_user.tenant_id, category_id, current_user)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react';
 
 import type {
+  AuditEvent,
   Client,
   ClientPayload,
   ClientServiceRecord,
@@ -19,7 +20,7 @@ import type {
 } from '../../shared/api/client';
 
 export type View = 'summary' | 'clients' | 'costs' | 'quotes' | 'treasury' | 'company' | 'platform';
-export type PlatformSection = 'overview' | 'signups' | 'changes' | 'memberships';
+export type PlatformSection = 'overview' | 'signups' | 'changes' | 'memberships' | 'audit';
 export type CompanySection = 'data' | 'billing' | 'preview';
 export type QuoteSection = 'list' | 'editor';
 export type ClientSection = 'list' | 'record';
@@ -210,6 +211,7 @@ export type CompanyProfileViewProps = {
 
 export type PlatformAdminViewProps = {
   activeSection: PlatformSection;
+  auditEvents: AuditEvent[];
   changeRequests: TenantChangeRequest[];
   isCompactLayout: boolean;
   isSaving: boolean;

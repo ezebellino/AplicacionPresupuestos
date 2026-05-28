@@ -32,6 +32,7 @@ from app.schemas.tenants import (
 )
 from app.services.quotes_service import add_quote_item, create_quote, issue_quote
 from app.services.notification_service import notify_platform
+from app.services.audit_service import record_audit_event
 
 
 def create_tenant_with_admin(db: Session, payload: TenantCreate) -> tuple[Tenant, User]:
@@ -132,7 +133,23 @@ def mark_tenant_membership_paid(
         notes=_clean(payload.notes),
     )
     db.add(payment)
+    db.flush()
     _recalculate_tenant_membership_state(tenant)
+    record_audit_event(
+        db,
+        actor=platform_admin,
+        tenant_id=tenant.id,
+        entity_type="membership_payment",
+        entity_id=payment.id,
+        action="created",
+        summary=f"Pago de membresia registrado para {tenant.name}",
+        metadata={
+            "tenant_name": tenant.name,
+            "months_covered": payment.months_covered,
+            "amount": payment.amount,
+            "quote_number": payment.quote_number,
+        },
+    )
 
     db.commit()
     return _load_platform_membership_tenant(db, tenant_id)
@@ -167,6 +184,22 @@ def update_tenant_membership_payment(
     payment.amount = payload.amount
     payment.notes = _clean(payload.notes)
     _recalculate_tenant_membership_state(tenant)
+    record_audit_event(
+        db,
+        actor=platform_admin,
+        tenant_id=tenant.id,
+        entity_type="membership_payment",
+        entity_id=payment.id,
+        action="updated",
+        summary=f"Pago de membresia actualizado para {tenant.name}",
+        metadata={
+            "tenant_name": tenant.name,
+            "months_covered": payment.months_covered,
+            "amount": payment.amount,
+            "paid_at": payment.paid_at,
+            "quote_number": payment.quote_number,
+        },
+    )
 
     db.commit()
     return _load_platform_membership_tenant(db, tenant_id)
@@ -198,6 +231,16 @@ def cancel_tenant_membership_payment(
     payment.cancelled_by_user_id = platform_admin.id
     payment.cancel_reason = cancel_reason
     _recalculate_tenant_membership_state(tenant)
+    record_audit_event(
+        db,
+        actor=platform_admin,
+        tenant_id=tenant.id,
+        entity_type="membership_payment",
+        entity_id=payment.id,
+        action="cancelled",
+        summary=f"Pago de membresia anulado para {tenant.name}",
+        metadata={"tenant_name": tenant.name, "reason": cancel_reason, "quote_number": payment.quote_number},
+    )
 
     db.commit()
     return _load_platform_membership_tenant(db, tenant_id)
@@ -229,6 +272,22 @@ def approve_tenant_change_request(
     request.reviewed_at = utc_now()
     request.reviewed_by_user_id = reviewer.id
     request.review_notes = _clean(payload.review_notes)
+    record_audit_event(
+        db,
+        actor=reviewer,
+        tenant_id=request.tenant_id,
+        entity_type="tenant_change_request",
+        entity_id=request.id,
+        action="approved",
+        summary=f"Cambio fiscal aprobado para {tenant.name}",
+        metadata={
+            "tenant_name": tenant.name,
+            "review_notes": request.review_notes,
+            "proposed_name": request.proposed_name,
+            "proposed_legal_name": request.proposed_legal_name,
+            "proposed_tax_id": request.proposed_tax_id,
+        },
+    )
     db.commit()
     db.refresh(request)
 
@@ -253,6 +312,16 @@ def reject_tenant_change_request(
     request.reviewed_at = utc_now()
     request.reviewed_by_user_id = reviewer.id
     request.review_notes = _clean(payload.review_notes)
+    record_audit_event(
+        db,
+        actor=reviewer,
+        tenant_id=request.tenant_id,
+        entity_type="tenant_change_request",
+        entity_id=request.id,
+        action="rejected",
+        summary=f"Cambio fiscal rechazado para {request.tenant.name}",
+        metadata={"tenant_name": request.tenant.name, "review_notes": request.review_notes},
+    )
     db.commit()
     db.refresh(request)
 
@@ -286,6 +355,22 @@ def create_tenant_change_request(
     )
 
     db.add(request)
+    db.flush()
+    record_audit_event(
+        db,
+        actor=user,
+        tenant_id=user.tenant_id,
+        entity_type="tenant_change_request",
+        entity_id=request.id,
+        action="created",
+        summary=f"Solicitud de cambio fiscal creada para {tenant.name}",
+        metadata={
+            "tenant_name": tenant.name,
+            "proposed_name": proposed_name,
+            "proposed_legal_name": proposed_legal_name,
+            "proposed_tax_id": proposed_tax_id,
+        },
+    )
     db.commit()
     db.refresh(request)
     notify_platform(
@@ -324,6 +409,21 @@ def create_tenant_signup_request(
         raise ValueError("company, contact, email and phone are required")
 
     db.add(request)
+    db.flush()
+    record_audit_event(
+        db,
+        actor=None,
+        tenant_id=None,
+        entity_type="tenant_signup_request",
+        entity_id=request.id,
+        action="created",
+        summary=f"Solicitud de alta creada para {request.company_name}",
+        metadata={
+            "company_name": request.company_name,
+            "contact_name": request.contact_name,
+            "email": request.email,
+        },
+    )
     db.commit()
     db.refresh(request)
     notify_platform(
@@ -367,6 +467,16 @@ def update_tenant_signup_request_status(
     request.reviewed_at = utc_now()
     request.reviewed_by_user_id = reviewer.id
     request.review_notes = _clean(payload.review_notes)
+    record_audit_event(
+        db,
+        actor=reviewer,
+        tenant_id=request.created_tenant_id,
+        entity_type="tenant_signup_request",
+        entity_id=request.id,
+        action=status,
+        summary=f"Solicitud de alta marcada como {status} para {request.company_name}",
+        metadata={"company_name": request.company_name, "review_notes": request.review_notes},
+    )
     db.commit()
     db.refresh(request)
 
@@ -412,6 +522,16 @@ def approve_tenant_signup_request(
         request.review_notes = _clean(payload.review_notes)
         request.created_tenant_id = tenant.id
         request.created_admin_email = admin.email
+        record_audit_event(
+            db,
+            actor=reviewer,
+            tenant_id=tenant.id,
+            entity_type="tenant_signup_request",
+            entity_id=request.id,
+            action="approved",
+            summary=f"Solicitud de alta aprobada para {request.company_name}",
+            metadata={"company_name": request.company_name, "admin_email": admin.email},
+        )
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -489,6 +609,7 @@ def _issue_membership_quote(
             title=cost_item.name,
             notes=f"Membresia FacturEasy - {format_membership_cycle(months_covered)}",
         ),
+        actor=None,
     )
     if quote is None:
         raise ValueError("could not create membership quote")
@@ -502,11 +623,35 @@ def _issue_membership_quote(
     if item is None:
         raise ValueError("could not add membership quote item")
 
-    quote = issue_quote(db, platform_admin.tenant_id, quote.id)
+    quote = issue_quote(db, platform_admin.tenant_id, quote.id, actor=None)
     if quote is None:
         raise ValueError("could not issue membership quote")
 
     return quote
+
+
+def update_tenant_profile(
+    db: Session,
+    user: User,
+    payload,
+) -> Tenant:
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
+        setattr(user.tenant, field, value)
+
+    record_audit_event(
+        db,
+        actor=user,
+        tenant_id=user.tenant_id,
+        entity_type="tenant_profile",
+        entity_id=user.tenant_id,
+        action="updated",
+        summary=f"Perfil de empresa actualizado: {user.tenant.name}",
+        metadata={"changes": changes, "tenant_name": user.tenant.name},
+    )
+    db.commit()
+    db.refresh(user.tenant)
+    return user.tenant
 
 
 def _recalculate_tenant_membership_state(tenant: Tenant) -> None:

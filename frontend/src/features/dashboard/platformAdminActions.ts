@@ -4,6 +4,7 @@ import Swal from 'sweetalert2';
 
 import {
   apiClient,
+  buildCriticalErrorMessage,
   type AuditEvent,
   type Client,
   type PlatformTenantMembership,
@@ -91,6 +92,16 @@ export function createPlatformAdminHandlers({
         showSuccessToast(
           latestPayment?.quote_number ? `Pago registrado con presupuesto ${latestPayment.quote_number}` : 'Pago registrado',
         );
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo registrar el pago',
+          text: buildCriticalErrorMessage(
+            'Verifica los datos del cobro e intenta nuevamente.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }
@@ -108,6 +119,16 @@ export function createPlatformAdminHandlers({
         }
         await refreshPlatformAuditEvents();
         showSuccessToast('Pago actualizado');
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo actualizar el pago',
+          text: buildCriticalErrorMessage(
+            'Verifica los datos del pago e intenta nuevamente.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }
@@ -119,6 +140,16 @@ export function createPlatformAdminHandlers({
         setPlatformMemberships((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         await refreshPlatformAuditEvents();
         showSuccessToast('Pago anulado');
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo anular el pago',
+          text: buildCriticalErrorMessage(
+            'Verifica el motivo e intenta nuevamente.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }
@@ -132,6 +163,16 @@ export function createPlatformAdminHandlers({
         setPlatformMemberships(memberships.items);
         await refreshPlatformAuditEvents();
         showSuccessToast('Cuenta creada');
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo crear la cuenta',
+          text: buildCriticalErrorMessage(
+            'Revisa el estado de la solicitud y vuelve a intentar.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }
@@ -143,6 +184,16 @@ export function createPlatformAdminHandlers({
         setPlatformChangeRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         await refreshPlatformAuditEvents();
         showSuccessToast('Cambio fiscal aprobado');
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo aprobar el cambio fiscal',
+          text: buildCriticalErrorMessage(
+            'Revisa el estado de la solicitud e intenta nuevamente.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }
@@ -154,6 +205,16 @@ export function createPlatformAdminHandlers({
         setPlatformSignupRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         await refreshPlatformAuditEvents();
         showSuccessToast('Alta marcada como contactada');
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo actualizar la solicitud',
+          text: buildCriticalErrorMessage(
+            'Revisa el estado de la alta e intenta nuevamente.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }
@@ -165,6 +226,16 @@ export function createPlatformAdminHandlers({
         setPlatformChangeRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         await refreshPlatformAuditEvents();
         showSuccessToast('Cambio fiscal rechazado');
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo rechazar el cambio fiscal',
+          text: buildCriticalErrorMessage(
+            'Revisa el estado de la solicitud e intenta nuevamente.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }
@@ -176,6 +247,16 @@ export function createPlatformAdminHandlers({
         setPlatformSignupRequests((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         await refreshPlatformAuditEvents();
         showSuccessToast('Alta rechazada');
+      } catch (error) {
+        await Swal.fire({
+          title: 'No se pudo rechazar la alta',
+          text: buildCriticalErrorMessage(
+            'Revisa el estado de la solicitud e intenta nuevamente.',
+            error,
+          ),
+          icon: 'error',
+          confirmButtonText: 'Cerrar',
+        });
       } finally {
         setIsSaving(false);
       }

@@ -2,6 +2,42 @@ const runtimeApiUrl =
   typeof window !== 'undefined' ? window.__FACTUREASY_CONFIG__?.VITE_API_URL : undefined;
 const API_URL = runtimeApiUrl || import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+export class ApiError extends Error {
+  detail: string | null;
+  requestId: string | null;
+  status: number;
+
+  constructor({
+    status,
+    message,
+    detail = null,
+    requestId = null,
+  }: {
+    status: number;
+    message: string;
+    detail?: string | null;
+    requestId?: string | null;
+  }) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+    this.requestId = requestId;
+  }
+}
+
+export function buildCriticalErrorMessage(base: string, error: unknown): string {
+  if (!(error instanceof ApiError)) {
+    return base;
+  }
+
+  const detail = error.detail ? ` ${error.detail}.` : '';
+  const support = error.requestId
+    ? ` Si contactas soporte, comparte el codigo ${error.requestId}.`
+    : '';
+  return `${base}${detail}${support}`;
+}
+
 export type Client = {
   id: string;
   name: string;
@@ -310,6 +346,45 @@ export type LoginResponse = {
   token_type: string;
 };
 
+async function buildApiError(response: Response): Promise<ApiError> {
+  const requestId = response.headers.get('X-Request-ID');
+  const fallbackMessage = `Request failed with status ${response.status}`;
+  const contentType = response.headers.get('Content-Type') ?? '';
+
+  if (contentType.includes('application/json')) {
+    try {
+      const payload = (await response.json()) as { detail?: unknown; message?: unknown };
+      const detail =
+        typeof payload.detail === 'string'
+          ? payload.detail
+          : typeof payload.message === 'string'
+            ? payload.message
+            : null;
+      return new ApiError({
+        status: response.status,
+        message: detail ?? fallbackMessage,
+        detail,
+        requestId,
+      });
+    } catch {
+      return new ApiError({ status: response.status, message: fallbackMessage, requestId });
+    }
+  }
+
+  try {
+    const text = await response.text();
+    const detail = text.trim() || null;
+    return new ApiError({
+      status: response.status,
+      message: detail ?? fallbackMessage,
+      detail,
+      requestId,
+    });
+  } catch {
+    return new ApiError({ status: response.status, message: fallbackMessage, requestId });
+  }
+}
+
 async function request<TResponse>(
   path: string,
   options: RequestInit = {},
@@ -331,7 +406,7 @@ async function request<TResponse>(
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    throw await buildApiError(response);
   }
 
   if (response.status === 204) {
@@ -582,7 +657,7 @@ export const apiClient = {
     const response = await fetch(`${API_URL}/quotes/${id}/pdf`, { headers });
 
     if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
+      throw await buildApiError(response);
     }
 
     return response.blob();

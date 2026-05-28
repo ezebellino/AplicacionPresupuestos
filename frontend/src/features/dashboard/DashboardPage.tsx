@@ -423,6 +423,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             costItems={costItems}
             editingCostId={editingCostId}
             form={costForm}
+            isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             onCancel={() => {
               setCostForm(emptyCostForm);

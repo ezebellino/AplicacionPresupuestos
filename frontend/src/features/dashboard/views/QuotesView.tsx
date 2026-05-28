@@ -379,8 +379,18 @@ export function QuotesView({
           ) : (
             <>
               <QuoteProgress quote={selectedQuote} />
-              <div style={styles.quoteEditorSection}>
-                <section style={styles.quoteEditorBlock}>
+              <div
+                style={{
+                  ...styles.quoteEditorSection,
+                  ...(isCompactLayout ? styles.quoteEditorSectionCompact : null),
+                }}
+              >
+                <section
+                  style={{
+                    ...styles.quoteEditorBlock,
+                    ...(isCompactLayout ? styles.quoteEditorBlockCompact : null),
+                  }}
+                >
                   <div>
                     <h3 style={styles.compactTitle}>Cliente</h3>
                     <p style={styles.helperText}>Empresa o cliente asociado al presupuesto actual.</p>
@@ -407,12 +417,22 @@ export function QuotesView({
                   </div>
                 </section>
 
-                <section style={styles.quoteEditorBlock}>
+                <section
+                  style={{
+                    ...styles.quoteEditorBlock,
+                    ...(isCompactLayout ? styles.quoteEditorBlockCompact : null),
+                  }}
+                >
                   <div>
                     <h3 style={styles.compactTitle}>Datos del presupuesto</h3>
                     <p style={styles.helperText}>Resumen operativo del presupuesto seleccionado.</p>
                   </div>
-                  <div style={styles.quoteSummaryGrid}>
+                  <div
+                    style={{
+                      ...styles.quoteSummaryGrid,
+                      ...(isCompactLayout ? styles.quoteSummaryGridCompact : null),
+                    }}
+                  >
                     <div style={styles.quoteSummaryCard}>
                       <span style={styles.quoteSummaryLabel}>Numero</span>
                       <strong>{selectedQuote.number}</strong>
@@ -433,12 +453,23 @@ export function QuotesView({
                 </section>
 
                 {canEditSelected ? (
-                  <section style={styles.quoteEditorBlock} aria-label="Items de cobro">
+                  <section
+                    aria-label="Items de cobro"
+                    style={{
+                      ...styles.quoteEditorBlock,
+                      ...(isCompactLayout ? styles.quoteEditorBlockCompact : null),
+                    }}
+                  >
                     <div>
                       <h3 style={styles.compactTitle}>Items de cobro</h3>
                       <p style={styles.helperText}>Agrega varios servicios seguidos sin salir del editor.</p>
                     </div>
-                    <div style={styles.quoteCatalogSurface}>
+                    <div
+                      style={{
+                        ...styles.quoteCatalogSurface,
+                        ...(isCompactLayout ? styles.quoteCatalogSurfaceCompact : null),
+                      }}
+                    >
                       <label style={styles.compactLabel}>
                         Buscar servicio
                         <input
@@ -453,7 +484,12 @@ export function QuotesView({
                       ) : filteredCatalogItems.length === 0 ? (
                         <p style={styles.emptyState}>No hay servicios para esa busqueda.</p>
                       ) : (
-                        <div style={styles.catalogGrid}>
+                        <div
+                          style={{
+                            ...styles.catalogGrid,
+                            ...(isCompactLayout ? styles.catalogGridCompact : null),
+                          }}
+                        >
                           {filteredCatalogItems.map((item) => (
                             <button
                               disabled={isSaving}
@@ -475,13 +511,62 @@ export function QuotesView({
                   </section>
                 ) : null}
 
-                <section style={styles.quoteEditorBlock}>
+                <section
+                  style={{
+                    ...styles.quoteEditorBlock,
+                    ...(isCompactLayout ? styles.quoteEditorBlockCompact : null),
+                  }}
+                >
                   <div>
                     <h3 style={styles.compactTitle}>Totales y acciones</h3>
                     <p style={styles.helperText}>Revisa el detalle cargado y ejecuta solo las acciones validas para su estado.</p>
                   </div>
                   {selectedQuote.items.length === 0 ? (
                     <p style={styles.emptyState}>Agrega items desde el catalogo de servicios.</p>
+                  ) : isCompactLayout ? (
+                    <div style={styles.quoteItemCardList}>
+                      {selectedQuote.items.map((item) => (
+                        <article key={item.id} style={styles.quoteItemCard}>
+                          <div style={styles.quoteItemCardHeader}>
+                            <div style={styles.quoteRowMain}>
+                              <strong>{item.name}</strong>
+                              {item.description ? <span style={styles.mutedText}>{item.description}</span> : null}
+                            </div>
+                            {canEditSelected ? (
+                              <button
+                                aria-label="Quitar item"
+                                onClick={() => onDeleteItem(selectedQuote, item.id)}
+                                style={styles.iconDangerButton}
+                                title="Quitar item"
+                                type="button"
+                              >
+                                <Trash2 aria-hidden="true" size={15} strokeWidth={2.2} />
+                              </button>
+                            ) : null}
+                          </div>
+                          <div style={styles.quoteItemCardBody}>
+                            <div style={styles.quoteItemFactGrid}>
+                              <div style={styles.quoteItemFact}>
+                                <span style={styles.quoteItemFactLabel}>Cantidad</span>
+                                <strong>{item.quantity}</strong>
+                              </div>
+                              <div style={styles.quoteItemFact}>
+                                <span style={styles.quoteItemFactLabel}>Unitario</span>
+                                <strong>{formatMoney(item.unit_price)}</strong>
+                              </div>
+                              <div style={styles.quoteItemFact}>
+                                <span style={styles.quoteItemFactLabel}>IVA</span>
+                                <strong>{item.tax_rate}%</strong>
+                              </div>
+                              <div style={styles.quoteItemFact}>
+                                <span style={styles.quoteItemFactLabel}>Total</span>
+                                <strong>{formatMoney(item.line_total)}</strong>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
                   ) : (
                     <table style={styles.table}>
                       <thead>
@@ -529,7 +614,12 @@ export function QuotesView({
                     </table>
                   )}
 
-                  <div style={styles.totals}>
+                  <div
+                    style={{
+                      ...styles.totals,
+                      ...(isCompactLayout ? styles.totalsCompact : null),
+                    }}
+                  >
                     <span>Subtotal {formatMoney(selectedQuote.subtotal)}</span>
                     <span>IVA {formatMoney(selectedQuote.tax_total)}</span>
                     <strong>Total {formatMoney(selectedQuote.total)}</strong>

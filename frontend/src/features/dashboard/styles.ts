@@ -1452,6 +1452,9 @@ export const styles = {
     gap: '18px',
     padding: '18px 20px 22px',
   },
+  quoteEditorSectionCompact: {
+    padding: '14px',
+  },
   quoteEditorBlock: {
     background: 'var(--panel-subtle)',
     border: '1px solid var(--border)',
@@ -1460,10 +1463,16 @@ export const styles = {
     gap: '14px',
     padding: '18px',
   },
+  quoteEditorBlockCompact: {
+    padding: '14px',
+  },
   quoteSummaryGrid: {
     display: 'grid',
     gap: '12px',
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  },
+  quoteSummaryGridCompact: {
+    gridTemplateColumns: 'minmax(0, 1fr)',
   },
   quoteSummaryCard: {
     background: 'var(--panel-subtle)',
@@ -1471,6 +1480,7 @@ export const styles = {
     borderRadius: '8px',
     display: 'grid',
     gap: '6px',
+    minWidth: 0,
     padding: '12px',
   },
   quoteSummaryLabel: {
@@ -1511,10 +1521,16 @@ export const styles = {
     gap: '12px',
     padding: '14px',
   },
+  quoteCatalogSurfaceCompact: {
+    padding: '12px',
+  },
   catalogGrid: {
     display: 'grid',
     gap: '10px',
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  },
+  catalogGridCompact: {
+    gridTemplateColumns: 'minmax(0, 1fr)',
   },
   catalogItemButton: {
     alignItems: 'center',
@@ -1610,6 +1626,50 @@ export const styles = {
     gap: '20px',
     justifyContent: 'flex-end',
     padding: '18px 0 0',
+  },
+  totalsCompact: {
+    alignItems: 'stretch',
+    display: 'grid',
+    gap: '8px',
+    justifyContent: 'stretch',
+  },
+  quoteItemCardList: {
+    display: 'grid',
+    gap: '10px',
+  },
+  quoteItemCard: {
+    background: 'var(--panel-bg)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    display: 'grid',
+    gap: '10px',
+    padding: '12px',
+  },
+  quoteItemCardHeader: {
+    alignItems: 'start',
+    display: 'flex',
+    gap: '10px',
+    justifyContent: 'space-between',
+  },
+  quoteItemCardBody: {
+    display: 'grid',
+    gap: '8px',
+  },
+  quoteItemFactGrid: {
+    display: 'grid',
+    gap: '8px',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  },
+  quoteItemFact: {
+    display: 'grid',
+    gap: '4px',
+    minWidth: 0,
+  },
+  quoteItemFactLabel: {
+    color: 'var(--muted)',
+    fontSize: '11px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
   },
   filterBar: {
     alignItems: 'end',

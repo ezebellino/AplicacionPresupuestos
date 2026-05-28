@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.logging import business_actor_fields, get_logger, log_business_event
 from app.domain.enums import QuoteStatus
 from app.domain.quote_calculator import QuoteLineInput, calculate_quote
 from app.infra.models import Client, CostItem, Quote, QuoteItem, Tenant, User
@@ -15,6 +16,7 @@ from app.services.audit_service import record_audit_event
 
 
 ZERO = Decimal("0.00")
+business_logger = get_logger("business.quotes")
 
 
 class QuoteConflictError(ValueError):
@@ -321,6 +323,8 @@ def delete_quotes(
             )
         )
     )
+    quote_numbers = [quote.number for quote in quotes]
+    quote_statuses = sorted({quote.status.value for quote in quotes})
     for item in items:
         db.delete(item)
     for quote in quotes:
@@ -338,6 +342,15 @@ def delete_quotes(
         db.delete(quote)
 
     db.commit()
+    if actor is not None:
+        log_business_event(
+            business_logger,
+            event="quote_bulk_deleted",
+            **business_actor_fields(actor),
+            quote_count=len(quotes),
+            quote_numbers=quote_numbers,
+            quote_statuses=quote_statuses,
+        )
     return len(quotes)
 
 
@@ -368,6 +381,15 @@ def issue_quote(
         )
     db.commit()
     db.refresh(quote)
+    if actor is not None:
+        log_business_event(
+            business_logger,
+            event="quote_issued",
+            **business_actor_fields(actor),
+            quote_id=quote.id,
+            quote_number=quote.number,
+            total=quote.total,
+        )
 
     return quote
 

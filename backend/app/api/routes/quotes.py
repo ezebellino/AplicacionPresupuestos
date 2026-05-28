@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.core.config import settings
+from app.core.logging import business_actor_fields, get_logger, log_business_failure
 from app.infra.models import User
 from app.infra.pdf import build_quote_pdf
 from app.schemas.quotes import (
@@ -42,6 +43,7 @@ from app.services.quotes_service import (
 
 
 router = APIRouter()
+business_logger = get_logger("business.quotes")
 
 
 def _quote_pdf_response(quote, disposition: str = "attachment") -> Response:
@@ -312,6 +314,13 @@ def issue_current_tenant_quote(
     try:
         quote = issue_quote(db, current_user.tenant_id, quote_id, current_user)
     except QuoteConflictError as exc:
+        log_business_failure(
+            business_logger,
+            event="quote_issue_rejected",
+            reason=str(exc),
+            **business_actor_fields(current_user),
+            quote_id=quote_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),

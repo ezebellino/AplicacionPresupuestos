@@ -4,6 +4,7 @@ import Swal from 'sweetalert2';
 
 import {
   apiClient,
+  buildCriticalErrorMessage,
   type TenantChangeRequest,
   type TenantChangeRequestPayload,
   type TenantProfile,
@@ -62,10 +63,10 @@ export function createCompanyProfileActionHandlers({
         icon: 'success',
         confirmButtonText: 'Cerrar',
       });
-    } catch {
+    } catch (error) {
       await Swal.fire({
         title: 'No se pudo guardar el perfil',
-        text: 'Revisa los datos e intenta nuevamente.',
+        text: buildCriticalErrorMessage('Revisa los datos e intenta nuevamente.', error),
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });

@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import Swal from 'sweetalert2';
 
-import { apiClient } from '../../shared/api/client';
+import { apiClient, buildCriticalErrorMessage } from '../../shared/api/client';
 
 type LoginPageProps = {
   onLogin?: (accessToken: string) => void;
@@ -39,10 +39,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       const response = await apiClient.login({ email, password });
       localStorage.setItem('auth_token', response.access_token);
       onLogin?.(response.access_token);
-    } catch {
+    } catch (error) {
       await Swal.fire({
         title: 'No se pudo iniciar sesion',
-        text: 'Revisa email y contrasena, y vuelve a intentar.',
+        text: buildCriticalErrorMessage(
+          'Revisa email y contrasena, y vuelve a intentar.',
+          error,
+        ),
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });

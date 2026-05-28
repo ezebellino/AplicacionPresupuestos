@@ -4,6 +4,7 @@ import Swal from 'sweetalert2';
 
 import {
   apiClient,
+  buildCriticalErrorMessage,
   type Client,
   type CostItem,
   type Quote,
@@ -148,10 +149,13 @@ export function createQuoteActionHandlers({
 
       await loadWorkspace();
       showSuccessToast(quoteTransitionSuccessMessage(action));
-    } catch {
+    } catch (error) {
       await Swal.fire({
         title: 'No se pudo cambiar el estado',
-        text: 'Recorda que solo se emiten borradores, y solo lo emitido puede aceptarse o rechazarse.',
+        text: buildCriticalErrorMessage(
+          'Recorda que solo se emiten borradores, y solo lo emitido puede aceptarse o rechazarse.',
+          error,
+        ),
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });
@@ -202,10 +206,13 @@ export function createQuoteActionHandlers({
         `${quotesToDelete.length} presupuesto${quotesToDelete.length === 1 ? '' : 's'} eliminado${quotesToDelete.length === 1 ? '' : 's'}`,
       );
       return true;
-    } catch {
+    } catch (error) {
       await Swal.fire({
         title: 'No se pudieron eliminar los presupuestos',
-        text: 'Intenta nuevamente en unos segundos. La tesoreria solo se actualiza cuando la eliminacion termina correctamente.',
+        text: buildCriticalErrorMessage(
+          'Intenta nuevamente en unos segundos. La tesoreria solo se actualiza cuando la eliminacion termina correctamente.',
+          error,
+        ),
         icon: 'error',
         confirmButtonText: 'Cerrar',
       });

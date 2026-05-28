@@ -5,10 +5,18 @@ import logging
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from typing import Protocol
 from uuid import UUID
 
 
 LOGGER_NAME = "factureasy.api"
+
+
+class ActorLike(Protocol):
+    id: object
+    tenant_id: object
+    email: str
+    role: str
 
 
 def configure_logging() -> logging.Logger:
@@ -29,6 +37,31 @@ def get_logger(name: str | None = None) -> logging.Logger:
     if not name or name == LOGGER_NAME:
         return base_logger
     return logging.getLogger(f"{LOGGER_NAME}.{name}")
+
+
+def business_actor_fields(actor: ActorLike | None) -> dict[str, object]:
+    if actor is None:
+        return {}
+    return {
+        "user_id": actor.id,
+        "tenant_id": actor.tenant_id,
+        "actor_email": actor.email,
+        "actor_role": actor.role,
+    }
+
+
+def log_business_event(logger: logging.Logger, *, event: str, **fields: object) -> None:
+    log_event(logger, event=event, **fields)
+
+
+def log_business_failure(
+    logger: logging.Logger,
+    *,
+    event: str,
+    reason: str,
+    **fields: object,
+) -> None:
+    log_event(logger, level=logging.WARNING, event=event, outcome="rejected", reason=reason, **fields)
 
 
 def log_event(logger: logging.Logger, *, level: int = logging.INFO, event: str, **fields: object) -> None:

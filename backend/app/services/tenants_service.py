@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.logging import business_actor_fields, get_logger, log_business_event
 from app.core.security import hash_password
 from app.infra.models import (
     Client,
@@ -33,6 +34,9 @@ from app.schemas.tenants import (
 from app.services.quotes_service import add_quote_item, create_quote, issue_quote
 from app.services.notification_service import notify_platform
 from app.services.audit_service import record_audit_event
+
+
+business_logger = get_logger("business.platform")
 
 
 def create_tenant_with_admin(db: Session, payload: TenantCreate) -> tuple[Tenant, User]:
@@ -152,6 +156,15 @@ def mark_tenant_membership_paid(
     )
 
     db.commit()
+    log_business_event(
+        business_logger,
+        event="platform_membership_payment_created",
+        **business_actor_fields(platform_admin),
+        payment_id=payment.id,
+        months_covered=payment.months_covered,
+        amount=payment.amount,
+        quote_number=payment.quote_number,
+    )
     return _load_platform_membership_tenant(db, tenant_id)
 
 
@@ -202,6 +215,15 @@ def update_tenant_membership_payment(
     )
 
     db.commit()
+    log_business_event(
+        business_logger,
+        event="platform_membership_payment_updated",
+        **business_actor_fields(platform_admin),
+        payment_id=payment.id,
+        months_covered=payment.months_covered,
+        amount=payment.amount,
+        quote_number=payment.quote_number,
+    )
     return _load_platform_membership_tenant(db, tenant_id)
 
 
@@ -243,6 +265,14 @@ def cancel_tenant_membership_payment(
     )
 
     db.commit()
+    log_business_event(
+        business_logger,
+        event="platform_membership_payment_cancelled",
+        **business_actor_fields(platform_admin),
+        payment_id=payment.id,
+        quote_number=payment.quote_number,
+        reason=cancel_reason,
+    )
     return _load_platform_membership_tenant(db, tenant_id)
 
 
@@ -290,6 +320,13 @@ def approve_tenant_change_request(
     )
     db.commit()
     db.refresh(request)
+    log_business_event(
+        business_logger,
+        event="platform_tenant_change_request_approved",
+        **business_actor_fields(reviewer),
+        change_request_id=request.id,
+        tenant_name=tenant.name,
+    )
 
     return request
 
@@ -324,6 +361,13 @@ def reject_tenant_change_request(
     )
     db.commit()
     db.refresh(request)
+    log_business_event(
+        business_logger,
+        event="platform_tenant_change_request_rejected",
+        **business_actor_fields(reviewer),
+        change_request_id=request.id,
+        tenant_name=request.tenant.name,
+    )
 
     return request
 
@@ -479,6 +523,14 @@ def update_tenant_signup_request_status(
     )
     db.commit()
     db.refresh(request)
+    log_business_event(
+        business_logger,
+        event="platform_signup_request_status_updated",
+        **business_actor_fields(reviewer),
+        signup_request_id=request.id,
+        signup_status=status,
+        company_name=request.company_name,
+    )
 
     return request
 
@@ -538,6 +590,14 @@ def approve_tenant_signup_request(
         raise ValueError("admin email already exists") from None
 
     db.refresh(request)
+    log_business_event(
+        business_logger,
+        event="platform_signup_request_approved",
+        **business_actor_fields(reviewer),
+        signup_request_id=request.id,
+        company_name=request.company_name,
+        created_admin_email=admin.email,
+    )
 
     return request
 

@@ -1,7 +1,18 @@
-import { Bell, UserRound } from 'lucide-react';
+import {
+  Bell,
+  Building2,
+  FileText,
+  Home,
+  LayoutDashboard,
+  Shield,
+  UserRound,
+  Users,
+  Wallet,
+  Wrench,
+} from 'lucide-react';
 
 import type { CurrentUser } from '../../shared/api/client';
-import { bottomTabIcon, navStyle } from './dashboardUtils';
+import { navStyle } from './dashboardUtils';
 import { styles } from './styles';
 import type { DashboardNavItem, PlatformNotification, PlatformSection, View } from './types';
 
@@ -124,15 +135,28 @@ type SidebarProps = {
   onViewChange: (view: View) => void;
 };
 
-const NAV_SHORTCUTS: Record<View, string> = {
-  clients: 'CL',
-  company: 'EM',
-  costs: 'SV',
-  platform: 'PF',
-  quotes: 'PR',
-  summary: 'IN',
-  treasury: 'TS',
-};
+function navIcon(view: View) {
+  const iconProps = { 'aria-hidden': true as const, size: 16, strokeWidth: 2.2 };
+
+  switch (view) {
+    case 'summary':
+      return <LayoutDashboard {...iconProps} />;
+    case 'clients':
+      return <Users {...iconProps} />;
+    case 'costs':
+      return <Wrench {...iconProps} />;
+    case 'quotes':
+      return <FileText {...iconProps} />;
+    case 'treasury':
+      return <Wallet {...iconProps} />;
+    case 'company':
+      return <Building2 {...iconProps} />;
+    case 'platform':
+      return <Shield {...iconProps} />;
+    default:
+      return <Home {...iconProps} />;
+  }
+}
 
 export function DashboardSidebar({
   activeView,
@@ -189,7 +213,7 @@ export function DashboardSidebar({
                 ...(shouldHideSidebarText ? styles.navMonogramCollapsed : null),
               }}
             >
-              {NAV_SHORTCUTS[item.view]}
+              {navIcon(item.view)}
             </span>
             {shouldHideSidebarText ? null : <span style={styles.navLabel}>{item.label}</span>}
           </button>
@@ -376,9 +400,10 @@ export function DashboardBottomTabs({ activeView, items, onViewChange }: BottomT
           key={item.view}
           onClick={() => onViewChange(item.view)}
           style={activeView === item.view ? styles.bottomTabActive : styles.bottomTab}
+          title={item.label}
           type="button"
         >
-          <span>{bottomTabIcon(item.view)}</span>
+          <span>{navIcon(item.view)}</span>
           {item.label === 'Presupuestos' ? 'Presup.' : item.label}
         </button>
       ))}

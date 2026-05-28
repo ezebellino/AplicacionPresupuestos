@@ -175,20 +175,6 @@ export function quoteTransitionSuccessMessage(action: 'issue' | 'accept' | 'reje
   return 'Presupuesto rechazado';
 }
 
-export function bottomTabIcon(view: View): string {
-  const icons: Record<View, string> = {
-    clients: 'C',
-    company: 'E',
-    costs: 'S',
-    platform: 'A',
-    quotes: 'P',
-    summary: 'I',
-    treasury: 'T',
-  };
-
-  return icons[view];
-}
-
 export function themeVariables(isDarkMode: boolean): CSSProperties {
   if (!isDarkMode) {
     return {

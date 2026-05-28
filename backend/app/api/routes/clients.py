@@ -42,7 +42,7 @@ def create_current_tenant_client(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    return create_client(db, current_user.tenant_id, payload)
+    return create_client(db, current_user.tenant_id, payload, current_user)
 
 
 @router.get("/{client_id}", response_model=ClientRead)
@@ -104,7 +104,7 @@ def update_current_tenant_client(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    client = update_client(db, current_user.tenant_id, client_id, payload)
+    client = update_client(db, current_user.tenant_id, client_id, payload, current_user)
 
     if client is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
@@ -118,7 +118,7 @@ def delete_current_tenant_client(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> Response:
-    deleted = delete_client(db, current_user.tenant_id, client_id)
+    deleted = delete_client(db, current_user.tenant_id, client_id, current_user)
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")

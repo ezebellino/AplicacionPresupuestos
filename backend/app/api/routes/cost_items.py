@@ -48,7 +48,7 @@ def create_current_tenant_cost_item(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    cost_item = create_cost_item(db, current_user.tenant_id, payload)
+    cost_item = create_cost_item(db, current_user.tenant_id, payload, current_user)
 
     return serialize_cost_item(cost_item, current_user.tenant.default_tax_rate)
 
@@ -77,7 +77,7 @@ def update_current_tenant_cost_item(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ):
-    cost_item = update_cost_item(db, current_user.tenant_id, cost_item_id, payload)
+    cost_item = update_cost_item(db, current_user.tenant_id, cost_item_id, payload, current_user)
 
     if cost_item is None:
         raise HTTPException(
@@ -94,7 +94,7 @@ def deactivate_current_tenant_cost_item(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> Response:
-    deactivated = deactivate_cost_item(db, current_user.tenant_id, cost_item_id)
+    deactivated = deactivate_cost_item(db, current_user.tenant_id, cost_item_id, current_user)
 
     if not deactivated:
         raise HTTPException(

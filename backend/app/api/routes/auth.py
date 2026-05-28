@@ -7,6 +7,7 @@ from app.api.deps import get_current_user, get_db
 from app.core.security import create_access_token
 from app.infra.models import User
 from app.schemas.auth import CurrentUser, LoginRequest, TokenResponse
+from app.services.audit_service import record_audit_event
 from app.services.auth_service import authenticate_user
 
 
@@ -23,6 +24,18 @@ def login(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> Tok
             detail="Invalid email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    record_audit_event(
+        db,
+        actor=user,
+        tenant_id=user.tenant_id,
+        entity_type="auth",
+        entity_id=user.id,
+        action="login_succeeded",
+        summary=f"Inicio de sesion exitoso para {user.email}",
+        metadata={"role": user.role},
+    )
+    db.commit()
 
     return TokenResponse(
         access_token=create_access_token(

@@ -81,7 +81,7 @@ def create_current_tenant_quote(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        quote = create_quote(db, current_user.tenant_id, payload)
+        quote = create_quote(db, current_user.tenant_id, payload, current_user)
     except QuoteConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -103,7 +103,7 @@ def bulk_delete_current_tenant_quotes(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> QuoteBulkDeleteResult:
-    deleted_count = delete_quotes(db, current_user.tenant_id, payload.quote_ids)
+    deleted_count = delete_quotes(db, current_user.tenant_id, payload.quote_ids, current_user)
     return QuoteBulkDeleteResult(deleted_count=deleted_count)
 
 
@@ -189,7 +189,7 @@ def update_current_tenant_quote(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        quote = update_quote(db, current_user.tenant_id, quote_id, payload)
+        quote = update_quote(db, current_user.tenant_id, quote_id, payload, current_user)
     except QuoteConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -310,7 +310,7 @@ def issue_current_tenant_quote(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        quote = issue_quote(db, current_user.tenant_id, quote_id)
+        quote = issue_quote(db, current_user.tenant_id, quote_id, current_user)
     except QuoteConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -333,7 +333,7 @@ def accept_current_tenant_quote(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        quote = accept_quote(db, current_user.tenant_id, quote_id)
+        quote = accept_quote(db, current_user.tenant_id, quote_id, current_user)
     except QuoteConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -356,7 +356,7 @@ def reject_current_tenant_quote(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
     try:
-        quote = reject_quote(db, current_user.tenant_id, quote_id)
+        quote = reject_quote(db, current_user.tenant_id, quote_id, current_user)
     except QuoteConflictError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

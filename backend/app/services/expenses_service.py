@@ -3,13 +3,14 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.infra.models import Client, ExpenseCategory, ExpenseEntry
+from app.infra.models import Client, ExpenseCategory, ExpenseEntry, User
 from app.schemas.expenses import (
     ExpenseCategoryCreate,
     ExpenseEntryCreate,
     ExpenseEntryRead,
     ExpenseEntryUpdate,
 )
+from app.services.audit_service import record_audit_event
 
 
 VALID_EXPENSE_STATUSES = {"pending", "paid"}
@@ -29,18 +30,32 @@ def create_expense_category(
     db: Session,
     tenant_id: UUID,
     payload: ExpenseCategoryCreate,
+    actor: User | None = None,
 ) -> ExpenseCategory:
     category = ExpenseCategory(
         tenant_id=tenant_id,
         name=payload.name.strip(),
     )
     db.add(category)
+    db.flush()
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="expense_category",
+        entity_id=category.id,
+        action="created",
+        summary=f"Categoria de gasto creada: {category.name}",
+        metadata={"name": category.name},
+    )
     db.commit()
     db.refresh(category)
     return category
 
 
-def deactivate_expense_category(db: Session, tenant_id: UUID, category_id: UUID) -> bool:
+def deactivate_expense_category(
+    db: Session, tenant_id: UUID, category_id: UUID, actor: User | None = None
+) -> bool:
     category = db.scalar(
         select(ExpenseCategory).where(
             ExpenseCategory.tenant_id == tenant_id,
@@ -52,6 +67,16 @@ def deactivate_expense_category(db: Session, tenant_id: UUID, category_id: UUID)
         return False
 
     category.is_active = False
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="expense_category",
+        entity_id=category.id,
+        action="deactivated",
+        summary=f"Categoria de gasto desactivada: {category.name}",
+        metadata={"name": category.name},
+    )
     db.commit()
     return True
 
@@ -107,7 +132,12 @@ def serialize_expense_entry(entry: ExpenseEntry) -> ExpenseEntryRead:
     )
 
 
-def create_expense_entry(db: Session, tenant_id: UUID, payload: ExpenseEntryCreate) -> ExpenseEntry:
+def create_expense_entry(
+    db: Session,
+    tenant_id: UUID,
+    payload: ExpenseEntryCreate,
+    actor: User | None = None,
+) -> ExpenseEntry:
     if payload.status not in VALID_EXPENSE_STATUSES:
         raise ValueError("Invalid expense status")
     if payload.client_id is not None and not _client_exists(db, tenant_id, payload.client_id):
@@ -120,6 +150,23 @@ def create_expense_entry(db: Session, tenant_id: UUID, payload: ExpenseEntryCrea
         **payload.model_dump(),
     )
     db.add(entry)
+    db.flush()
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="expense",
+        entity_id=entry.id,
+        action="created",
+        summary=f"Gasto creado: {entry.detail}",
+        metadata={
+            "detail": entry.detail,
+            "amount": entry.amount,
+            "status": entry.status,
+            "client_id": entry.client_id,
+            "category_id": entry.category_id,
+        },
+    )
     db.commit()
     db.refresh(entry)
     return entry
@@ -130,6 +177,7 @@ def update_expense_entry(
     tenant_id: UUID,
     expense_id: UUID,
     payload: ExpenseEntryUpdate,
+    actor: User | None = None,
 ) -> ExpenseEntry | None:
     entry = db.scalar(
         select(ExpenseEntry).where(
@@ -151,6 +199,16 @@ def update_expense_entry(
     for field, value in data.items():
         setattr(entry, field, value)
 
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="expense",
+        entity_id=entry.id,
+        action="updated",
+        summary=f"Gasto actualizado: {entry.detail}",
+        metadata={"changes": data, "detail": entry.detail, "status": entry.status},
+    )
     db.commit()
     db.refresh(entry)
     return entry

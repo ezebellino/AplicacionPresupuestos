@@ -5,8 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.domain.enums import CostCategory
-from app.infra.models import CostItem
+from app.infra.models import CostItem, User
 from app.schemas.cost_items import CostItemCreate, CostItemRead, CostItemUpdate
+from app.services.audit_service import record_audit_event
 
 
 def serialize_cost_item(
@@ -52,10 +53,22 @@ def create_cost_item(
     db: Session,
     tenant_id: UUID,
     payload: CostItemCreate,
+    actor: User | None = None,
 ) -> CostItem:
     cost_item = CostItem(tenant_id=tenant_id, **payload.model_dump())
 
     db.add(cost_item)
+    db.flush()
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="cost_item",
+        entity_id=cost_item.id,
+        action="created",
+        summary=f"Servicio creado: {cost_item.name}",
+        metadata={"name": cost_item.name, "category": cost_item.category},
+    )
     db.commit()
     db.refresh(cost_item)
 
@@ -77,28 +90,52 @@ def update_cost_item(
     tenant_id: UUID,
     cost_item_id: UUID,
     payload: CostItemUpdate,
+    actor: User | None = None,
 ) -> CostItem | None:
     cost_item = get_cost_item(db, tenant_id, cost_item_id)
 
     if cost_item is None:
         return None
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(cost_item, field, value)
 
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="cost_item",
+        entity_id=cost_item.id,
+        action="updated",
+        summary=f"Servicio actualizado: {cost_item.name}",
+        metadata={"changes": changes, "name": cost_item.name},
+    )
     db.commit()
     db.refresh(cost_item)
 
     return cost_item
 
 
-def deactivate_cost_item(db: Session, tenant_id: UUID, cost_item_id: UUID) -> bool:
+def deactivate_cost_item(
+    db: Session, tenant_id: UUID, cost_item_id: UUID, actor: User | None = None
+) -> bool:
     cost_item = get_cost_item(db, tenant_id, cost_item_id)
 
     if cost_item is None:
         return False
 
     cost_item.is_active = False
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="cost_item",
+        entity_id=cost_item.id,
+        action="deactivated",
+        summary=f"Servicio desactivado: {cost_item.name}",
+        metadata={"name": cost_item.name},
+    )
     db.commit()
 
     return True

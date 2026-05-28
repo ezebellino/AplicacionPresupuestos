@@ -41,6 +41,7 @@ from app.services.tenants_service import (
     update_tenant_membership_payment,
     cancel_tenant_membership_payment,
     reject_tenant_change_request,
+    update_tenant_profile,
     update_tenant_signup_request_status,
 )
 
@@ -95,13 +96,7 @@ def update_current_tenant_profile(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> object:
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(current_user.tenant, field, value)
-
-    db.commit()
-    db.refresh(current_user.tenant)
-
-    return current_user.tenant
+    return update_tenant_profile(db, current_user, payload)
 
 
 @router.get("/me/change-requests", response_model=TenantChangeRequestList)

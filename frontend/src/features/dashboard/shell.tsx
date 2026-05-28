@@ -3,12 +3,7 @@ import { Bell, UserRound } from 'lucide-react';
 import type { CurrentUser } from '../../shared/api/client';
 import { bottomTabIcon, navStyle } from './dashboardUtils';
 import { styles } from './styles';
-import type { PlatformNotification, PlatformSection, View } from './types';
-
-export type DashboardNavItem = {
-  label: string;
-  view: View;
-};
+import type { DashboardNavItem, PlatformNotification, PlatformSection, View } from './types';
 
 type MobileHeaderProps = {
   currentUser: CurrentUser | null;

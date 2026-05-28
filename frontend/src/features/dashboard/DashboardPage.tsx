@@ -28,6 +28,7 @@ import {
   TenantProfilePayload,
 } from '../../shared/api/client';
 import { categoryLabels, statusLabels } from './constants';
+import { buildDashboardMetrics, buildDashboardNavigation } from './dashboardDerivations';
 import {
   buildGreetingByBuenosAiresTime,
   buildInvoiceHtml,
@@ -44,15 +45,10 @@ import {
   downloadBlob,
   formatDate,
   formatMoney,
-  formatMonth,
-  formatMonthsCovered,
   matchesSearch,
   nullable,
   openMailTo,
   openWhatsAppMessage,
-  quoteTimestamp,
-  sumExpenses,
-  sumQuotes,
 } from './helpers';
 import { buildPlatformNotifications } from './platformNotifications';
 import {
@@ -78,21 +74,13 @@ import type {
   ClientForm,
   ClientRecordRequest,
   ClientRecordSection,
-  ClientSection,
   CompanyProfileForm,
-  CompanySection,
   CostForm,
-  ExpenseFilter,
   ExpenseForm,
-  MembershipFilter,
-  PlatformNotification,
   PlatformSection,
   QuoteForm,
-  QuoteSection,
   ServiceRecordForm,
   TenantLegalChangeForm,
-  TreasuryMovementFilter,
-  TreasurySection,
   View,
 } from './types';
 import { ClientsView } from './views/ClientsView';
@@ -148,12 +136,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const isCompactLayout = viewportWidth < 860;
 
-  const metrics = [
-    { label: 'Clientes', value: String(clients.length) },
-    { label: 'Servicios activos', value: String(costItems.length) },
-    { label: 'Presupuestos', value: String(quotes.length) },
-    { label: 'Facturado', value: formatMoney(sumQuotes(quotes, 'accepted')) },
-  ];
+  const metrics = buildDashboardMetrics(clients, costItems, quotes);
 
   const loadWorkspace = async () => {
     setIsLoading(true);
@@ -940,22 +923,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     await openClientHistory(client);
   };
 
-  const navigationItems: Array<{ label: string; view: View }> = [
-    { label: 'Resumen', view: 'summary' },
-    { label: 'Clientes', view: 'clients' },
-    { label: 'Servicios', view: 'costs' },
-    { label: 'Presupuestos', view: 'quotes' },
-    { label: 'Tesoreria', view: 'treasury' },
-  ];
-  if (currentUser?.role === 'platform_admin') {
-    navigationItems.push({ label: 'Plataforma', view: 'platform' });
-  } else {
-    navigationItems.push({ label: 'Empresa', view: 'company' });
-  }
-  const platformAccountActions =
-    currentUser?.role === 'platform_admin'
-      ? [{ label: 'Perfil', view: 'company' as View }]
-      : [];
+  const {
+    bottomNavigationItems,
+    currentViewLabel,
+    mobileDrawerAccountItems,
+    mobileDrawerNavigationItems,
+    navigationItems,
+    platformAccountActions,
+  } = buildDashboardNavigation(currentUser, activeView);
   const platformNotifications =
     currentUser?.role === 'platform_admin'
       ? buildPlatformNotifications(platformSignupRequests, platformChangeRequests, platformMemberships)
@@ -964,17 +939,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const signupNotifications = platformNotifications.filter((item) => item.kind === 'signup');
   const changeNotifications = platformNotifications.filter((item) => item.kind === 'change_request');
   const membershipNotifications = platformNotifications.filter((item) => item.kind === 'membership');
-  const bottomNavigationItems = navigationItems.filter((item) =>
-    ['summary', 'clients', 'quotes', 'treasury'].includes(item.view),
-  );
-  const mobileDrawerNavigationItems = navigationItems.filter((item) =>
-    ['costs', 'company', 'platform'].includes(item.view),
-  );
-  const mobileDrawerAccountItems =
-    currentUser?.role === 'platform_admin'
-      ? [{ label: 'Perfil', view: 'company' as View }]
-      : [];
-  const currentViewLabel = navigationItems.find((item) => item.view === activeView)?.label ?? 'Resumen';
   const goToView = (view: View) => {
     setActiveView(view);
     if (view === 'platform') {
@@ -1349,113 +1313,4 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     </main>
   );
 }
-
-function buildMonthlyTreasuryRows(quotes: Quote[]): string[][] {
-  const monthlyTotals = quotes.reduce<Record<string, { count: number; total: number }>>(
-    (totals, quote) => {
-      const date = new Date(quote.issued_at ?? quote.created_at);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const current = totals[key] ?? { count: 0, total: 0 };
-
-      return {
-        ...totals,
-        [key]: {
-          count: current.count + 1,
-          total: current.total + Number(quote.total),
-        },
-      };
-    },
-    {},
-  );
-
-  return Object.entries(monthlyTotals)
-    .sort(([left], [right]) => right.localeCompare(left))
-    .map(([month, value]) => [formatMonth(month), String(value.count), formatMoney(value.total)]);
-}
-
-function buildSmartTreasury(acceptedQuotes: Quote[], allQuotes: Quote[], expenses: ExpenseEntry[]) {
-  const monthlyTotals = acceptedQuotes.reduce<Record<string, number>>((totals, quote) => {
-    const date = new Date(quote.issued_at ?? quote.created_at);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    totals[key] = (totals[key] ?? 0) + Number(quote.total);
-    return totals;
-  }, {});
-  const months = Object.entries(monthlyTotals)
-    .map(([label, value]) => ({ label: formatMonth(label), value }))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 6);
-  const monthlyCounts = acceptedQuotes.reduce<Record<string, number>>((totals, quote) => {
-    const date = new Date(quote.issued_at ?? quote.created_at);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    totals[key] = (totals[key] ?? 0) + 1;
-    return totals;
-  }, {});
-  const membershipsByMonth = Object.entries(monthlyCounts)
-    .map(([label, value]) => ({ label: formatMonth(label), value }))
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 6);
-  const totalAccepted = sumQuotes(acceptedQuotes);
-  const averageTicket = acceptedQuotes.length ? totalAccepted / acceptedQuotes.length : 0;
-  const conversionRate = allQuotes.length ? (acceptedQuotes.length / allQuotes.length) * 100 : 0;
-  const topMonth = months[0];
-  const pendingValue = sumQuotes(allQuotes, 'issued');
-  const totalExpenses = sumExpenses(expenses);
-  const pendingExpenses = sumExpenses(expenses, 'pending');
-  const netBalance = totalAccepted - totalExpenses;
-  const acceptedCount = acceptedQuotes.length;
-
-  return {
-    cards: [
-      { label: 'Presupuestos aceptados', value: String(acceptedCount) },
-      { label: 'Facturacion aceptada', value: formatMoney(totalAccepted) },
-      { label: 'Ticket promedio', value: formatMoney(averageTicket) },
-      { label: 'Conversion', value: `${conversionRate.toFixed(0)}%` },
-      { label: 'Gastos registrados', value: formatMoney(totalExpenses) },
-      { label: 'Balance neto', value: formatMoney(netBalance) },
-    ],
-    insights: [
-      {
-        title: 'Ritmo de cierre',
-        text: acceptedCount
-          ? `Hay ${acceptedCount} presupuestos aceptados registrados. La lectura mas util es sostener ese ritmo de cierre y convertir mas emitidos en aceptados.`
-          : 'Cuando empiecen a cerrarse presupuestos aceptados, aca vas a ver el ritmo real de conversion del negocio.',
-      },
-      {
-        title: 'Mes mas fuerte',
-        text: topMonth
-          ? `${topMonth.label} concentra la mayor facturacion aceptada con ${formatMoney(topMonth.value)}. Puede servir para planificar stock, agenda y disponibilidad.`
-          : 'Todavia no hay meses con facturacion aceptada suficiente para detectar tendencia.',
-      },
-      {
-        title: 'Caja pendiente',
-        text: pendingValue > 0
-          ? `Hay ${formatMoney(pendingValue)} en presupuestos emitidos pendientes de aceptacion. Es el primer lugar donde conviene hacer seguimiento.`
-          : 'No hay monto emitido pendiente. La tesoreria actual no muestra caja inmediata por cerrar.',
-      },
-      {
-        title: 'Presion de gastos',
-        text: totalExpenses > 0
-          ? `Se registran ${formatMoney(totalExpenses)} en gastos totales, con ${formatMoney(pendingExpenses)} todavia pendientes. Esto conviene leerlo junto con la facturacion aceptada para medir margen real.`
-          : 'Todavia no hay gastos cargados. Cuando se empiecen a registrar, aca vas a ver el peso real de caja e inversion.',
-      },
-    ],
-    acceptedByMonth: membershipsByMonth,
-    months,
-  };
-}
-
-function countByStatus<T extends { status: string }>(items: T[]) {
-  return items.reduce<Record<string, number>>((totals, item) => {
-    totals[item.status] = (totals[item.status] ?? 0) + 1;
-    return totals;
-  }, {});
-}
-
-
-function daysUntilDate(dateValue: string, now = new Date()): number {
-  const target = new Date(`${dateValue}T00:00:00`);
-  const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.floor((target.getTime() - current.getTime()) / 86400000);
-}
-
 

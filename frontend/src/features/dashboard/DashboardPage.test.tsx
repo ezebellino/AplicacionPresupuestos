@@ -808,7 +808,7 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Tesoreria' }));
     await user.click(screen.getByRole('button', { name: 'Cobros pendientes' }));
-    await user.click(await screen.findByRole('button', { name: 'Enviar PDF por WhatsApp' }));
+    await user.click(await screen.findByRole('button', { name: 'Descargar y enviar por WhatsApp' }));
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(

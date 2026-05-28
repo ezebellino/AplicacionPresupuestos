@@ -1163,6 +1163,11 @@ export const styles = {
     lineHeight: 1.4,
     overflowWrap: 'anywhere',
   },
+  platformAuditFooter: {
+    display: 'flex',
+    justifyContent: 'center',
+    padding: '0 20px 20px',
+  },
   categoryGrid: {
     display: 'grid',
     gap: '12px',

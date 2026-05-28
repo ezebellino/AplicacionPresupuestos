@@ -5,6 +5,7 @@ import Swal from 'sweetalert2';
 import {
   apiClient,
   AuditEvent,
+  AuditEventFilters,
   Client,
   ClientServiceRecord,
   CostItem,
@@ -85,6 +86,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [platformSignupRequests, setPlatformSignupRequests] = useState<TenantSignupRequest[]>([]);
   const [platformMemberships, setPlatformMemberships] = useState<PlatformTenantMembership[]>([]);
   const [platformAuditEvents, setPlatformAuditEvents] = useState<AuditEvent[]>([]);
+  const [platformAuditFilters, setPlatformAuditFilters] = useState<AuditEventFilters>({ limit: 50 });
+  const [hasMoreAuditEvents, setHasMoreAuditEvents] = useState(false);
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
   const [expenseEntries, setExpenseEntries] = useState<ExpenseEntry[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
@@ -107,11 +110,24 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [clientRecordRequest, setClientRecordRequest] = useState<ClientRecordRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAuditLoading, setIsAuditLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const isCompactLayout = viewportWidth < 860;
 
   const metrics = buildDashboardMetrics(clients, costItems, quotes);
+
+  const loadPlatformAuditEvents = async (filters: AuditEventFilters) => {
+    setIsAuditLoading(true);
+    try {
+      const response = await apiClient.listPlatformAuditEvents(filters);
+      setPlatformAuditEvents(response.items);
+      setPlatformAuditFilters(filters);
+      setHasMoreAuditEvents(response.items.length >= (filters.limit ?? 50));
+    } finally {
+      setIsAuditLoading(false);
+    }
+  };
 
   const loadWorkspace = async () => {
     setIsLoading(true);
@@ -154,16 +170,19 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         return quotesResponse.items[0]?.id ?? null;
       });
       if (userResponse.role === 'platform_admin') {
+        const initialAuditFilters: AuditEventFilters = { limit: 50 };
         const [signupRequests, changeRequests, memberships, auditEvents] = await Promise.all([
           apiClient.listPlatformSignupRequests(),
           apiClient.listPlatformChangeRequests(),
           apiClient.listPlatformMemberships(),
-          apiClient.listPlatformAuditEvents(),
+          apiClient.listPlatformAuditEvents(initialAuditFilters),
         ]);
         setPlatformSignupRequests(signupRequests.items);
         setPlatformChangeRequests(changeRequests.items);
         setPlatformMemberships(memberships.items);
         setPlatformAuditEvents(auditEvents.items);
+        setPlatformAuditFilters(initialAuditFilters);
+        setHasMoreAuditEvents(auditEvents.items.length >= (initialAuditFilters.limit ?? 50));
         setActiveView((current) => (current === 'summary' || current === 'company' ? 'platform' : current));
       }
     } catch {
@@ -284,11 +303,11 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   });
   const platformAdminHandlers = createPlatformAdminHandlers({
     quotes,
+    refreshPlatformAuditEvents: () => loadPlatformAuditEvents(platformAuditFilters),
     sendInvoiceByWhatsApp: quoteActionHandlers.sendInvoiceByWhatsApp,
     sendQuoteByEmail: quoteActionHandlers.sendQuoteByEmail,
     setClients,
     setIsSaving,
-    setPlatformAuditEvents,
     setPlatformChangeRequests,
     setPlatformMemberships,
     setPlatformSignupRequests,
@@ -505,10 +524,31 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
           <PlatformAdminView
             activeSection={activePlatformSection}
             auditEvents={platformAuditEvents}
+            auditFilters={platformAuditFilters}
             changeRequests={platformChangeRequests}
+            hasMoreAuditEvents={hasMoreAuditEvents}
+            isAuditLoading={isAuditLoading}
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             memberships={platformMemberships}
+            onAuditFilterChange={(partial) =>
+              void loadPlatformAuditEvents({
+                ...platformAuditFilters,
+                ...partial,
+                limit: partial.limit ?? 50,
+              })
+            }
+            onAuditLoadMore={() =>
+              void loadPlatformAuditEvents({
+                ...platformAuditFilters,
+                limit: (platformAuditFilters.limit ?? 50) + 50,
+              })
+            }
+            onAuditResetFilters={() =>
+              void loadPlatformAuditEvents({
+                limit: 50,
+              })
+            }
             onChangeSection={setActivePlatformSection}
             onApproveFiscalChange={platformAdminHandlers.onApproveFiscalChange}
             onApproveSignup={platformAdminHandlers.onApproveSignup}

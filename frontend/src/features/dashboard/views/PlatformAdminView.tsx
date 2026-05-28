@@ -35,10 +35,16 @@ function formatAuditValue(value: unknown) {
 export function PlatformAdminView({
   activeSection,
   auditEvents,
+  auditFilters,
   changeRequests,
+  hasMoreAuditEvents,
+  isAuditLoading,
   isCompactLayout,
   isSaving,
   memberships,
+  onAuditFilterChange,
+  onAuditLoadMore,
+  onAuditResetFilters,
   onChangeSection,
   onApproveFiscalChange,
   onApproveSignup,
@@ -80,9 +86,6 @@ export function PlatformAdminView({
   const [changeViewMode, setChangeViewMode] = useState<'pending' | 'history'>('pending');
   const [membershipFilter, setMembershipFilter] = useState<MembershipFilter>('all');
   const [membershipViewMode, setMembershipViewMode] = useState<'pending' | 'history'>('pending');
-  const [auditEntityFilter, setAuditEntityFilter] = useState('all');
-  const [auditActionFilter, setAuditActionFilter] = useState('all');
-  const [auditActorFilter, setAuditActorFilter] = useState('');
   const membershipCounts = {
     active: activeMemberships.filter((membership) => {
       if (!membership.membership_due_date) {
@@ -128,15 +131,6 @@ export function PlatformAdminView({
   ];
   const auditEntityOptions = Array.from(new Set(auditEvents.map((event) => event.entity_type))).sort();
   const auditActionOptions = Array.from(new Set(auditEvents.map((event) => event.action))).sort();
-  const filteredAuditEvents = auditEvents.filter((event) => {
-    const matchesEntity = auditEntityFilter === 'all' || event.entity_type === auditEntityFilter;
-    const matchesAction = auditActionFilter === 'all' || event.action === auditActionFilter;
-    const matchesActor =
-      auditActorFilter.trim() === '' ||
-      (event.actor_email ?? '').toLowerCase().includes(auditActorFilter.trim().toLowerCase());
-
-    return matchesEntity && matchesAction && matchesActor;
-  });
   const auditEntityCounts = auditEvents.reduce<Record<string, number>>((counts, event) => {
     counts[event.entity_type] = (counts[event.entity_type] ?? 0) + 1;
     return counts;
@@ -1011,8 +1005,12 @@ export function PlatformAdminView({
               <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 180 }}>
                 <span>Entidad</span>
                 <select
-                  value={auditEntityFilter}
-                  onChange={(event) => setAuditEntityFilter(event.target.value)}
+                  value={auditFilters.entity_type || 'all'}
+                  onChange={(event) =>
+                    onAuditFilterChange({
+                      entity_type: event.target.value === 'all' ? '' : event.target.value,
+                    })
+                  }
                   style={styles.input}
                 >
                   <option value="all">Todas</option>
@@ -1026,8 +1024,12 @@ export function PlatformAdminView({
               <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 180 }}>
                 <span>Accion</span>
                 <select
-                  value={auditActionFilter}
-                  onChange={(event) => setAuditActionFilter(event.target.value)}
+                  value={auditFilters.action || 'all'}
+                  onChange={(event) =>
+                    onAuditFilterChange({
+                      action: event.target.value === 'all' ? '' : event.target.value,
+                    })
+                  }
                   style={styles.input}
                 >
                   <option value="all">Todas</option>
@@ -1043,19 +1045,40 @@ export function PlatformAdminView({
                 <div style={{ ...styles.searchWrap, width: '100%' }}>
                   <Search aria-hidden="true" size={14} strokeWidth={2.2} />
                   <input
-                    value={auditActorFilter}
-                    onChange={(event) => setAuditActorFilter(event.target.value)}
+                    value={auditFilters.actor_email ?? ''}
+                    onChange={(event) => onAuditFilterChange({ actor_email: event.target.value })}
                     placeholder="Email del actor"
                     style={styles.searchInput}
                   />
                 </div>
               </label>
+              <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 170 }}>
+                <span>Desde</span>
+                <input
+                  type="date"
+                  value={auditFilters.date_from ?? ''}
+                  onChange={(event) => onAuditFilterChange({ date_from: event.target.value })}
+                  style={styles.input}
+                />
+              </label>
+              <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 170 }}>
+                <span>Hasta</span>
+                <input
+                  type="date"
+                  value={auditFilters.date_to ?? ''}
+                  onChange={(event) => onAuditFilterChange({ date_to: event.target.value })}
+                  style={styles.input}
+                />
+              </label>
+              <button onClick={onAuditResetFilters} style={styles.secondaryButton} type="button">
+                Limpiar filtros
+              </button>
             </div>
-            {filteredAuditEvents.length === 0 ? (
+            {auditEvents.length === 0 ? (
               <p style={styles.emptyState}>No hay eventos para los filtros seleccionados.</p>
             ) : (
               <div style={styles.clientList}>
-              {filteredAuditEvents.map((event) => (
+                {auditEvents.map((event) => (
                   <article key={event.id} style={styles.historyQuoteRecord}>
                     <div style={styles.historyRecordHeader}>
                       <div style={styles.clientIdentity}>
@@ -1084,6 +1107,13 @@ export function PlatformAdminView({
                 ))}
               </div>
             )}
+            {hasMoreAuditEvents ? (
+              <div style={styles.platformAuditFooter}>
+                <button disabled={isAuditLoading} onClick={onAuditLoadMore} style={styles.secondaryButton} type="button">
+                  {isAuditLoading ? 'Cargando...' : 'Cargar mas'}
+                </button>
+              </div>
+            ) : null}
           </section>
         ) : null}
       </section>

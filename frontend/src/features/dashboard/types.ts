@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 
 import type {
   AuditEvent,
+  AuditEventFilters,
   Client,
   ClientPayload,
   ClientServiceRecord,
@@ -212,10 +213,16 @@ export type CompanyProfileViewProps = {
 export type PlatformAdminViewProps = {
   activeSection: PlatformSection;
   auditEvents: AuditEvent[];
+  auditFilters: AuditEventFilters;
   changeRequests: TenantChangeRequest[];
+  hasMoreAuditEvents: boolean;
+  isAuditLoading: boolean;
   isCompactLayout: boolean;
   isSaving: boolean;
   memberships: PlatformTenantMembership[];
+  onAuditFilterChange: (filters: Partial<AuditEventFilters>) => void;
+  onAuditLoadMore: () => void;
+  onAuditResetFilters: () => void;
   onChangeSection: (section: PlatformSection) => void;
   onApproveFiscalChange: (request: TenantChangeRequest) => void;
   onApproveSignup: (request: TenantSignupRequest, adminPassword: string) => void;

@@ -51,6 +51,7 @@ import {
   openWhatsAppMessage,
 } from './helpers';
 import { buildPlatformNotifications } from './platformNotifications';
+import { createPlatformAdminHandlers } from './platformAdminActions';
 import {
   emptyClientForm,
   emptyCompanyProfileForm,
@@ -952,6 +953,18 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setIsNotificationsOpen(false);
     setIsMobileMenuOpen(false);
   };
+  const platformAdminHandlers = createPlatformAdminHandlers({
+    quotes,
+    sendInvoiceByWhatsApp,
+    sendQuoteByEmail,
+    setClients,
+    setIsSaving,
+    setPlatformChangeRequests,
+    setPlatformMemberships,
+    setPlatformSignupRequests,
+    setQuotes,
+    setSelectedQuoteId,
+  });
 
   return (
     <main
@@ -1149,160 +1162,16 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             isSaving={isSaving}
             memberships={platformMemberships}
             onChangeSection={setActivePlatformSection}
-            onMarkMembershipPaid={async (membership, payload) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.markPlatformMembershipPaid(membership.id, payload);
-                const [clientsResponse, quotesResponse] = await Promise.all([
-                  apiClient.listClients(),
-                  apiClient.listQuotes(),
-                ]);
-                setPlatformMemberships((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                setClients(clientsResponse.items);
-                setQuotes(quotesResponse.items);
-                const latestPayment = updated.payments[0] ?? null;
-                if (latestPayment?.quote_id) {
-                  setSelectedQuoteId(latestPayment.quote_id);
-                }
-                showSuccessToast(
-                  latestPayment?.quote_number
-                    ? `Pago registrado con presupuesto ${latestPayment.quote_number}`
-                    : 'Pago registrado',
-                );
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onUpdateMembershipPayment={async (membership, payment, payload) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.updatePlatformMembershipPayment(membership.id, payment.id, payload);
-                const quotesResponse = await apiClient.listQuotes();
-                setPlatformMemberships((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                setQuotes(quotesResponse.items);
-                const updatedPayment = updated.payments.find((item) => item.id === payment.id) ?? null;
-                if (updatedPayment?.quote_id) {
-                  setSelectedQuoteId(updatedPayment.quote_id);
-                }
-                showSuccessToast('Pago actualizado');
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onCancelMembershipPayment={async (membership, payment, payload) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.cancelPlatformMembershipPayment(membership.id, payment.id, payload);
-                setPlatformMemberships((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                showSuccessToast('Pago anulado');
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onApproveSignup={async (request, adminPassword) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.approvePlatformSignupRequest(request.id, adminPassword);
-                setPlatformSignupRequests((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                const memberships = await apiClient.listPlatformMemberships();
-                setPlatformMemberships(memberships.items);
-                showSuccessToast('Cuenta creada');
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onApproveFiscalChange={async (request) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.approvePlatformChangeRequest(request.id);
-                setPlatformChangeRequests((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                showSuccessToast('Cambio fiscal aprobado');
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onMarkSignupContacted={async (request) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.markPlatformSignupRequestContacted(request.id);
-                setPlatformSignupRequests((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                showSuccessToast('Alta marcada como contactada');
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onRejectFiscalChange={async (request) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.rejectPlatformChangeRequest(request.id);
-                setPlatformChangeRequests((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                showSuccessToast('Cambio fiscal rechazado');
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onRejectSignup={async (request) => {
-              setIsSaving(true);
-              try {
-                const updated = await apiClient.rejectPlatformSignupRequest(request.id);
-                setPlatformSignupRequests((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
-                );
-                showSuccessToast('Alta rechazada');
-              } finally {
-                setIsSaving(false);
-              }
-            }}
-            onSendMembershipQuoteByEmail={async (payment) => {
-              if (!payment.quote_id) {
-                return;
-              }
-
-              const quote = quotes.find((item) => item.id === payment.quote_id);
-              if (!quote) {
-                await Swal.fire({
-                  title: 'Presupuesto no disponible',
-                  text: 'Recarga la pantalla para sincronizar el presupuesto generado.',
-                  icon: 'info',
-                  confirmButtonText: 'Cerrar',
-                });
-                return;
-              }
-
-              await sendQuoteByEmail(quote);
-            }}
-            onSendMembershipQuoteByWhatsApp={async (payment) => {
-              if (!payment.quote_id) {
-                return;
-              }
-
-              const quote = quotes.find((item) => item.id === payment.quote_id);
-              if (!quote) {
-                await Swal.fire({
-                  title: 'Presupuesto no disponible',
-                  text: 'Recarga la pantalla para sincronizar el presupuesto generado.',
-                  icon: 'info',
-                  confirmButtonText: 'Cerrar',
-                });
-                return;
-              }
-
-              await sendInvoiceByWhatsApp(quote);
-            }}
+            onApproveFiscalChange={platformAdminHandlers.onApproveFiscalChange}
+            onApproveSignup={platformAdminHandlers.onApproveSignup}
+            onCancelMembershipPayment={platformAdminHandlers.onCancelMembershipPayment}
+            onMarkMembershipPaid={platformAdminHandlers.onMarkMembershipPaid}
+            onMarkSignupContacted={platformAdminHandlers.onMarkSignupContacted}
+            onRejectFiscalChange={platformAdminHandlers.onRejectFiscalChange}
+            onRejectSignup={platformAdminHandlers.onRejectSignup}
+            onSendMembershipQuoteByEmail={platformAdminHandlers.onSendMembershipQuoteByEmail}
+            onSendMembershipQuoteByWhatsApp={platformAdminHandlers.onSendMembershipQuoteByWhatsApp}
+            onUpdateMembershipPayment={platformAdminHandlers.onUpdateMembershipPayment}
             signupRequests={platformSignupRequests}
           />
         ) : null}

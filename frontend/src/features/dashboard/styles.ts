@@ -1200,6 +1200,12 @@ export const styles = {
     gridTemplateColumns: 'minmax(180px, 1fr) auto auto auto',
     padding: '14px 16px',
   },
+  treasuryMovementRowCompact: {
+    alignItems: 'start',
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    gap: '12px',
+    padding: '14px',
+  },
   treasuryOverviewStrip: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -1220,12 +1226,31 @@ export const styles = {
     justifySelf: 'end',
     whiteSpace: 'nowrap',
   },
+  treasuryMovementAmountCompact: {
+    justifySelf: 'start',
+  },
   treasuryActionGroup: {
     alignItems: 'center',
     display: 'flex',
     flexWrap: 'wrap',
     gap: '10px',
     justifyContent: 'flex-end',
+  },
+  treasuryActionGroupCompact: {
+    justifyContent: 'flex-start',
+  },
+  treasuryRowFooter: {
+    alignItems: 'center',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '10px',
+    justifyContent: 'space-between',
+  },
+  treasuryRowFooterCompact: {
+    alignItems: 'start',
+    display: 'grid',
+    gap: '10px',
+    justifyContent: 'stretch',
   },
   invoicePreview: {
     display: 'grid',

@@ -66,6 +66,22 @@ export function TreasuryView({
   const pendingQuotes = [...issuedQuotes].sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left));
   const filteredExpenseEntries = expenseEntries.filter((entry) => expenseFilter === 'all' || entry.status === expenseFilter);
   const smartTreasury = buildSmartTreasury(acceptedQuotes, quotes, expenseEntries);
+  const movementRowStyle = {
+    ...styles.treasuryMovementRow,
+    ...(isCompactLayout ? styles.treasuryMovementRowCompact : null),
+  };
+  const movementFooterStyle = {
+    ...styles.treasuryRowFooter,
+    ...(isCompactLayout ? styles.treasuryRowFooterCompact : null),
+  };
+  const movementAmountStyle = {
+    ...styles.treasuryMovementAmount,
+    ...(isCompactLayout ? styles.treasuryMovementAmountCompact : null),
+  };
+  const actionGroupStyle = {
+    ...styles.treasuryActionGroup,
+    ...(isCompactLayout ? styles.treasuryActionGroupCompact : null),
+  };
 
   if (isSmartTreasury) {
     return (
@@ -236,7 +252,7 @@ export function TreasuryView({
               ) : (
                 <div style={styles.clientList}>
                   {pendingQuotes.map((quote) => (
-                    <article key={quote.id} style={styles.treasuryMovementRow}>
+                    <article key={quote.id} style={movementRowStyle}>
                       <div style={styles.treasuryMovementPrimary}>
                         <strong>{clientName(clients, quote.client_id)}</strong>
                         <span style={styles.treasuryMovementMeta}>
@@ -244,17 +260,19 @@ export function TreasuryView({
                         </span>
                         <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
                       </div>
-                      <StatusBadge status={quote.status} />
-                      <strong style={styles.treasuryMovementAmount}>{formatMoney(quote.total)}</strong>
-                      <button
-                        aria-label="Abrir presupuesto"
-                        onClick={() => onOpenQuote(quote.id)}
-                        style={styles.iconActionButton}
-                        title="Abrir presupuesto"
-                        type="button"
-                      >
-                        <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
-                      </button>
+                      <div style={movementFooterStyle}>
+                        <StatusBadge status={quote.status} />
+                        <strong style={movementAmountStyle}>{formatMoney(quote.total)}</strong>
+                        <button
+                          aria-label="Abrir presupuesto"
+                          onClick={() => onOpenQuote(quote.id)}
+                          style={styles.iconActionButton}
+                          title="Abrir presupuesto"
+                          type="button"
+                        >
+                          <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
+                        </button>
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -296,7 +314,7 @@ export function TreasuryView({
           ) : (
             <div style={styles.clientList}>
               {latestMovements.map((quote) => (
-                <article key={quote.id} style={styles.treasuryMovementRow}>
+                <article key={quote.id} style={movementRowStyle}>
                   <div style={styles.treasuryMovementPrimary}>
                     <strong>{clientName(clients, quote.client_id)}</strong>
                     <span style={styles.treasuryMovementMeta}>
@@ -304,17 +322,19 @@ export function TreasuryView({
                     </span>
                     <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
                   </div>
-                  <StatusBadge status={quote.status} />
-                  <strong style={styles.treasuryMovementAmount}>{formatMoney(quote.total)}</strong>
-                  <button
-                    aria-label="Abrir presupuesto"
-                    onClick={() => onOpenQuote(quote.id)}
-                    style={styles.iconActionButton}
-                    title="Abrir presupuesto"
-                    type="button"
-                  >
-                    <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
-                  </button>
+                  <div style={movementFooterStyle}>
+                    <StatusBadge status={quote.status} />
+                    <strong style={movementAmountStyle}>{formatMoney(quote.total)}</strong>
+                    <button
+                      aria-label="Abrir presupuesto"
+                      onClick={() => onOpenQuote(quote.id)}
+                      style={styles.iconActionButton}
+                      title="Abrir presupuesto"
+                      type="button"
+                    >
+                      <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
@@ -337,7 +357,7 @@ export function TreasuryView({
           ) : (
             <div style={styles.clientList}>
               {pendingQuotes.map((quote) => (
-                <article key={quote.id} style={styles.treasuryMovementRow}>
+                <article key={quote.id} style={movementRowStyle}>
                   <div style={styles.treasuryMovementPrimary}>
                     <strong>{clientName(clients, quote.client_id)}</strong>
                     <span style={styles.treasuryMovementMeta}>
@@ -345,36 +365,38 @@ export function TreasuryView({
                     </span>
                     <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
                   </div>
-                  <StatusBadge status={quote.status} />
-                  <strong style={styles.treasuryMovementAmount}>{formatMoney(quote.total)}</strong>
-                  <div style={styles.treasuryActionGroup}>
-                    <button
-                      aria-label="Abrir presupuesto"
-                      onClick={() => onOpenQuote(quote.id)}
-                      style={styles.iconActionButton}
-                      title="Abrir presupuesto"
-                      type="button"
-                    >
-                      <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
-                    </button>
-                    <button
-                      aria-label="Enviar PDF por WhatsApp"
-                      onClick={() => onSendInvoiceByWhatsApp(quote)}
-                      style={styles.whatsAppIconButton}
-                      title="Enviar PDF por WhatsApp"
-                      type="button"
-                    >
-                      <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
-                    </button>
-                    <button
-                      aria-label="Descargar PDF"
-                      onClick={() => onDownloadPdf(quote)}
-                      style={styles.iconActionButton}
-                      title="Descargar PDF"
-                      type="button"
-                    >
-                      <FileText aria-hidden="true" size={15} strokeWidth={2.2} />
-                    </button>
+                  <div style={movementFooterStyle}>
+                    <StatusBadge status={quote.status} />
+                    <strong style={movementAmountStyle}>{formatMoney(quote.total)}</strong>
+                    <div style={actionGroupStyle}>
+                      <button
+                        aria-label="Abrir presupuesto"
+                        onClick={() => onOpenQuote(quote.id)}
+                        style={styles.iconActionButton}
+                        title="Abrir presupuesto"
+                        type="button"
+                      >
+                        <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
+                      </button>
+                      <button
+                        aria-label="Enviar PDF por WhatsApp"
+                        onClick={() => onSendInvoiceByWhatsApp(quote)}
+                        style={styles.whatsAppIconButton}
+                        title="Enviar PDF por WhatsApp"
+                        type="button"
+                      >
+                        <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
+                      </button>
+                      <button
+                        aria-label="Descargar PDF"
+                        onClick={() => onDownloadPdf(quote)}
+                        style={styles.iconActionButton}
+                        title="Descargar PDF"
+                        type="button"
+                      >
+                        <FileText aria-hidden="true" size={15} strokeWidth={2.2} />
+                      </button>
+                    </div>
                   </div>
                 </article>
               ))}

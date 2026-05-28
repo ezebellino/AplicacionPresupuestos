@@ -51,5 +51,5 @@ export function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
-  return <DashboardPage onLogout={handleLogout} />;
+  return <DashboardPage key={token} onLogout={handleLogout} />;
 }

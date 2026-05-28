@@ -31,6 +31,10 @@ def get_logger(name: str | None = None) -> logging.Logger:
     return logging.getLogger(f"{LOGGER_NAME}.{name}")
 
 
+def log_business_event(logger: logging.Logger, *, event: str, **fields: object) -> None:
+    log_event(logger, event=event, **fields)
+
+
 def log_event(logger: logging.Logger, *, level: int = logging.INFO, event: str, **fields: object) -> None:
     payload = {"event": event, **{key: _normalize(value) for key, value in fields.items()}}
     logger.log(level, json.dumps(payload, ensure_ascii=True, separators=(",", ":")))

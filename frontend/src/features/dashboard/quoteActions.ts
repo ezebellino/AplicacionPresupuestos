@@ -250,27 +250,7 @@ export function createQuoteActionHandlers({
 
     try {
       const blob = await apiClient.downloadQuotePdf(quote.id);
-      const nav = navigator as Navigator & {
-        canShare?: (data: { files?: File[] }) => boolean;
-        share?: (data: { files?: File[]; text?: string; title?: string }) => Promise<void>;
-      };
-      const canTryFileShare = typeof nav.canShare === 'function' && typeof nav.share === 'function';
-      const file = canTryFileShare ? new File([blob], filename, { type: 'application/pdf' }) : null;
-
-      if (file && nav.canShare?.({ files: [file] }) && nav.share) {
-        await nav.share({
-          files: [file],
-          text: message,
-          title: `Factura ${quote.number}`,
-        });
-        return;
-      }
-
-      try {
-        downloadBlob(blob, filename);
-      } catch {
-        // Some embedded browsers block synthetic downloads; WhatsApp still opens with the prepared message.
-      }
+      downloadBlob(blob, filename);
       openWhatsAppMessage(phone, message);
     } catch {
       openWhatsAppMessage(phone, message);

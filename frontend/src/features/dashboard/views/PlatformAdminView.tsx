@@ -681,10 +681,10 @@ export function PlatformAdminView({
                               {payment.quote_id ? (
                                 <div style={styles.membershipPaymentActions}>
                                   <button
-                                    aria-label="Enviar por WhatsApp"
+                                    aria-label="Descargar y enviar por WhatsApp"
                                     onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
                                     style={styles.whatsAppIconButton}
-                                    title="Enviar por WhatsApp"
+                                    title="Descargar y enviar por WhatsApp"
                                     type="button"
                                   >
                                     <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />
@@ -944,10 +944,10 @@ export function PlatformAdminView({
                       {payment.status === 'active' && payment.quote_id ? (
                         <>
                           <button
-                            aria-label="Enviar por WhatsApp"
+                            aria-label="Descargar y enviar por WhatsApp"
                             onClick={() => onSendMembershipQuoteByWhatsApp(payment)}
                             style={styles.whatsAppIconButton}
-                            title="Enviar por WhatsApp"
+                            title="Descargar y enviar por WhatsApp"
                             type="button"
                           >
                             <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />

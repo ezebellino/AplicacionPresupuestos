@@ -379,10 +379,10 @@ export function TreasuryView({
                         <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
                       </button>
                       <button
-                        aria-label="Enviar PDF por WhatsApp"
+                        aria-label="Descargar y enviar por WhatsApp"
                         onClick={() => onSendInvoiceByWhatsApp(quote)}
                         style={styles.whatsAppIconButton}
-                        title="Enviar PDF por WhatsApp"
+                        title="Descargar y enviar por WhatsApp"
                         type="button"
                       >
                         <MessageCircle aria-hidden="true" size={16} strokeWidth={2.2} />

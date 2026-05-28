@@ -3,6 +3,8 @@ from sqlalchemy import select
 from conftest import create_tenant_and_login, login
 
 from app.api.routes import auth as auth_routes
+from app.api.routes import quotes as quote_routes
+from app.api.routes import tenants as tenant_routes
 from app.domain.enums import CostCategory
 from app.infra.models import CostItem, User
 from app.services import quotes_service, tenants_service
@@ -68,6 +70,35 @@ def test_quote_issue_and_bulk_delete_emit_technical_business_logs(api_context, m
     assert captured[0]["quote_number"] == "Q-000001"
     assert captured[1]["quote_count"] == 1
     assert captured[1]["quote_numbers"] == ["Q-000001"]
+
+
+def test_quote_issue_conflict_emits_rejection_log(api_context, monkeypatch) -> None:
+    client, _ = api_context
+    headers = create_tenant_and_login(client, name="Acme Clima", email="log-quote-conflict@acme.test")
+    captured: list[dict[str, object]] = []
+
+    def _capture(_logger, *, level=20, event: str, **fields: object) -> None:
+        captured.append({"event": event, "level": level, **fields})
+
+    monkeypatch.setattr(quote_routes, "log_business_failure", _capture)
+
+    client_response = client.post("/clients", headers=headers, json={"name": "Cliente Conflictivo"})
+    assert client_response.status_code == 201
+    quote_response = client.post(
+        "/quotes",
+        headers=headers,
+        json={"client_id": client_response.json()["id"], "title": "Presupuesto emitido"},
+    )
+    assert quote_response.status_code == 201
+    quote_id = quote_response.json()["id"]
+
+    first_issue = client.post(f"/quotes/{quote_id}/issue", headers=headers)
+    second_issue = client.post(f"/quotes/{quote_id}/issue", headers=headers)
+
+    assert first_issue.status_code == 200
+    assert second_issue.status_code == 409
+    assert [event["event"] for event in captured] == ["quote_issue_rejected"]
+    assert captured[0]["reason"] == "Quote can only be issued from draft"
 
 
 def test_platform_signup_review_and_membership_payment_emit_technical_business_logs(
@@ -164,6 +195,54 @@ def test_platform_signup_review_and_membership_payment_emit_technical_business_l
     assert captured[0]["signup_status"] == "contacted"
     assert captured[1]["created_admin_email"] == "empresa-activa@test.com"
     assert captured[2]["quote_number"] is not None
+
+
+def test_platform_signup_approve_conflict_emits_rejection_log(api_context, monkeypatch) -> None:
+    client, SessionLocal = api_context
+    platform_headers = create_tenant_and_login(
+        client,
+        name="FacturEasy",
+        email="platform-reject@factureasy.test",
+    )
+    captured: list[dict[str, object]] = []
+
+    def _capture(_logger, *, level=20, event: str, **fields: object) -> None:
+        captured.append({"event": event, "level": level, **fields})
+
+    monkeypatch.setattr(tenant_routes, "log_business_failure", _capture)
+
+    with SessionLocal() as db:
+        platform_admin = db.scalar(select(User).where(User.email == "platform-reject@factureasy.test"))
+        assert platform_admin is not None
+        platform_admin.role = "platform_admin"
+        db.commit()
+
+    signup_response = client.post(
+        "/admin/tenants/signup-requests",
+        json={
+            "company_name": "Empresa En Seguimiento",
+            "contact_name": "Sofia",
+            "email": "empresa-seguimiento@test.com",
+            "phone": "2245222222",
+        },
+    )
+    assert signup_response.status_code == 201
+
+    contacted_response = client.post(
+        f"/admin/tenants/platform/signup-requests/{signup_response.json()['id']}/contacted",
+        headers=platform_headers,
+        json={"review_notes": "Se pidio mas informacion"},
+    )
+    approve_response = client.post(
+        f"/admin/tenants/platform/signup-requests/{signup_response.json()['id']}/approve",
+        headers=platform_headers,
+        json={"admin_password": "correct-horse-battery-staple"},
+    )
+
+    assert contacted_response.status_code == 200
+    assert approve_response.status_code == 409
+    assert [event["event"] for event in captured] == ["platform_signup_request_approve_rejected"]
+    assert captured[0]["reason"] == "request is not pending"
 
 
 def test_platform_change_request_review_emits_technical_business_logs(api_context, monkeypatch) -> None:

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 
 from app.api.deps import get_db, require_platform_admin
+from app.core.logging import business_actor_fields, get_logger, log_business_failure
 from app.infra.models import User
 from app.api.deps import get_current_user
 from app.schemas.audit import AuditEventList
@@ -50,6 +51,7 @@ from app.services.tenants_service import (
 
 
 router = APIRouter()
+business_logger = get_logger("business.platform")
 
 
 @router.post(
@@ -150,6 +152,13 @@ def approve_platform_signup_request(
     try:
         request = approve_tenant_signup_request(db, platform_admin, request_id, payload)
     except ValueError as exc:
+        log_business_failure(
+            business_logger,
+            event="platform_signup_request_approve_rejected",
+            reason=str(exc),
+            **business_actor_fields(platform_admin),
+            signup_request_id=request_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
@@ -264,6 +273,13 @@ def mark_platform_tenant_membership_paid(
     try:
         tenant = mark_tenant_membership_paid(db, platform_admin, tenant_id, payload)
     except ValueError as exc:
+        log_business_failure(
+            business_logger,
+            event="platform_membership_payment_create_rejected",
+            reason=str(exc),
+            **business_actor_fields(platform_admin),
+            target_tenant_id=tenant_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
@@ -291,6 +307,14 @@ def update_platform_tenant_membership_payment(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
+        log_business_failure(
+            business_logger,
+            event="platform_membership_payment_update_rejected",
+            reason=str(exc),
+            **business_actor_fields(platform_admin),
+            target_tenant_id=tenant_id,
+            payment_id=payment_id,
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if tenant is None:
@@ -315,6 +339,14 @@ def cancel_platform_tenant_membership_payment(
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
+        log_business_failure(
+            business_logger,
+            event="platform_membership_payment_cancel_rejected",
+            reason=str(exc),
+            **business_actor_fields(platform_admin),
+            target_tenant_id=tenant_id,
+            payment_id=payment_id,
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     if tenant is None:
@@ -336,6 +368,13 @@ def approve_platform_change_request(
     try:
         request = approve_tenant_change_request(db, platform_admin, request_id, payload)
     except ValueError as exc:
+        log_business_failure(
+            business_logger,
+            event="platform_tenant_change_request_approve_rejected",
+            reason=str(exc),
+            **business_actor_fields(platform_admin),
+            change_request_id=request_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
@@ -360,6 +399,13 @@ def reject_platform_change_request(
     try:
         request = reject_tenant_change_request(db, platform_admin, request_id, payload)
     except ValueError as exc:
+        log_business_failure(
+            business_logger,
+            event="platform_tenant_change_request_reject_rejected",
+            reason=str(exc),
+            **business_actor_fields(platform_admin),
+            change_request_id=request_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),

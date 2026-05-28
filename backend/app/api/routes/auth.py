@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
-from app.core.logging import get_logger, log_business_event
+from app.core.logging import business_actor_fields, get_logger, log_business_event
 from app.core.security import create_access_token
 from app.infra.models import User
 from app.schemas.auth import CurrentUser, LoginRequest, TokenResponse
@@ -52,10 +52,7 @@ def login(
         business_logger,
         event="auth_login_succeeded",
         request_id=getattr(request.state, "request_id", None),
-        user_id=user.id,
-        tenant_id=user.tenant_id,
-        actor_email=user.email,
-        actor_role=user.role,
+        **business_actor_fields(user),
     )
 
     return TokenResponse(

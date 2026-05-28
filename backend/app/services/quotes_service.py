@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.logging import get_logger, log_business_event
+from app.core.logging import business_actor_fields, get_logger, log_business_event
 from app.domain.enums import QuoteStatus
 from app.domain.quote_calculator import QuoteLineInput, calculate_quote
 from app.infra.models import Client, CostItem, Quote, QuoteItem, Tenant, User
@@ -346,10 +346,7 @@ def delete_quotes(
         log_business_event(
             business_logger,
             event="quote_bulk_deleted",
-            tenant_id=tenant_id,
-            user_id=actor.id,
-            actor_email=actor.email,
-            actor_role=actor.role,
+            **business_actor_fields(actor),
             quote_count=len(quotes),
             quote_numbers=quote_numbers,
             quote_statuses=quote_statuses,
@@ -388,10 +385,7 @@ def issue_quote(
         log_business_event(
             business_logger,
             event="quote_issued",
-            tenant_id=tenant_id,
-            user_id=actor.id,
-            actor_email=actor.email,
-            actor_role=actor.role,
+            **business_actor_fields(actor),
             quote_id=quote.id,
             quote_number=quote.number,
             total=quote.total,

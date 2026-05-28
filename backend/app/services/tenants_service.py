@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.logging import get_logger, log_business_event
+from app.core.logging import business_actor_fields, get_logger, log_business_event
 from app.core.security import hash_password
 from app.infra.models import (
     Client,
@@ -159,10 +159,7 @@ def mark_tenant_membership_paid(
     log_business_event(
         business_logger,
         event="platform_membership_payment_created",
-        tenant_id=tenant.id,
-        user_id=platform_admin.id,
-        actor_email=platform_admin.email,
-        actor_role=platform_admin.role,
+        **business_actor_fields(platform_admin),
         payment_id=payment.id,
         months_covered=payment.months_covered,
         amount=payment.amount,
@@ -221,10 +218,7 @@ def update_tenant_membership_payment(
     log_business_event(
         business_logger,
         event="platform_membership_payment_updated",
-        tenant_id=tenant.id,
-        user_id=platform_admin.id,
-        actor_email=platform_admin.email,
-        actor_role=platform_admin.role,
+        **business_actor_fields(platform_admin),
         payment_id=payment.id,
         months_covered=payment.months_covered,
         amount=payment.amount,
@@ -274,10 +268,7 @@ def cancel_tenant_membership_payment(
     log_business_event(
         business_logger,
         event="platform_membership_payment_cancelled",
-        tenant_id=tenant.id,
-        user_id=platform_admin.id,
-        actor_email=platform_admin.email,
-        actor_role=platform_admin.role,
+        **business_actor_fields(platform_admin),
         payment_id=payment.id,
         quote_number=payment.quote_number,
         reason=cancel_reason,
@@ -332,10 +323,7 @@ def approve_tenant_change_request(
     log_business_event(
         business_logger,
         event="platform_tenant_change_request_approved",
-        tenant_id=request.tenant_id,
-        user_id=reviewer.id,
-        actor_email=reviewer.email,
-        actor_role=reviewer.role,
+        **business_actor_fields(reviewer),
         change_request_id=request.id,
         tenant_name=tenant.name,
     )
@@ -376,10 +364,7 @@ def reject_tenant_change_request(
     log_business_event(
         business_logger,
         event="platform_tenant_change_request_rejected",
-        tenant_id=request.tenant_id,
-        user_id=reviewer.id,
-        actor_email=reviewer.email,
-        actor_role=reviewer.role,
+        **business_actor_fields(reviewer),
         change_request_id=request.id,
         tenant_name=request.tenant.name,
     )
@@ -541,10 +526,7 @@ def update_tenant_signup_request_status(
     log_business_event(
         business_logger,
         event="platform_signup_request_status_updated",
-        tenant_id=request.created_tenant_id,
-        user_id=reviewer.id,
-        actor_email=reviewer.email,
-        actor_role=reviewer.role,
+        **business_actor_fields(reviewer),
         signup_request_id=request.id,
         signup_status=status,
         company_name=request.company_name,
@@ -611,10 +593,7 @@ def approve_tenant_signup_request(
     log_business_event(
         business_logger,
         event="platform_signup_request_approved",
-        tenant_id=tenant.id,
-        user_id=reviewer.id,
-        actor_email=reviewer.email,
-        actor_role=reviewer.role,
+        **business_actor_fields(reviewer),
         signup_request_id=request.id,
         company_name=request.company_name,
         created_admin_email=admin.email,

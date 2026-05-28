@@ -930,7 +930,8 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Membresias vencidas')).toBeInTheDocument();
     expect(screen.getByText('Vencen en 3 dias')).toBeInTheDocument();
     expect(screen.getByText('A cobrar este mes')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Atencion inmediata' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Cola operativa' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Membresias en riesgo' })).toBeInTheDocument();
   });
 
   it('shows pending-only operational content in Solicitudes and Cambios fiscales', async () => {
@@ -1008,6 +1009,22 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('AUBASA')).toBeInTheDocument();
     expect(screen.getByText('approved')).toBeInTheDocument();
+  });
+
+  it('renders pending fiscal changes with proposed data chips and actions', async () => {
+    const user = userEvent.setup();
+    mockPlatformAdminSession();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Plataforma' }));
+    await user.click(screen.getByRole('button', { name: 'Cambios fiscales (1)' }));
+
+    expect(screen.getByText('DM Refrigeracion')).toBeInTheDocument();
+    expect(screen.getByText('Empresa: DM Refrigeracion SRL')).toBeInTheDocument();
+    expect(screen.getByText('Alta fiscal')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aprobar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Rechazar' })).toBeInTheDocument();
   });
 
   it('switches Membresias to Historial and shows payment records', async () => {

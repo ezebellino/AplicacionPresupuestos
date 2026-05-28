@@ -1,55 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Swal from 'sweetalert2';
 
 import {
   apiClient,
   Client,
-  ClientPayload,
   ClientServiceRecord,
-  ClientServiceRecordPayload,
-  CostCategory,
   CostItem,
-  CostItemPayload,
   CurrentUser,
   ExpenseCategory,
   ExpenseEntry,
-  ExpenseEntryPayload,
-  ExpenseStatus,
   Quote,
-  QuoteItemPayload,
-  QuotePayload,
-  QuoteStatus,
   PlatformTenantMembership,
   TenantProfile,
   TenantChangeRequest,
   TenantSignupRequest,
-  TenantChangeRequestPayload,
-  TenantProfilePayload,
 } from '../../shared/api/client';
-import { categoryLabels, statusLabels } from './constants';
 import { buildDashboardMetrics, buildDashboardNavigation } from './dashboardDerivations';
-import {
-  buildGreetingByBuenosAiresTime,
-  buildInvoiceHtml,
-  buildWhatsAppInvoiceMessage,
-  companyProfileToForm,
-  compactPayload,
-  escapeHtml,
-  quoteTransitionSuccessMessage,
-  showSuccessToast,
-  themeVariables,
-} from './dashboardUtils';
-import {
-  clientName,
-  downloadBlob,
-  formatDate,
-  formatMoney,
-  matchesSearch,
-  nullable,
-  openMailTo,
-  openWhatsAppMessage,
-} from './helpers';
+import { companyProfileToForm, themeVariables } from './dashboardUtils';
 import { buildPlatformNotifications } from './platformNotifications';
 import { createPlatformAdminHandlers } from './platformAdminActions';
 import { createQuoteActionHandlers } from './quoteActions';
@@ -74,11 +42,9 @@ import {
   MobileDashboardHeader,
   PlatformNotificationsPanel,
 } from './shell';
-import { Field, QuoteProgress, StatusBadge } from './ui';
 import type {
   ClientForm,
   ClientRecordRequest,
-  ClientRecordSection,
   CompanyProfileForm,
   CostForm,
   ExpenseForm,

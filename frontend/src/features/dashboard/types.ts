@@ -29,6 +29,11 @@ export type TreasuryMovementFilter = 'all' | 'accepted' | 'issued' | 'rejected';
 export type ExpenseFilter = 'all' | ExpenseStatus;
 export type MembershipFilter = 'all' | 'expired' | 'due_soon' | 'active';
 
+export type DashboardNavItem = {
+  label: string;
+  view: View;
+};
+
 export type ClientRecordRequest = {
   clientId: string;
   section: ClientRecordSection;

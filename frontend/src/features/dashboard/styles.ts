@@ -1137,6 +1137,32 @@ export const styles = {
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
   },
+  auditMetadataGrid: {
+    display: 'grid',
+    gap: '10px',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  },
+  auditMetadataItem: {
+    background: 'rgba(12, 18, 30, 0.84)',
+    border: '1px solid rgba(212, 160, 23, 0.16)',
+    borderRadius: '10px',
+    display: 'grid',
+    gap: '6px',
+    minWidth: 0,
+    padding: '12px',
+  },
+  auditMetadataLabel: {
+    color: 'var(--muted)',
+    fontSize: '11px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+  },
+  auditMetadataValue: {
+    color: '#e8eefc',
+    fontSize: '13px',
+    lineHeight: 1.4,
+    overflowWrap: 'anywhere',
+  },
   categoryGrid: {
     display: 'grid',
     gap: '12px',

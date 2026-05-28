@@ -6,6 +6,32 @@ import { formatDate, formatMoney, formatMonthsCovered, daysUntilDate } from '../
 import { styles } from '../styles';
 import type { MembershipFilter, PlatformAdminViewProps, PlatformSection } from '../types';
 
+function formatAuditLabel(key: string) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function formatAuditValue(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return 'Sin dato';
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Si' : 'No';
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  return JSON.stringify(value);
+}
+
 export function PlatformAdminView({
   activeSection,
   auditEvents,
@@ -111,6 +137,18 @@ export function PlatformAdminView({
 
     return matchesEntity && matchesAction && matchesActor;
   });
+  const auditEntityCounts = auditEvents.reduce<Record<string, number>>((counts, event) => {
+    counts[event.entity_type] = (counts[event.entity_type] ?? 0) + 1;
+    return counts;
+  }, {});
+  const auditActorCounts = auditEvents.reduce<Record<string, number>>((counts, event) => {
+    const actorKey = event.actor_email ?? 'sistema';
+    counts[actorKey] = (counts[actorKey] ?? 0) + 1;
+    return counts;
+  }, {});
+  const topAuditActor =
+    Object.entries(auditActorCounts).sort((left, right) => right[1] - left[1])[0]?.[0] ?? 'Sin actor';
+  const latestAuditEvent = auditEvents[0] ?? null;
 
   useEffect(() => {
     if (activeSection === 'signups') {
@@ -949,6 +987,26 @@ export function PlatformAdminView({
                 <p style={styles.panelSubtitle}>Registro cronologico de acciones criticas del sistema.</p>
               </div>
             </div>
+            <div style={styles.metrics}>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Eventos cargados</p>
+                <strong style={styles.metricValue}>{auditEvents.length}</strong>
+              </article>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Entidades activas</p>
+                <strong style={styles.metricValue}>{Object.keys(auditEntityCounts).length}</strong>
+              </article>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Actor mas frecuente</p>
+                <strong style={{ ...styles.metricValue, fontSize: '1rem' }}>{topAuditActor}</strong>
+              </article>
+              <article style={styles.metricCard}>
+                <p style={styles.metricLabel}>Ultimo evento</p>
+                <strong style={{ ...styles.metricValue, fontSize: '1rem' }}>
+                  {latestAuditEvent ? formatDate(latestAuditEvent.created_at) : 'Sin eventos'}
+                </strong>
+              </article>
+            </div>
             <div style={styles.platformFilterBar}>
               <label style={{ ...styles.label, minWidth: isCompactLayout ? '100%' : 180 }}>
                 <span>Entidad</span>
@@ -997,7 +1055,7 @@ export function PlatformAdminView({
               <p style={styles.emptyState}>No hay eventos para los filtros seleccionados.</p>
             ) : (
               <div style={styles.clientList}>
-                {filteredAuditEvents.map((event) => (
+              {filteredAuditEvents.map((event) => (
                   <article key={event.id} style={styles.historyQuoteRecord}>
                     <div style={styles.historyRecordHeader}>
                       <div style={styles.clientIdentity}>
@@ -1011,7 +1069,14 @@ export function PlatformAdminView({
                       </div>
                     </div>
                     {event.metadata_json ? (
-                      <pre style={styles.auditMetadataBlock}>{JSON.stringify(event.metadata_json, null, 2)}</pre>
+                      <div style={styles.auditMetadataGrid}>
+                        {Object.entries(event.metadata_json).map(([key, value]) => (
+                          <div key={key} style={styles.auditMetadataItem}>
+                            <span style={styles.auditMetadataLabel}>{formatAuditLabel(key)}</span>
+                            <strong style={styles.auditMetadataValue}>{formatAuditValue(value)}</strong>
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <p style={styles.compactEmpty}>Sin metadata adicional.</p>
                     )}

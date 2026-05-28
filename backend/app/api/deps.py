@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     db: Annotated[Session, Depends(get_db)],
+    request: Request,
 ) -> User:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
@@ -23,7 +24,14 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return get_current_user_from_token(db, credentials.credentials)
+    user = get_current_user_from_token(db, credentials.credentials)
+    request.state.auth_context = {
+        "user_id": str(user.id),
+        "tenant_id": str(user.tenant_id),
+        "email": user.email,
+        "role": user.role,
+    }
+    return user
 
 
 def require_platform_admin(

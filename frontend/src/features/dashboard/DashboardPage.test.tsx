@@ -398,7 +398,7 @@ describe('DashboardPage', () => {
           );
         }
 
-        if (url.endsWith('/admin/tenants/platform/audit-events')) {
+        if (url.includes('/admin/tenants/platform/audit-events')) {
           return Promise.resolve(
             new Response(
               JSON.stringify({

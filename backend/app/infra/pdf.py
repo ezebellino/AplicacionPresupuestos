@@ -61,7 +61,7 @@ def build_quote_pdf(
         Paragraph(_clean_text(tenant.legal_name or tenant.name), heading),
         Paragraph(_tenant_details(tenant), muted),
     ]
-    header_right = logo if logo is not None else Paragraph("Factura electronica", title)
+    header_right = logo if logo is not None else Paragraph("Presupuesto", title)
     header = Table([[header_left, header_right]], colWidths=[document.width * 0.62, document.width * 0.38])
     header.setStyle(
         TableStyle(
@@ -77,7 +77,7 @@ def build_quote_pdf(
         [
             [
                 [
-                    Paragraph("Factura electronica", title),
+                    Paragraph("Presupuesto", title),
                     Paragraph(f"Presupuesto {_clean_text(quote.number)}", normal),
                     Paragraph(f"Fecha {_format_date(quote.issued_at or quote.created_at)}", normal),
                 ],

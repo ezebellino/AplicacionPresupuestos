@@ -117,6 +117,7 @@ def test_issued_quote_pdf_contains_human_readable_quote_content(api_context) -> 
     assert response.status_code == 200
     text = extract_pdf_text(response.content)
     assert "Presupuesto" in text
+    assert "Factura electronica" not in text
     assert "Acme Clima" in text
     assert quote["number"] in text
     assert "Hospital Central" in text

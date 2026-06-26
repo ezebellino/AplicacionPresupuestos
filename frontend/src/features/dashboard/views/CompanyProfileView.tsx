@@ -317,7 +317,7 @@ export function CompanyProfileView({
               </header>
               <section style={styles.pdfPreviewMeta}>
                 <div>
-                  <strong>Factura electronica</strong>
+                  <strong>Presupuesto</strong>
                   <p style={styles.pdfPreviewMuted}>Presupuesto Q-000001 - {formatDate(new Date().toISOString())}</p>
                 </div>
                 <div style={styles.pdfPreviewClient}>

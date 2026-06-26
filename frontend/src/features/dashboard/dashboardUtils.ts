@@ -36,7 +36,7 @@ export function buildWhatsAppInvoiceMessage({
 
   return [
     `Hola ${invoiceClientName ?? ''}, ${greeting}.`,
-    `Te enviamos adjunta la factura electronica correspondiente al presupuesto ${quote.number} de ${companyName}.`,
+    `Te enviamos adjunto el presupuesto ${quote.number} de ${companyName}.`,
     `Total: ${formatMoney(quote.total)}.`,
     'Muchas gracias. Quedamos a disposicion por cualquier consulta.',
   ]
@@ -70,7 +70,7 @@ export function buildInvoiceHtml(quote: Quote, clients: Client[], profile: Tenan
     <!doctype html>
     <html>
       <head>
-        <title>Factura ${escapeHtml(quote.number)}</title>
+        <title>Presupuesto ${escapeHtml(quote.number)}</title>
         <style>
           body { color: #17202a; font-family: Arial, sans-serif; margin: 32px; }
           header { align-items: flex-start; border-bottom: 1px solid #d9e0e7; display: flex; justify-content: space-between; padding-bottom: 20px; }
@@ -99,7 +99,7 @@ export function buildInvoiceHtml(quote: Quote, clients: Client[], profile: Tenan
           ${profile?.logo_url ? `<img alt="" class="logo" src="${escapeAttribute(profile.logo_url)}" />` : ''}
         </header>
         <section class="section">
-          <h2>Factura</h2>
+          <h2>Presupuesto</h2>
           <p class="muted">Presupuesto ${escapeHtml(quote.number)} - ${escapeHtml(formatDate(quote.issued_at ?? quote.created_at))}</p>
           <p class="muted">Cliente: ${escapeHtml(client)}</p>
         </section>

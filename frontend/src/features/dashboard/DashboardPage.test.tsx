@@ -642,6 +642,53 @@ describe('DashboardPage', () => {
     expect(screen.getAllByText('Aceptado').length).toBeGreaterThan(0);
   });
 
+  it('opens whatsapp with the current services price list', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Servicios' }));
+    await user.click(await screen.findByRole('button', { name: 'Enviar seleccionados por WhatsApp' }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining('https://wa.me/?text='),
+      '_blank',
+      'noopener,noreferrer',
+    );
+    const targetUrl = openSpy.mock.calls.at(-1)?.[0] as string;
+    const message = decodeURIComponent(targetUrl.split('text=')[1]).replace(/\s+/g, ' ');
+    expect(message).toContain('lista de servicios actualizada');
+    expect(message).toContain('Instalacion: $ 450.000');
+    expect(message).not.toContain(',00');
+    expect(message).not.toContain('*');
+
+    openSpy.mockRestore();
+  });
+
+  it('lets users choose which services are included in the whatsapp price list', async () => {
+    const user = userEvent.setup();
+
+    render(<DashboardPage onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Servicios' }));
+    const shareButton = await screen.findByRole('button', { name: 'Enviar seleccionados por WhatsApp' });
+    const serviceCheckbox = screen.getByRole('checkbox', { name: 'Incluir Instalacion en WhatsApp' });
+
+    expect(serviceCheckbox).toBeChecked();
+    expect(shareButton).toBeEnabled();
+
+    await user.click(serviceCheckbox);
+
+    expect(serviceCheckbox).not.toBeChecked();
+    expect(shareButton).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Marcar todos' }));
+
+    expect(serviceCheckbox).toBeChecked();
+    expect(shareButton).toBeEnabled();
+  });
+
   it('opens the client record on the services subsection from the clients table', async () => {
     const user = userEvent.setup();
 

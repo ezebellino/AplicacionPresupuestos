@@ -1,11 +1,37 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { CostsViewProps } from '../types';
 
 import { serviceOperationPresets } from '../constants';
-import { formatMoney, matchesSearch } from '../helpers';
+import { formatMoney, matchesSearch, openWhatsAppMessage } from '../helpers';
 import { styles } from '../styles';
 import { Field } from '../ui';
+
+function formatServiceListMoney(value: number | string): string {
+  const roundedValue = Math.round(Number(value));
+  const formattedValue = new Intl.NumberFormat('es-AR', {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    useGrouping: true,
+  })
+    .format(roundedValue)
+    .replace(/\s/g, ' ');
+
+  return `$ ${formattedValue}`;
+}
+
+function buildServicesWhatsAppMessage(costItems: CostsViewProps['costItems']): string {
+  const updatedAt = new Intl.DateTimeFormat('es-AR').format(new Date());
+  const serviceLines = costItems.map((item) => `- ${item.name}: ${formatServiceListMoney(item.unit_cost)}`);
+
+  return [
+    `Hola, te comparto la lista de servicios actualizada al ${updatedAt}:`,
+    '',
+    ...serviceLines,
+    '',
+    'Los precios pueden variar segun el alcance del trabajo.',
+  ].join('\n');
+}
 
 export function CostsView({
   costItems,
@@ -21,7 +47,35 @@ export function CostsView({
   showOperationPresets,
 }: CostsViewProps) {
   const [search, setSearch] = useState('');
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const filteredCostItems = costItems.filter((item) => matchesSearch([item.name, item.description], search));
+  const selectedCostItems = useMemo(
+    () => costItems.filter((item) => selectedServiceIds.includes(item.id)),
+    [costItems, selectedServiceIds],
+  );
+  const canShareServices = selectedCostItems.length > 0;
+  const allServicesSelected = costItems.length > 0 && selectedServiceIds.length === costItems.length;
+
+  useEffect(() => {
+    setSelectedServiceIds((currentSelection) => {
+      const availableIds = costItems.map((item) => item.id);
+      const keptIds = currentSelection.filter((id) => availableIds.includes(id));
+      const newIds = availableIds.filter((id) => !currentSelection.includes(id));
+      return [...keptIds, ...newIds];
+    });
+  }, [costItems]);
+
+  const toggleServiceSelection = (serviceId: string) => {
+    setSelectedServiceIds((currentSelection) =>
+      currentSelection.includes(serviceId)
+        ? currentSelection.filter((id) => id !== serviceId)
+        : [...currentSelection, serviceId],
+    );
+  };
+
+  const toggleAllServices = () => {
+    setSelectedServiceIds(allServicesSelected ? [] : costItems.map((item) => item.id));
+  };
 
   return (
     <section style={styles.workspaceGrid}>
@@ -90,6 +144,14 @@ export function CostsView({
           <h2 id="costs-title" style={styles.panelTitle}>
             Catalogo de servicios
           </h2>
+          <button
+            disabled={!canShareServices}
+            onClick={() => openWhatsAppMessage('', buildServicesWhatsAppMessage(selectedCostItems))}
+            style={canShareServices ? styles.primaryButton : styles.secondaryButton}
+            type="button"
+          >
+            Enviar seleccionados por WhatsApp
+          </button>
         </div>
         <div style={styles.filterBar}>
           <label style={styles.compactLabel}>
@@ -101,6 +163,9 @@ export function CostsView({
               value={search}
             />
           </label>
+          <button onClick={toggleAllServices} style={styles.secondaryButton} type="button">
+            {allServicesSelected ? 'Desmarcar todos' : 'Marcar todos'}
+          </button>
         </div>
         {costItems.length === 0 ? (
           <p style={styles.emptyState}>Todavia no hay servicios cargados.</p>
@@ -115,6 +180,16 @@ export function CostsView({
                     <strong>{item.name}</strong>
                     {item.description ? <span style={styles.mutedText}>{item.description}</span> : null}
                   </div>
+                  <label style={styles.costCatalogCardActions}>
+                    <input
+                      aria-label={`Incluir ${item.name} en WhatsApp`}
+                      checked={selectedServiceIds.includes(item.id)}
+                      onChange={() => toggleServiceSelection(item.id)}
+                      style={styles.checkbox}
+                      type="checkbox"
+                    />
+                    <span style={styles.mutedText}>WhatsApp</span>
+                  </label>
                 </div>
                 <div style={styles.costCatalogCardFacts}>
                   <div style={styles.costCatalogFact}>
@@ -141,6 +216,7 @@ export function CostsView({
           <table style={styles.table}>
             <thead>
               <tr>
+                <th style={styles.th}>Enviar</th>
                 <th style={styles.th}>Operacion</th>
                 <th style={styles.thRight}>Costo</th>
                 <th style={styles.thRight}>IVA</th>
@@ -150,6 +226,15 @@ export function CostsView({
             <tbody>
               {filteredCostItems.map((item) => (
                 <tr key={item.id}>
+                  <td style={styles.td}>
+                    <input
+                      aria-label={`Incluir ${item.name} en WhatsApp`}
+                      checked={selectedServiceIds.includes(item.id)}
+                      onChange={() => toggleServiceSelection(item.id)}
+                      style={styles.checkbox}
+                      type="checkbox"
+                    />
+                  </td>
                   <td style={styles.td}>{item.name}</td>
                   <td style={styles.tdRight}>{formatMoney(item.unit_cost)}</td>
                   <td style={styles.tdRight}>

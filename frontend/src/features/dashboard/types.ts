@@ -194,6 +194,7 @@ export type QuotesViewProps = {
   onNewQuoteClientRequestHandled: () => void;
   onNewQuoteRequestHandled: () => void;
   onSelectQuote: (quoteId: string) => void;
+  onIssueAndSendWhatsApp: (quote: Quote) => void;
   onSendWhatsApp: (quote: Quote) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => boolean | Promise<boolean>;
   onTransition: (quote: Quote, action: 'issue' | 'accept' | 'reject') => void;

@@ -524,6 +524,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onNewQuoteClientRequestHandled={() => setQuoteCreateClientRequestId(null)}
             onNewQuoteRequestHandled={() => setMobileQuoteRequestId(0)}
             onSelectQuote={setSelectedQuoteId}
+            onIssueAndSendWhatsApp={quoteActionHandlers.issueAndSendByWhatsApp}
             onSendWhatsApp={quoteActionHandlers.sendInvoiceByWhatsApp}
             onSubmit={quoteActionHandlers.handleQuoteSubmit}
             onTransition={quoteActionHandlers.transitionQuote}

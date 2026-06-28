@@ -34,6 +34,7 @@ type QuoteActionHandlers = {
   deleteQuotes: (quotesToDelete: Quote[]) => Promise<boolean>;
   downloadQuotePdf: (quote: Quote) => Promise<void>;
   handleQuoteSubmit: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  issueAndSendByWhatsApp: (quote: Quote) => Promise<void>;
   openQuoteDraftForClient: (clientId: string) => void;
   openQuoteEditorFromAnotherView: (quoteId: string) => void;
   sendInvoiceByWhatsApp: (quote: Quote) => Promise<void>;
@@ -237,7 +238,7 @@ export function createQuoteActionHandlers({
     }
   };
 
-  const sendInvoiceByWhatsApp = async (quote: Quote) => {
+  const sendQuotePdfByWhatsApp = async (quote: Quote) => {
     const client = clients.find((currentClient) => currentClient.id === quote.client_id);
     const phone = client?.phone?.replace(/\D/g, '') ?? '';
     const companyName = companyProfile?.legal_name || companyProfile?.name || 'nuestra empresa';
@@ -254,6 +255,38 @@ export function createQuoteActionHandlers({
       openWhatsAppMessage(phone, message);
     } catch {
       openWhatsAppMessage(phone, message);
+    }
+  };
+
+  const sendInvoiceByWhatsApp = async (quote: Quote) => {
+    await sendQuotePdfByWhatsApp(quote);
+  };
+
+  const issueAndSendByWhatsApp = async (quote: Quote) => {
+    if (quote.status !== 'draft' || quote.items.length === 0) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const issuedQuote = await apiClient.issueQuote(quote.id);
+      setSelectedQuoteId(issuedQuote.id);
+      await loadWorkspace();
+      await sendQuotePdfByWhatsApp(issuedQuote);
+      showSuccessToast('Presupuesto emitido');
+    } catch (error) {
+      await Swal.fire({
+        title: 'No se pudo emitir y enviar',
+        text: buildCriticalErrorMessage(
+          'Verifica que el presupuesto tenga servicios cargados y que tu sesion siga vigente.',
+          error,
+        ),
+        icon: 'error',
+        confirmButtonText: 'Cerrar',
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -303,6 +336,7 @@ export function createQuoteActionHandlers({
     deleteQuotes,
     downloadQuotePdf,
     handleQuoteSubmit,
+    issueAndSendByWhatsApp,
     openQuoteDraftForClient,
     openQuoteEditorFromAnotherView,
     sendInvoiceByWhatsApp,

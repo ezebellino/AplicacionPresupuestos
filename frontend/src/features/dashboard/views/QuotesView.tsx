@@ -29,6 +29,7 @@ export function QuotesView({
   onNewQuoteClientRequestHandled,
   onNewQuoteRequestHandled,
   onSelectQuote,
+  onIssueAndSendWhatsApp,
   onSendWhatsApp,
   onSubmit,
   onTransition,
@@ -101,6 +102,9 @@ export function QuotesView({
   const canEditSelected = selectedQuote?.status === 'draft';
   const canShareSelected = Boolean(
     selectedQuote && selectedQuote.status !== 'draft' && selectedQuote.items.length > 0,
+  );
+  const canIssueAndSendSelected = Boolean(
+    selectedQuote && selectedQuote.status === 'draft' && selectedQuote.items.length > 0,
   );
   const selectedFormClient = clients.find((client) => client.id === form.client_id) ?? null;
   const filteredCatalogItems = costItems.filter((item) =>
@@ -301,9 +305,19 @@ export function QuotesView({
             {selectedQuote ? (
               <div style={styles.actions}>
                 {selectedQuote.status === 'draft' ? (
-                  <button onClick={() => onTransition(selectedQuote, 'issue')} style={styles.primaryButton} type="button">
-                    Emitir
-                  </button>
+                  <>
+                    <button
+                      disabled={!canIssueAndSendSelected || isSaving}
+                      onClick={() => onIssueAndSendWhatsApp(selectedQuote)}
+                      style={styles.whatsAppButton}
+                      type="button"
+                    >
+                      Emitir y enviar
+                    </button>
+                    <button onClick={() => onTransition(selectedQuote, 'issue')} style={styles.secondaryButton} type="button">
+                      Emitir
+                    </button>
+                  </>
                 ) : null}
                 {selectedQuote.status === 'issued' ? (
                   <>
@@ -712,14 +726,35 @@ export function QuotesView({
                     <strong>Total {formatMoney(selectedQuote.total)}</strong>
                   </div>
                   <div style={styles.actions}>
-                    <button
-                      disabled={!canShareSelected || isSaving}
-                      onClick={() => onSendWhatsApp(selectedQuote)}
-                      style={styles.whatsAppButton}
-                      type="button"
-                    >
-                      <MessageCircle aria-hidden="true" size={15} strokeWidth={2.2} /> Enviar por WhatsApp
-                    </button>
+                    {selectedQuote.status === 'draft' ? (
+                      <>
+                        <button
+                          disabled={!canIssueAndSendSelected || isSaving}
+                          onClick={() => onIssueAndSendWhatsApp(selectedQuote)}
+                          style={styles.whatsAppButton}
+                          type="button"
+                        >
+                          <MessageCircle aria-hidden="true" size={15} strokeWidth={2.2} /> Emitir y enviar por WhatsApp
+                        </button>
+                        <button
+                          disabled={selectedQuote.items.length === 0 || isSaving}
+                          onClick={() => onTransition(selectedQuote, 'issue')}
+                          style={styles.secondaryButton}
+                          type="button"
+                        >
+                          Emitir sin enviar
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        disabled={!canShareSelected || isSaving}
+                        onClick={() => onSendWhatsApp(selectedQuote)}
+                        style={styles.whatsAppButton}
+                        type="button"
+                      >
+                        <MessageCircle aria-hidden="true" size={15} strokeWidth={2.2} /> Enviar por WhatsApp
+                      </button>
+                    )}
                     <button
                       disabled={selectedQuote.items.length === 0 || isSaving}
                       onClick={() => onDownloadPdf(selectedQuote)}
@@ -728,8 +763,8 @@ export function QuotesView({
                     >
                       Descargar PDF
                     </button>
-                    {selectedQuote.status === 'draft' ? (
-                      <span style={styles.helperText}>Emiti el presupuesto para habilitar el envio por WhatsApp.</span>
+                    {selectedQuote.status === 'draft' && selectedQuote.items.length === 0 ? (
+                      <span style={styles.helperText}>Agrega al menos un servicio para emitir y enviar por WhatsApp.</span>
                     ) : null}
                   </div>
                 </section>

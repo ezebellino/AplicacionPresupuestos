@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Eye, FileText, Trash2 } from 'lucide-react';
+import { Eye, FileText, MessageCircle, Trash2 } from 'lucide-react';
 import type { Client, CostItem, Quote, QuoteStatus } from '../../../shared/api/client';
 import { emptyQuoteForm } from '../state';
 import { statusLabels } from '../constants';
@@ -17,15 +17,19 @@ export function QuotesView({
   isCompactLayout,
   isSaving,
   newQuoteClientIdRequest,
+  newQuoteRequestId,
   onAddCostItem,
   onDeleteItem,
   onDeleteQuotes,
   onDownloadPdf,
+  onCreateClientRequest,
   onEditClient,
   onEditorRequestHandled,
   onFormChange,
   onNewQuoteClientRequestHandled,
+  onNewQuoteRequestHandled,
   onSelectQuote,
+  onSendWhatsApp,
   onSubmit,
   onTransition,
   quotes,
@@ -47,6 +51,17 @@ export function QuotesView({
     setActiveSection('editor');
     onNewQuoteClientRequestHandled();
   }, [newQuoteClientIdRequest, onFormChange, onNewQuoteClientRequestHandled]);
+
+  useEffect(() => {
+    if (newQuoteRequestId <= 0) {
+      return;
+    }
+
+    onFormChange(emptyQuoteForm);
+    setIsCreatingNew(true);
+    setActiveSection('editor');
+    onNewQuoteRequestHandled();
+  }, [newQuoteRequestId, onFormChange, onNewQuoteRequestHandled]);
 
   useEffect(() => {
     if (!editorRequestId || selectedQuoteId !== editorRequestId) {
@@ -84,6 +99,10 @@ export function QuotesView({
   const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
   const selectedQuotesForDeletion = quotes.filter((quote) => selectedQuoteIds.includes(quote.id));
   const canEditSelected = selectedQuote?.status === 'draft';
+  const canShareSelected = Boolean(
+    selectedQuote && selectedQuote.status !== 'draft' && selectedQuote.items.length > 0,
+  );
+  const selectedFormClient = clients.find((client) => client.id === form.client_id) ?? null;
   const filteredCatalogItems = costItems.filter((item) =>
     matchesSearch([item.name, item.description], catalogSearch),
   );
@@ -288,6 +307,14 @@ export function QuotesView({
                 ) : null}
                 {selectedQuote.status === 'issued' ? (
                   <>
+                    <button
+                      disabled={!canShareSelected}
+                      onClick={() => onSendWhatsApp(selectedQuote)}
+                      style={styles.whatsAppButton}
+                      type="button"
+                    >
+                      Enviar por WhatsApp
+                    </button>
                     <button onClick={() => onTransition(selectedQuote, 'accept')} style={styles.primaryButton} type="button">
                       Aceptar
                     </button>
@@ -295,6 +322,16 @@ export function QuotesView({
                       Rechazar
                     </button>
                   </>
+                ) : null}
+                {selectedQuote.status !== 'draft' && selectedQuote.status !== 'issued' ? (
+                  <button
+                    disabled={!canShareSelected}
+                    onClick={() => onSendWhatsApp(selectedQuote)}
+                    style={styles.whatsAppButton}
+                    type="button"
+                  >
+                    Enviar por WhatsApp
+                  </button>
                 ) : null}
                 <button
                   aria-label="Descargar PDF"
@@ -322,6 +359,56 @@ export function QuotesView({
 
           {isCreatingNew || !selectedQuote ? (
             <form onSubmit={handleCreateQuote} style={styles.quoteEditorSection}>
+              {isCompactLayout ? (
+                <section style={styles.mobileQuoteAssistant}>
+                  <div>
+                    <span style={styles.labelCaption}>Asistente rapido</span>
+                    <h3 style={styles.mobileAssistantTitle}>¿Querés realizar un nuevo presupuesto?</h3>
+                    <p style={styles.helperText}>
+                      Elegi el cliente, crea el borrador y despues agrega los servicios para revisar el total.
+                    </p>
+                  </div>
+                  <div style={styles.mobileAssistantSteps} aria-label="Flujo de nuevo presupuesto">
+                    <span style={form.client_id ? styles.mobileAssistantStepDone : styles.mobileAssistantStepActive}>
+                      1 Cliente
+                    </span>
+                    <span style={styles.mobileAssistantStep}>2 Servicios</span>
+                    <span style={styles.mobileAssistantStep}>3 Total y WhatsApp</span>
+                  </div>
+                  <div style={styles.mobileAssistantChoiceGrid}>
+                    <button
+                      disabled={clients.length === 0}
+                      onClick={() => {
+                        if (form.client_id) {
+                          onFormChange({ ...form, client_id: '' });
+                        }
+                      }}
+                      style={form.client_id ? styles.secondaryButton : styles.primaryButton}
+                      type="button"
+                    >
+                      Cliente ya registrado
+                    </button>
+                    <button onClick={onCreateClientRequest} style={styles.secondaryButton} type="button">
+                      Cliente nuevo
+                    </button>
+                  </div>
+                  {selectedFormClient ? (
+                    <div style={styles.mobileAssistantSummary}>
+                      <span>Cliente seleccionado</span>
+                      <strong>{selectedFormClient.name}</strong>
+                      <button disabled={isSaving} style={styles.primaryButton} type="submit">
+                        Crear borrador y elegir servicios
+                      </button>
+                    </div>
+                  ) : (
+                    <p style={styles.emptyState}>
+                      {clients.length === 0
+                        ? 'Primero carga un cliente para poder presupuestar.'
+                        : 'Selecciona un cliente registrado o crea uno nuevo.'}
+                    </p>
+                  )}
+                </section>
+              ) : null}
               <section style={styles.quoteEditorBlock}>
                 <div>
                   <h3 style={styles.compactTitle}>Cliente</h3>
@@ -623,6 +710,27 @@ export function QuotesView({
                     <span>Subtotal {formatMoney(selectedQuote.subtotal)}</span>
                     <span>IVA {formatMoney(selectedQuote.tax_total)}</span>
                     <strong>Total {formatMoney(selectedQuote.total)}</strong>
+                  </div>
+                  <div style={styles.actions}>
+                    <button
+                      disabled={!canShareSelected || isSaving}
+                      onClick={() => onSendWhatsApp(selectedQuote)}
+                      style={styles.whatsAppButton}
+                      type="button"
+                    >
+                      <MessageCircle aria-hidden="true" size={15} strokeWidth={2.2} /> Enviar por WhatsApp
+                    </button>
+                    <button
+                      disabled={selectedQuote.items.length === 0 || isSaving}
+                      onClick={() => onDownloadPdf(selectedQuote)}
+                      style={styles.secondaryButton}
+                      type="button"
+                    >
+                      Descargar PDF
+                    </button>
+                    {selectedQuote.status === 'draft' ? (
+                      <span style={styles.helperText}>Emiti el presupuesto para habilitar el envio por WhatsApp.</span>
+                    ) : null}
                   </div>
                 </section>
               </div>

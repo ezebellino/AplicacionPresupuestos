@@ -246,7 +246,7 @@ export function createQuoteActionHandlers({
       companyName,
       quote,
     });
-    const filename = `factura-${quote.number}.pdf`;
+    const filename = `presupuesto-${quote.number}.pdf`;
 
     try {
       const blob = await apiClient.downloadQuotePdf(quote.id);

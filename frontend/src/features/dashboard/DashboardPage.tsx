@@ -4,6 +4,7 @@ import Swal from 'sweetalert2';
 
 import {
   apiClient,
+  ApiError,
   AuditEvent,
   AuditEventFilters,
   Client,
@@ -107,6 +108,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [quoteEditorRequestId, setQuoteEditorRequestId] = useState<string | null>(null);
   const [quoteCreateClientRequestId, setQuoteCreateClientRequestId] = useState<string | null>(null);
+  const [mobileQuoteRequestId, setMobileQuoteRequestId] = useState(0);
+  const [isMobileQuotePromptOpen, setIsMobileQuotePromptOpen] = useState(true);
   const [clientRecordRequest, setClientRecordRequest] = useState<ClientRecordRequest | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -134,8 +137,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setLoadError(null);
 
     try {
+      const userResponse = await apiClient.getCurrentUser();
       const [
-        userResponse,
         profileResponse,
         changeRequestsResponse,
         clientsResponse,
@@ -144,7 +147,6 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         expenseCategoriesResponse,
         expenseEntriesResponse,
       ] = await Promise.all([
-        apiClient.getCurrentUser(),
         apiClient.getTenantProfile(),
         apiClient.listTenantChangeRequests(),
         apiClient.listClients(),
@@ -185,8 +187,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         setHasMoreAuditEvents(auditEvents.items.length >= (initialAuditFilters.limit ?? 50));
         setActiveView((current) => (current === 'summary' || current === 'company' ? 'platform' : current));
       }
-    } catch {
-      setLoadError('No pude cargar los datos. Revisá que el backend esté activo y que tu sesión siga vigente.');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        localStorage.removeItem('auth_token');
+        onLogout();
+        return;
+      }
+
+      setLoadError('No pude cargar los datos. Revisa que el backend este activo y que tu sesion siga vigente.');
     } finally {
       setHasBootstrapped(true);
       setIsLoading(false);
@@ -241,6 +249,14 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     if (view === 'platform') {
       setActivePlatformSection('overview');
     }
+    setIsMobileMenuOpen(false);
+  };
+  const openMobileQuoteFlow = () => {
+    setActiveView('quotes');
+    setSelectedQuoteId(null);
+    setQuoteForm(emptyQuoteForm);
+    setMobileQuoteRequestId((current) => current + 1);
+    setIsMobileQuotePromptOpen(false);
     setIsMobileMenuOpen(false);
   };
   const openPlatformNotifications = (section: PlatformSection) => {
@@ -389,6 +405,32 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
         {loadError ? <p style={styles.errorBanner}>{loadError}</p> : null}
 
+        {isCompactLayout && isMobileQuotePromptOpen && currentUser?.role !== 'platform_admin' ? (
+          <div style={styles.mobileQuotePromptOverlay} role="dialog" aria-modal="true" aria-labelledby="mobile-quote-prompt-title">
+            <section style={styles.mobileQuotePrompt}>
+              <span style={styles.labelCaption}>Flujo rapido</span>
+              <h2 id="mobile-quote-prompt-title" style={styles.mobileQuotePromptTitle}>
+                ¿Querés realizar un nuevo presupuesto?
+              </h2>
+              <p style={styles.helperText}>
+                Arranca por el cliente, elegi los servicios, revisa el total y envialo por WhatsApp.
+              </p>
+              <div style={styles.mobileQuotePromptActions}>
+                <button onClick={openMobileQuoteFlow} style={styles.primaryButton} type="button">
+                  Crear presupuesto
+                </button>
+                <button
+                  onClick={() => setIsMobileQuotePromptOpen(false)}
+                  style={styles.secondaryButton}
+                  type="button"
+                >
+                  Seguir a la app
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
         {isNotificationsOpen && currentUser?.role === 'platform_admin' ? (
           <PlatformNotificationsPanel
             changeNotifications={changeNotifications}
@@ -470,15 +512,19 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             newQuoteClientIdRequest={quoteCreateClientRequestId}
+            newQuoteRequestId={mobileQuoteRequestId}
             onAddCostItem={quoteActionHandlers.addQuoteItemFromCatalog}
             onDeleteItem={quoteActionHandlers.deleteQuoteItem}
             onDeleteQuotes={quoteActionHandlers.deleteQuotes}
             onDownloadPdf={quoteActionHandlers.downloadQuotePdf}
+            onCreateClientRequest={() => setActiveView('clients')}
             onEditClient={clientActionHandlers.openClientRecordFromAnotherView}
             onEditorRequestHandled={() => setQuoteEditorRequestId(null)}
             onFormChange={setQuoteForm}
             onNewQuoteClientRequestHandled={() => setQuoteCreateClientRequestId(null)}
+            onNewQuoteRequestHandled={() => setMobileQuoteRequestId(0)}
             onSelectQuote={setSelectedQuoteId}
+            onSendWhatsApp={quoteActionHandlers.sendInvoiceByWhatsApp}
             onSubmit={quoteActionHandlers.handleQuoteSubmit}
             onTransition={quoteActionHandlers.transitionQuote}
             quotes={quotes}

@@ -222,7 +222,7 @@ export function createClientActionHandlers({
 
   const deleteClient = async (client: Client) => {
     const result = await Swal.fire({
-      title: `Eliminar ${client.name}`,
+      titleText: `Eliminar ${client.name}`,
       text: 'El cliente dejara de estar disponible para nuevos presupuestos, manteniendo su historial.',
       icon: 'warning',
       confirmButtonText: 'Eliminar',

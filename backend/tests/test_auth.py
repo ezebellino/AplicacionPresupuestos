@@ -10,6 +10,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from conftest import bootstrap_platform_headers
+
 from app.api.main import app
 from app.core.config import settings
 from app.infra.db import Base, get_db
@@ -56,6 +58,7 @@ def create_admin_tenant(
 ):
     return client.post(
         "/admin/tenants",
+        headers=bootstrap_platform_headers(client),
         json={
             "name": name,
             "admin_email": email,
@@ -255,6 +258,7 @@ def test_tenant_default_tax_rate_cannot_exceed_one_hundred(auth_context) -> None
 
     response = client.post(
         "/admin/tenants",
+        headers=bootstrap_platform_headers(client),
         json={
             "name": "Acme Clima",
             "admin_email": "admin-tax@acme.test",

@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from conftest import create_tenant_and_login, login
+from conftest import bootstrap_platform_headers, create_tenant_and_login, login
 
 from app.infra.models import AuditEvent
 
@@ -14,6 +14,7 @@ def test_successful_login_creates_audit_event(api_context) -> None:
     client, SessionLocal = api_context
     create_response = client.post(
         "/admin/tenants",
+        headers=bootstrap_platform_headers(client),
         json={
             "name": "Acme Clima",
             "admin_email": "audit-login@acme.test",

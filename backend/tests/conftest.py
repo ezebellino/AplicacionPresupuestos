@@ -2,12 +2,16 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.main import app
+from app.core.security import create_access_token
 from app.infra.db import Base, get_db
+from app.infra.models import User
+from app.schemas.tenants import TenantCreate
+from app.services.tenants_service import create_tenant_with_admin
 
 
 @pytest.fixture
@@ -42,6 +46,29 @@ def api_context() -> Generator[tuple[TestClient, sessionmaker[Session]], None, N
         engine.dispose()
 
 
+def bootstrap_platform_headers(client: TestClient) -> dict[str, str]:
+    """Seed an isolated test platform identity without bypassing API authorization."""
+    sessions = client.app.dependency_overrides[get_db]()
+    db = next(sessions)
+    try:
+        user = db.scalar(select(User).where(User.email == "bootstrap-platform@example.test"))
+        if user is None:
+            _, user = create_tenant_with_admin(
+                db,
+                TenantCreate(
+                    name="Test platform",
+                    admin_email="bootstrap-platform@example.test",
+                    admin_password="test-platform-bootstrap-password",
+                ),
+            )
+            user.role = "platform_admin"
+            db.commit()
+        token = create_access_token(user.id, user.tenant_id, user.email, user.role)
+        return auth_headers(token)
+    finally:
+        sessions.close()
+
+
 def create_admin_tenant(
     client: TestClient,
     *,
@@ -51,6 +78,7 @@ def create_admin_tenant(
 ):
     return client.post(
         "/admin/tenants",
+        headers=bootstrap_platform_headers(client),
         json={
             "name": name,
             "admin_email": email,

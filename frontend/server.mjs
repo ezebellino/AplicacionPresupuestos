@@ -33,7 +33,10 @@ function sendFile(response, filePath) {
     'Content-Type': contentTypes[extension] ?? 'application/octet-stream',
     'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
   });
-  createReadStream(filePath).pipe(response);
+  const stream = createReadStream(filePath);
+  stream.on('error', () => response.destroy());
+  response.on('close', () => stream.destroy());
+  stream.pipe(response);
 }
 
 async function sendIndex(response) {
@@ -52,12 +55,23 @@ async function sendIndex(response) {
   response.end(configuredHtml);
 }
 
-const server = http.createServer(async (request, response) => {
-  const urlPath = decodeURIComponent((request.url ?? '/').split('?')[0]);
+async function handleRequest(request, response) {
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent((request.url ?? '/').split('?')[0]);
+  } catch {
+    response.writeHead(400).end('Bad request');
+    return;
+  }
+  if (urlPath.includes('\0')) {
+    response.writeHead(400).end('Bad request');
+    return;
+  }
   const normalizedPath = urlPath === '/' ? '/index.html' : urlPath;
   const requestedPath = path.join(distDir, normalizedPath);
 
-  if (!requestedPath.startsWith(distDir)) {
+  const relativePath = path.relative(distDir, requestedPath);
+  if (relativePath === '..' || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
     response.writeHead(403).end('Forbidden');
     return;
   }
@@ -76,8 +90,18 @@ const server = http.createServer(async (request, response) => {
   }
 
   await sendIndex(response);
+}
+
+const server = http.createServer((request, response) => {
+  void handleRequest(request, response).catch(() => {
+    if (response.headersSent) {
+      response.destroy();
+    } else {
+      response.writeHead(500).end('Internal server error');
+    }
+  });
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`FacturEasy frontend listening on ${port}`);
+  console.log(`FacturEasy frontend listening on ${server.address().port}`);
 });

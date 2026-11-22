@@ -75,6 +75,7 @@ def create_signup_request(
 @router.post("", response_model=TenantCreated, status_code=status.HTTP_201_CREATED)
 def create_tenant(
     payload: TenantCreate,
+    _platform_admin: Annotated[User, Depends(require_platform_admin)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     try:

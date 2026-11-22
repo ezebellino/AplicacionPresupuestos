@@ -155,7 +155,7 @@ export function showSuccessToast(title: string) {
       showConfirmButton: false,
       timer: 2200,
       timerProgressBar: true,
-      title,
+      titleText: title,
       toast: true,
     });
   } catch {

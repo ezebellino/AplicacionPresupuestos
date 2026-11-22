@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from conftest import create_tenant_and_login, login
+from conftest import bootstrap_platform_headers, create_tenant_and_login, login
 
 from app.api.routes import auth as auth_routes
 from app.api.routes import quotes as quote_routes
@@ -14,6 +14,7 @@ def test_login_route_emits_technical_auth_logs(api_context, monkeypatch) -> None
     client, _ = api_context
     client.post(
         "/admin/tenants",
+        headers=bootstrap_platform_headers(client),
         json={
             "name": "Acme Clima",
             "admin_email": "log-auth@acme.test",

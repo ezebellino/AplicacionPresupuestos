@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Clock3, History, Mail, MessageCircle, Pencil, Search, Trash2, UserRound } from 'lucide-react';
 import Swal from 'sweetalert2';
 
+import { escapeHtml } from '../dashboardUtils';
 import { formatDate, formatMoney, formatMonthsCovered, daysUntilDate } from '../helpers';
 import { styles } from '../styles';
 import type { MembershipFilter, PlatformAdminViewProps, PlatformSection } from '../types';
@@ -715,7 +716,7 @@ export function PlatformAdminView({
                         disabled={isSaving}
                         onClick={async () => {
                       const result = await Swal.fire({
-                        title: `Registrar pago de ${membership.name}`,
+                        titleText: `Registrar pago de ${membership.name}`,
                         html: `
                         <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
                           <span>Periodo</span>
@@ -827,11 +828,11 @@ export function PlatformAdminView({
                             disabled={isSaving}
                             onClick={async () => {
                               const result = await Swal.fire({
-                                title: `Editar pago de ${membership.name}`,
+                                titleText: `Editar pago de ${membership.name}`,
                                 html: `
                                 <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
                                   <span>Fecha efectiva</span>
-                                  <input id="membership-paid-at" type="date" class="swal2-input" style="margin:0;" value="${payment.paid_at.slice(0, 10)}" />
+                                  <input id="membership-paid-at" type="date" class="swal2-input" style="margin:0;" value="${escapeHtml(payment.paid_at.slice(0, 10))}" />
                                 </label>
                                 <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
                                   <span>Periodo</span>
@@ -844,11 +845,11 @@ export function PlatformAdminView({
                                 </label>
                                 <label style="display:grid;gap:6px;text-align:left;margin-bottom:12px;">
                                   <span>Monto total</span>
-                                  <input id="membership-amount-edit" class="swal2-input" style="margin:0;" value="${payment.amount ?? ''}" />
+                                  <input id="membership-amount-edit" class="swal2-input" style="margin:0;" value="${escapeHtml(payment.amount ?? '')}" />
                                 </label>
                                 <label style="display:grid;gap:6px;text-align:left;">
                                   <span>Nota</span>
-                                  <input id="membership-notes-edit" class="swal2-input" style="margin:0;" value="${payment.notes ?? ''}" />
+                                  <input id="membership-notes-edit" class="swal2-input" style="margin:0;" value="${escapeHtml(payment.notes ?? '')}" />
                                 </label>
                               `,
                                 focusConfirm: false,
@@ -905,7 +906,7 @@ export function PlatformAdminView({
                             disabled={isSaving}
                             onClick={async () => {
                               const result = await Swal.fire({
-                                title: `Anular pago de ${membership.name}`,
+                                titleText: `Anular pago de ${membership.name}`,
                                 html: `
                                 <label style="display:grid;gap:6px;text-align:left;">
                                   <span>Motivo de anulacion</span>

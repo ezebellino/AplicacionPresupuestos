@@ -227,7 +227,7 @@ export function createCostExpenseActionHandlers({
 
   const deleteCost = async (item: CostItem) => {
     const result = await Swal.fire({
-      title: `Desactivar ${item.name}`,
+      titleText: `Desactivar ${item.name}`,
       text: 'El costo no se usara para nuevos presupuestos, pero mantiene el historial.',
       icon: 'warning',
       confirmButtonText: 'Desactivar',

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "driver.js": "1.3.6",
     "lucide-react": "^1.16.0",
     "react": "latest",
     "react-dom": "latest",

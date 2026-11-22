@@ -79,7 +79,7 @@ export function CostsView({
 
   return (
     <section style={styles.workspaceGrid}>
-      <form onSubmit={onSubmit} style={styles.formPanel}>
+      <form data-guide="service-form" onSubmit={onSubmit} style={styles.formPanel}>
         <div>
           <h2 style={styles.panelTitle}>{editingCostId ? 'Editar servicio' : 'Nuevo servicio'}</h2>
           <p style={styles.panelSubtitle}>Catalogo de operaciones que se cobran en cada presupuesto.</p>

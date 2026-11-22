@@ -84,7 +84,7 @@ export function CompanyProfileView({
 
       {activeSection === 'data' ? (
         <section style={styles.profileGrid}>
-          <form onSubmit={onSubmit} style={styles.formPanel}>
+          <form data-guide="company-form" onSubmit={onSubmit} style={styles.formPanel}>
             <div style={styles.companyLogoCard}>
               <div style={styles.companyLogoPreviewFrame}>
                 {form.logo_url ? (
@@ -263,7 +263,7 @@ export function CompanyProfileView({
 
       {activeSection === 'billing' ? (
         <section style={styles.profileGrid}>
-          <form onSubmit={onSubmit} style={styles.formPanel}>
+          <form data-guide="company-form" onSubmit={onSubmit} style={styles.formPanel}>
             <div>
               <h3 style={styles.panelTitle}>Facturacion</h3>
               <p style={styles.panelSubtitle}>

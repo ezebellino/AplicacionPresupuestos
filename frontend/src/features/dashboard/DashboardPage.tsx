@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import Swal from 'sweetalert2';
 
@@ -37,6 +37,8 @@ import {
   emptyTenantLegalChangeForm,
 } from './state';
 import { styles } from './styles';
+import { WorkspaceMemory, useTrackedForm, useUnloadWarning, confirmUnsaved } from './workspaceExperience';
+import { WorkspaceHelp } from './WorkspaceHelp';
 import {
   DashboardBootLoader,
   DashboardBottomTabs,
@@ -93,15 +95,17 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [expenseEntries, setExpenseEntries] = useState<ExpenseEntry[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [clientForm, setClientForm] = useState<ClientForm>(emptyClientForm);
-  const [companyProfileForm, setCompanyProfileForm] = useState<CompanyProfileForm>(emptyCompanyProfileForm);
-  const [tenantLegalChangeForm, setTenantLegalChangeForm] = useState<TenantLegalChangeForm>(
+  const [clientForm, setClientForm, editClientForm, clientDirty] = useTrackedForm<ClientForm>(emptyClientForm);
+  const [companyProfileForm, setCompanyProfileForm, editCompanyProfileForm, companyProfileDirty] = useTrackedForm<CompanyProfileForm>(emptyCompanyProfileForm);
+  const [tenantLegalChangeForm, setTenantLegalChangeForm, editTenantLegalChangeForm, tenantLegalChangeDirty] = useTrackedForm<TenantLegalChangeForm>(
     emptyTenantLegalChangeForm,
   );
-  const [serviceRecordForm, setServiceRecordForm] = useState<ServiceRecordForm>(emptyServiceRecordForm);
-  const [costForm, setCostForm] = useState<CostForm>(emptyCostForm);
+  const [serviceRecordForm, setServiceRecordForm, editServiceRecordForm, serviceRecordDirty] = useTrackedForm<ServiceRecordForm>(emptyServiceRecordForm);
+  const [costForm, setCostForm, editCostForm, costDirty] = useTrackedForm<CostForm>(emptyCostForm);
   const [quoteForm, setQuoteForm] = useState<QuoteForm>(emptyQuoteForm);
-  const [expenseForm, setExpenseForm] = useState<ExpenseForm>(emptyExpenseForm);
+  const editQuoteForm = setQuoteForm;
+  const quoteDirty = JSON.stringify(quoteForm) !== JSON.stringify(emptyQuoteForm);
+  const [expenseForm, setExpenseForm, editExpenseForm, expenseDirty] = useTrackedForm<ExpenseForm>(emptyExpenseForm);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
@@ -117,6 +121,13 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hasBootstrapped, setHasBootstrapped] = useState(false);
   const isCompactLayout = viewportWidth < 860;
+
+  const workspaceMemory = useRef(new Map<string, unknown>());
+  const dirtyViews: Partial<Record<View, boolean>> = { clients: clientDirty || serviceRecordDirty, costs: costDirty, quotes: quoteDirty, treasury: expenseDirty, company: companyProfileDirty || tenantLegalChangeDirty };
+  const anyDirty = Object.values(dirtyViews).some(Boolean);
+  useUnloadWarning(anyDirty);
+  const canLeave = () => !isSaving && confirmUnsaved(Boolean(dirtyViews[activeView]));
+  const safeLogout = () => { if (!isSaving && confirmUnsaved(anyDirty)) onLogout(); };
 
   const metrics = buildDashboardMetrics(clients, costItems, quotes);
 
@@ -157,7 +168,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       ]);
       setCurrentUser(userResponse);
       setCompanyProfile(profileResponse);
-      setCompanyProfileForm(companyProfileToForm(profileResponse));
+      if (!companyProfileDirty) setCompanyProfileForm(companyProfileToForm(profileResponse));
       setTenantChangeRequests(changeRequestsResponse.items);
       setClients(clientsResponse.items);
       setCostItems(costsResponse.items);
@@ -245,6 +256,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const changeNotifications = platformNotifications.filter((item) => item.kind === 'change_request');
   const membershipNotifications = platformNotifications.filter((item) => item.kind === 'membership');
   const goToView = (view: View) => {
+    if (view !== activeView && !canLeave()) return;
     setActiveView(view);
     if (view === 'platform') {
       setActivePlatformSection('overview');
@@ -252,6 +264,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setIsMobileMenuOpen(false);
   };
   const openMobileQuoteFlow = () => {
+    if (!canLeave() || !confirmUnsaved(quoteDirty && activeView !== 'quotes')) return;
     setActiveView('quotes');
     setSelectedQuoteId(null);
     setQuoteForm(emptyQuoteForm);
@@ -260,6 +273,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
     setIsMobileMenuOpen(false);
   };
   const openPlatformNotifications = (section: PlatformSection) => {
+    if (activeView !== 'platform' && !canLeave()) return;
     setActiveView('platform');
     setActivePlatformSection(section);
     setIsNotificationsOpen(false);
@@ -348,6 +362,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   }
 
   return (
+    <WorkspaceMemory.Provider value={workspaceMemory.current}>
     <main
       style={{
         ...styles.page,
@@ -371,7 +386,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
               isDarkMode={isDarkMode}
               navigationItems={mobileDrawerNavigationItems}
               onClose={() => setIsMobileMenuOpen(false)}
-              onLogout={onLogout}
+              onLogout={safeLogout}
               onToggleTheme={toggleTheme}
               onViewChange={goToView}
             />
@@ -388,20 +403,22 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         />
       )}
 
-      <section style={{ ...styles.content, ...(isCompactLayout ? styles.contentCompact : null) }}>
+      <section data-guide="workspace" style={{ ...styles.content, ...(isCompactLayout ? styles.contentCompact : null) }}>
         <div style={isCompactLayout ? styles.topbarMobileHidden : undefined}>
           <DashboardTopbar
             accountItems={platformAccountActions}
             activeView={activeView}
             currentUser={currentUser}
             isDarkMode={isDarkMode}
-            onLogout={onLogout}
+            onLogout={safeLogout}
             onToggleNotifications={() => setIsNotificationsOpen((current) => !current)}
             onToggleTheme={toggleTheme}
             onViewChange={goToView}
             pendingNotificationCount={pendingNotificationCount}
           />
         </div>
+
+        <WorkspaceHelp view={activeView} platformAdmin={currentUser?.role === 'platform_admin'} />
 
         {loadError ? <p style={styles.errorBanner}>{loadError}</p> : null}
 
@@ -448,8 +465,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             costItems={costItems}
             isLoading={isLoading}
             metrics={metrics}
-            onNewQuote={() => setActiveView('quotes')}
-            onOpenQuote={quoteActionHandlers.openQuoteEditorFromAnotherView}
+            onNewQuote={openMobileQuoteFlow}
+            onOpenQuote={(id) => { if (canLeave() && confirmUnsaved(quoteDirty)) { setQuoteForm(emptyQuoteForm); quoteActionHandlers.openQuoteEditorFromAnotherView(id); } }}
             quotes={quotes}
           />
         ) : null}
@@ -467,18 +484,19 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             serviceRecordForm={serviceRecordForm}
             serviceRecords={clientServiceRecords}
             onCancel={() => {
+              if (!confirmUnsaved(clientDirty)) return;
               setClientForm(emptyClientForm);
               setEditingClientId(null);
             }}
-            onCreateQuoteForClient={clientActionHandlers.openQuoteDraftForClient}
+            onCreateQuoteForClient={(id) => { if (canLeave() && confirmUnsaved(quoteDirty)) clientActionHandlers.openQuoteDraftForClient(id); }}
             onDelete={clientActionHandlers.deleteClient}
-            onEdit={clientActionHandlers.editClient}
-            onFormChange={setClientForm}
-            onHistory={clientActionHandlers.openClientHistory}
-            onOpenQuote={quoteActionHandlers.openQuoteEditorFromAnotherView}
-            onQuickCreate={clientActionHandlers.handleQuickClientCreate}
+            onEdit={(client) => { if (confirmUnsaved(clientDirty)) clientActionHandlers.editClient(client); }}
+            onFormChange={editClientForm}
+            onHistory={async (client) => { if (confirmUnsaved(clientDirty || serviceRecordDirty)) await clientActionHandlers.openClientHistory(client); }}
+            onOpenQuote={(id) => { if (canLeave() && confirmUnsaved(quoteDirty)) { setQuoteForm(emptyQuoteForm); quoteActionHandlers.openQuoteEditorFromAnotherView(id); } }}
+            onQuickCreate={async (payload) => confirmUnsaved(clientDirty || serviceRecordDirty) ? clientActionHandlers.handleQuickClientCreate(payload) : null}
             onRecordRequestHandled={() => setClientRecordRequest(null)}
-            onServiceFormChange={setServiceRecordForm}
+            onServiceFormChange={editServiceRecordForm}
             onServiceSubmit={clientActionHandlers.handleServiceRecordSubmit}
             onSubmit={clientActionHandlers.handleClientSubmit}
           />
@@ -492,12 +510,13 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
             onCancel={() => {
+              if (!confirmUnsaved(costDirty)) return;
               setCostForm(emptyCostForm);
               setEditingCostId(null);
             }}
             onDelete={costExpenseActionHandlers.deleteCost}
-            onEdit={costExpenseActionHandlers.editCost}
-            onFormChange={setCostForm}
+            onEdit={(item) => { if (confirmUnsaved(costDirty)) costExpenseActionHandlers.editCost(item); }}
+            onFormChange={editCostForm}
             onSubmit={costExpenseActionHandlers.handleCostSubmit}
             showOperationPresets={currentUser?.role !== 'platform_admin'}
           />
@@ -517,10 +536,10 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             onDeleteItem={quoteActionHandlers.deleteQuoteItem}
             onDeleteQuotes={quoteActionHandlers.deleteQuotes}
             onDownloadPdf={quoteActionHandlers.downloadQuotePdf}
-            onCreateClientRequest={() => setActiveView('clients')}
-            onEditClient={clientActionHandlers.openClientRecordFromAnotherView}
+            onCreateClientRequest={() => goToView('clients')}
+            onEditClient={async (id, section) => { if (canLeave()) await clientActionHandlers.openClientRecordFromAnotherView(id, section); }}
             onEditorRequestHandled={() => setQuoteEditorRequestId(null)}
-            onFormChange={setQuoteForm}
+            onFormChange={editQuoteForm}
             onNewQuoteClientRequestHandled={() => setQuoteCreateClientRequestId(null)}
             onNewQuoteRequestHandled={() => setMobileQuoteRequestId(0)}
             onSelectQuote={setSelectedQuoteId}
@@ -541,12 +560,12 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             expenseForm={expenseForm}
             isCompactLayout={isCompactLayout}
             isSaving={isSaving}
-            onExpenseFormChange={setExpenseForm}
+            onExpenseFormChange={editExpenseForm}
             onExpenseStatusChange={costExpenseActionHandlers.handleExpenseStatusChange}
             onExpenseSubmit={costExpenseActionHandlers.handleExpenseSubmit}
             onManageExpenseCategories={costExpenseActionHandlers.handleManageExpenseCategories}
             onDownloadPdf={quoteActionHandlers.downloadQuotePdf}
-            onOpenQuote={quoteActionHandlers.openQuoteEditorFromAnotherView}
+            onOpenQuote={(id) => { if (canLeave() && confirmUnsaved(quoteDirty)) { setQuoteForm(emptyQuoteForm); quoteActionHandlers.openQuoteEditorFromAnotherView(id); } }}
             onSendInvoiceByWhatsApp={quoteActionHandlers.sendInvoiceByWhatsApp}
             quotes={quotes}
           />
@@ -559,8 +578,8 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
             isSaving={isSaving}
             legalChangeForm={tenantLegalChangeForm}
             mode={currentUser?.role === 'platform_admin' ? 'platform' : 'tenant'}
-            onFormChange={setCompanyProfileForm}
-            onLegalChangeFormChange={setTenantLegalChangeForm}
+            onFormChange={editCompanyProfileForm}
+            onLegalChangeFormChange={editTenantLegalChangeForm}
             onLegalChangeSubmit={companyProfileActionHandlers.handleTenantLegalChangeSubmit}
             onSubmit={companyProfileActionHandlers.handleCompanyProfileSubmit}
             requests={tenantChangeRequests}
@@ -615,6 +634,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
         <DashboardBottomTabs activeView={activeView} items={bottomNavigationItems} onViewChange={goToView} />
       ) : null}
     </main>
+    </WorkspaceMemory.Provider>
   );
 }
 

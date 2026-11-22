@@ -424,7 +424,7 @@ export function TreasuryView({
                 <h3 style={styles.compactTitle}>Nuevo gasto</h3>
                 <p style={styles.helperText}>La fecha queda fija al momento de crear el gasto. Cliente y categoria son opcionales.</p>
               </div>
-              <form onSubmit={onExpenseSubmit} style={styles.serviceForm}>
+              <form data-guide="expense-form" onSubmit={onExpenseSubmit} style={styles.serviceForm}>
                 <div style={styles.formGridTwo}>
                   <Field
                     label="Monto"

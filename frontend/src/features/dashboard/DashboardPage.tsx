@@ -39,6 +39,8 @@ import {
 import { styles } from './styles';
 import { WorkspaceMemory, useTrackedForm, useUnloadWarning, confirmUnsaved } from './workspaceExperience';
 import { WorkspaceHelp } from './WorkspaceHelp';
+import { QuoteFollowUpPanel } from './QuoteFollowUpPanel';
+import { pendingFollowUps } from './quoteFollowUp';
 import {
   DashboardBootLoader,
   DashboardBottomTabs,
@@ -128,6 +130,26 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   useUnloadWarning(anyDirty);
   const canLeave = () => !isSaving && confirmUnsaved(Boolean(dirtyViews[activeView]));
   const safeLogout = () => { if (!isSaving && confirmUnsaved(anyDirty)) onLogout(); };
+
+  const [followUpNow, setFollowUpNow] = useState(Date.now);
+  useEffect(() => {
+    const updateClock = () => setFollowUpNow(Date.now());
+    const timer = window.setInterval(updateClock, 60_000);
+    window.addEventListener('focus', updateClock);
+    document.addEventListener('visibilitychange', updateClock);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', updateClock);
+      document.removeEventListener('visibilitychange', updateClock);
+    };
+  }, []);
+  const followUpCount = pendingFollowUps(quotes, followUpNow).length;
+  const openFollowUps = () => {
+    if (!canLeave()) return;
+    setActiveView('summary');
+    setIsMobileMenuOpen(false);
+    window.requestAnimationFrame(() => document.getElementById('quote-follow-ups')?.scrollIntoView({ block: 'start' }));
+  };
 
   const metrics = buildDashboardMetrics(clients, costItems, quotes);
 
@@ -420,6 +442,15 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
         <WorkspaceHelp view={activeView} platformAdmin={currentUser?.role === 'platform_admin'} />
 
+        {!isLoading && activeView !== 'summary' && currentUser?.role !== 'platform_admin' && followUpCount > 0 ? (
+          <aside style={{ ...styles.historyQuoteRecord, marginBottom: 16 }} aria-label="Recordatorio de presupuestos">
+            <div style={styles.panelHeaderCompact}>
+              <span>Tenés {followUpCount} {followUpCount === 1 ? 'presupuesto pendiente de respuesta' : 'presupuestos pendientes de respuesta'}.</span>
+              <button type="button" disabled={isSaving} style={styles.secondaryButton} onClick={openFollowUps}>Revisar pendientes</button>
+            </div>
+          </aside>
+        ) : null}
+
         {loadError ? <p style={styles.errorBanner}>{loadError}</p> : null}
 
         {isCompactLayout && isMobileQuotePromptOpen && currentUser?.role !== 'platform_admin' ? (
@@ -461,6 +492,12 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
 
         {activeView === 'summary' ? (
           <SummaryView
+            followUp={!isLoading && currentUser?.role !== 'platform_admin' ? <QuoteFollowUpPanel
+              clients={clients} quotes={quotes} now={followUpNow} isSaving={isSaving}
+              onSavingChange={setIsSaving}
+              onQuoteUpdated={(updated) => setQuotes((current) => current.map((quote) => quote.id === updated.id ? updated : quote))}
+              onOpenQuote={(id) => { if (canLeave() && confirmUnsaved(quoteDirty)) { setQuoteForm(emptyQuoteForm); quoteActionHandlers.openQuoteEditorFromAnotherView(id); } }}
+            /> : null}
             clients={clients}
             costItems={costItems}
             isLoading={isLoading}

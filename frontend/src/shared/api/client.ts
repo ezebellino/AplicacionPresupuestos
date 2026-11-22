@@ -313,6 +313,7 @@ export type Quote = {
   tax_total: string;
   total: string;
   issued_at: string | null;
+  follow_up_at?: string | null;
   items: QuoteItem[];
 };
 
@@ -638,6 +639,12 @@ export const apiClient = {
   },
   acceptQuote(id: string) {
     return request<Quote>(`/quotes/${id}/accept`, { method: 'POST' });
+  },
+  snoozeQuoteFollowUp(id: string, days: 1 | 3 | 7) {
+    return request<Quote>(`/quotes/${id}/follow-up`, {
+      method: 'POST',
+      body: JSON.stringify({ days }),
+    });
   },
   rejectQuote(id: string) {
     return request<Quote>(`/quotes/${id}/reject`, { method: 'POST' });

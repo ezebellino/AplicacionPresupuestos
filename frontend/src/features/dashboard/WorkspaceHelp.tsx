@@ -22,7 +22,7 @@ export const userGuide = [
     'Agregá los servicios desde el catálogo. Cada selección agrega un ítem y guarda el cambio; revisá cantidades, IVA y total.',
     'Mientras esté en borrador podés quitar ítems. Al emitirlo deja de ser editable.',
     'Elegí Emitir y enviar por WhatsApp o Emitir sin enviar. Verificá el destinatario y completá el envío en WhatsApp; abrir WhatsApp no confirma la entrega. También podés descargar el PDF.',
-    'Cuando tengas la respuesta del cliente, marcá el presupuesto emitido como aceptado o rechazado.',
+    'En Inicio, Para dar seguimiento permite marcar Aceptó o Rechazó. Revisá cliente, número y total antes de confirmar. Aceptar no registra un cobro.',
   ] },
   { title: '4. Consultar tesorería y registrar gastos', steps: [
     'Entrá en Tesorería para consultar los indicadores y movimientos disponibles.',
@@ -30,6 +30,7 @@ export const userGuide = [
     'Actualizá el estado del gasto cuando se pague. Un presupuesto aceptado no es por sí solo un comprobante de cobro.',
   ] },
   { title: '5. Retomar el trabajo y resolver dudas', steps: [
+    'En Inicio aparecen recordatorios 3 días después de emitir. Si todavía no respondió, posponé 1, 3 o 7 días. Consultar por WhatsApp prepara el mensaje: revisá el teléfono internacional y enviá desde WhatsApp. Los avisos se ven dentro de la aplicación.',
     'Usá Listado para volver desde un presupuesto. Las búsquedas y filtros se conservan al moverte entre Clientes y Presupuestos durante esta sesión.',
     'Guardá los formularios antes de cerrar o recargar la página. Los datos pendientes no se recuperan después de cerrar sesión.',
     'Si aparece un error al guardar, conservá la pantalla, revisá tu conexión y verificá el listado antes de repetir la operación.',
@@ -38,6 +39,7 @@ export const userGuide = [
 ];
 
 const steps: DriveStep[] = [
+  { element: '[data-guide="quote-follow-ups"]', popover: { title: 'Seguir presupuestos emitidos', description: 'Registrá la respuesta del cliente o posponé el aviso 1, 3 o 7 días. Todos los emitidos permite registrar respuestas antes del primer aviso. WhatsApp requiere completar el envío manualmente.' } },
   { element: '[data-guide="workspace"]', popover: { title: 'Tu espacio de trabajo', description: 'Elegí una sección desde el menú. En el celular tenés accesos rápidos al pie de la pantalla.' } },
   { element: '[data-guide="service-form"]', popover: { title: 'Catálogo de servicios', description: 'Completá nombre, precio e IVA y guardá el servicio. Después estará disponible para agregarlo a un presupuesto.' } },
   { element: '[data-guide="expense-form"]', popover: { title: 'Registrar un gasto', description: 'Indicá importe, detalle, categoría y estado. Guardá el gasto y actualizá su estado cuando lo pagues.' } },

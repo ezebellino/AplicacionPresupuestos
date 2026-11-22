@@ -13,6 +13,7 @@ from app.schemas.quotes import (
     QuoteBulkDelete,
     QuoteBulkDeleteResult,
     QuoteCreate,
+    QuoteFollowUpSnooze,
     QuoteItemCreate,
     QuoteItemRead,
     QuoteItemUpdate,
@@ -37,6 +38,7 @@ from app.services.quotes_service import (
     reject_quote,
     serialize_quote,
     serialize_quote_item,
+    snooze_quote_follow_up,
     update_quote,
     update_quote_item,
 )
@@ -332,6 +334,22 @@ def issue_current_tenant_quote(
             detail="Quote not found",
         )
 
+    return serialize_quote(quote)
+
+
+@router.post("/{quote_id}/follow-up", response_model=QuoteRead)
+def snooze_current_tenant_quote_follow_up(
+    quote_id: UUID,
+    payload: QuoteFollowUpSnooze,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    try:
+        quote = snooze_quote_follow_up(db, current_user.tenant_id, quote_id, payload.days, current_user)
+    except QuoteConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if quote is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote not found")
     return serialize_quote(quote)
 
 

@@ -393,6 +393,7 @@ class Quote(TimestampMixin, Base):
         Numeric(12, 2), nullable=False, default=Decimal("0.00")
     )
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     public_share_token: Mapped[str | None] = mapped_column(String(96), unique=True, index=True)
 
     tenant: Mapped[Tenant] = relationship(back_populates="quotes")

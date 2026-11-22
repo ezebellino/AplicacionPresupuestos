@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from secrets import token_urlsafe
 from uuid import UUID
@@ -47,6 +47,7 @@ def serialize_quote(quote: Quote) -> QuoteRead:
             "tax_total": quote.tax_total,
             "total": quote.total,
             "issued_at": quote.issued_at,
+            "follow_up_at": quote.follow_up_at,
             "items": [
                 serialize_quote_item(item)
                 for item in sorted(quote.items, key=lambda item: (item.position, item.id))
@@ -394,6 +395,33 @@ def issue_quote(
     return quote
 
 
+def snooze_quote_follow_up(
+    db: Session, tenant_id: UUID, quote_id: UUID, days: int, actor: User
+) -> Quote | None:
+    if type(days) is not int or days not in (1, 3, 7):
+        raise QuoteValidationError("Reminder days must be 1, 3 or 7")
+    quote = get_quote(db, tenant_id, quote_id)
+    if quote is None:
+        return None
+    if quote.status != QuoteStatus.ISSUED:
+        raise QuoteConflictError("Only issued quotes can be followed up")
+
+    quote.follow_up_at = datetime.now(timezone.utc) + timedelta(days=days)
+    record_audit_event(
+        db,
+        actor=actor,
+        tenant_id=tenant_id,
+        entity_type="quote",
+        entity_id=quote.id,
+        action="follow_up_snoozed",
+        summary=f"Seguimiento pospuesto: {quote.number}",
+        metadata={"days": days, "follow_up_at": quote.follow_up_at},
+    )
+    db.commit()
+    db.refresh(quote)
+    return quote
+
+
 def accept_quote(
     db: Session, tenant_id: UUID, quote_id: UUID, actor: User | None = None
 ) -> Quote | None:
@@ -421,6 +449,7 @@ def _transition_from_issued(
         raise QuoteConflictError("Quote can only transition from issued")
 
     quote.status = target_status
+    quote.follow_up_at = None
     if actor is not None:
         record_audit_event(
             db,

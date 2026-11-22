@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -106,11 +106,25 @@ class QuoteRead(BaseModel):
     tax_total: Decimal
     total: Decimal
     issued_at: datetime | None
+    follow_up_at: datetime | None = None
     items: list[QuoteItemRead]
 
 
 class QuoteList(BaseModel):
     items: list[QuoteRead]
+
+
+class QuoteFollowUpSnooze(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    days: Literal[1, 3, 7]
+
+    @field_validator("days", mode="before")
+    @classmethod
+    def days_must_be_integer(cls, value):
+        if type(value) is not int:
+            raise ValueError("days must be an integer")
+        return value
 
 
 class QuoteShareLinkRead(BaseModel):

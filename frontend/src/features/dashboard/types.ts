@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 
 import type {
   AuditEvent,
@@ -126,6 +126,7 @@ export type ExpenseForm = {
 };
 
 export type SummaryViewProps = {
+  followUp?: ReactNode;
   clients: Client[];
   costItems: CostItem[];
   isLoading: boolean;

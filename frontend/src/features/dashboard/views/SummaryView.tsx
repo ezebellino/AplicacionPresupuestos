@@ -7,6 +7,7 @@ import { StatusBadge } from '../ui';
 import { clientName, formatDate, formatMoney, quoteTimestamp } from '../helpers';
 
 export function SummaryView({
+  followUp,
   clients,
   costItems,
   isLoading,
@@ -16,10 +17,10 @@ export function SummaryView({
   quotes,
 }: SummaryViewProps) {
   const recentQuotes = [...quotes].sort((left, right) => quoteTimestamp(right) - quoteTimestamp(left)).slice(0, 5);
-  const pendingQuotes = recentQuotes.filter((quote) => quote.status === 'issued');
 
   return (
     <>
+      {followUp}
       <section style={styles.metrics} aria-label="Indicadores">
         {metrics.map((metric) => (
           <article key={metric.label} style={styles.metricCard}>
@@ -111,44 +112,6 @@ export function SummaryView({
         </section>
       </section>
 
-      <section style={styles.tablePanel} aria-labelledby="summary-attention-title">
-        <div style={styles.panelHeader}>
-          <div>
-            <h2 id="summary-attention-title" style={styles.panelTitle}>
-              Atencion inmediata
-            </h2>
-            <p style={styles.panelSubtitle}>Presupuestos emitidos que todavia conviene seguir de cerca.</p>
-          </div>
-        </div>
-        {pendingQuotes.length === 0 ? (
-          <p style={styles.emptyState}>No hay presupuestos emitidos pendientes dentro de la actividad reciente.</p>
-        ) : (
-          <div style={styles.clientList}>
-            {pendingQuotes.map((quote) => (
-              <article key={quote.id} style={styles.treasuryMovementRow}>
-                <div style={styles.treasuryMovementPrimary}>
-                  <strong>{clientName(clients, quote.client_id)}</strong>
-                  <span style={styles.treasuryMovementMeta}>
-                    {quote.number} - {formatDate(quote.issued_at ?? quote.created_at)}
-                  </span>
-                  <span style={styles.mutedText}>{quote.title || 'Sin titulo'}</span>
-                </div>
-                <StatusBadge status={quote.status} />
-                <strong style={styles.treasuryMovementAmount}>{formatMoney(quote.total)}</strong>
-                <button
-                  aria-label="Abrir presupuesto"
-                  onClick={() => onOpenQuote(quote.id)}
-                  style={styles.iconActionButton}
-                  title="Abrir presupuesto"
-                  type="button"
-                >
-                  <Eye aria-hidden="true" size={15} strokeWidth={2.2} />
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
     </>
   );
 }

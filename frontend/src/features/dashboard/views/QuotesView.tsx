@@ -1,3 +1,4 @@
+import { useWorkspaceState, useListPosition, confirmUnsaved } from '../workspaceExperience';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Eye, FileText, MessageCircle, Trash2 } from 'lucide-react';
@@ -36,10 +37,11 @@ export function QuotesView({
   quotes,
   selectedQuoteId,
 }: QuotesViewProps) {
-  const [activeSection, setActiveSection] = useState<QuoteSection>('list');
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>('all');
+  const [activeSection, setActiveSection] = useWorkspaceState<QuoteSection>('quotes.activeSection', 'list');
+  const [isCreatingNew, setIsCreatingNew] = useWorkspaceState('quotes.isCreatingNew', false);
+  const [search, setSearch] = useWorkspaceState('quotes.search', '');
+  useListPosition('quotes.scroll', activeSection === 'list');
+  const [statusFilter, setStatusFilter] = useWorkspaceState<QuoteStatus | 'all'>('quotes.statusFilter', 'all');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
   useEffect(() => {
@@ -97,7 +99,20 @@ export function QuotesView({
       )
     );
     });
-  const selectedQuote = quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
+  const selectedQuote = isCreatingNew ? null : quotes.find((quote) => quote.id === selectedQuoteId) ?? null;
+  const pendingDraft = (isCreatingNew || !selectedQuote) && JSON.stringify(form) !== JSON.stringify(emptyQuoteForm);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const update = () => setKeyboardOpen(Boolean(viewport && window.innerHeight - viewport.height > 150));
+    viewport?.addEventListener('resize', update);
+    update();
+    return () => viewport?.removeEventListener('resize', update);
+  }, []);
+  const goToSection = (section: QuoteSection) => {
+    if (section !== activeSection && !confirmUnsaved(pendingDraft)) return;
+    setActiveSection(section);
+  };
   const selectedQuotesForDeletion = quotes.filter((quote) => selectedQuoteIds.includes(quote.id));
   const canEditSelected = selectedQuote?.status === 'draft';
   const canShareSelected = Boolean(
@@ -112,7 +127,7 @@ export function QuotesView({
   );
   const quoteSections: Array<{ id: QuoteSection; label: string }> = [
     { id: 'list', label: `Listado (${filteredQuotes.length})` },
-    { id: 'editor', label: 'Editor' },
+    { id: 'editor', label: 'Presupuesto' },
   ];
   const handleCreateQuote = async (event: FormEvent<HTMLFormElement>) => {
     const wasCreated = await onSubmit(event);
@@ -123,11 +138,15 @@ export function QuotesView({
     }
   };
   const openNewQuoteEditor = () => {
+    if (!confirmUnsaved(pendingDraft)) return;
+    onSelectQuote(null);
     onFormChange(emptyQuoteForm);
     setIsCreatingNew(true);
     setActiveSection('editor');
   };
   const openExistingQuote = (quoteId: string) => {
+    if (!confirmUnsaved(pendingDraft)) return;
+    onFormChange(emptyQuoteForm);
     setIsCreatingNew(false);
     onSelectQuote(quoteId);
     setActiveSection('editor');
@@ -145,47 +164,24 @@ export function QuotesView({
   };
 
   return (
-    <section style={styles.companyWorkspace}>
+    <section style={styles.companyWorkspace} className={isCompactLayout && activeSection === 'editor' ? 'mobile-quote-editor' : undefined}>
       <div style={styles.companyWorkspaceHeader}>
         <div>
           <h2 style={styles.panelTitle}>Presupuestos</h2>
           <p style={styles.panelSubtitle}>Gestiona borradores, emisiones y seguimiento desde un flujo mas claro.</p>
         </div>
         <div style={styles.actions}>
-          <button onClick={openNewQuoteEditor} style={styles.primaryButton} type="button">
+          <button data-guide="new-quote" onClick={openNewQuoteEditor} style={styles.primaryButton} type="button">
             Nuevo presupuesto
           </button>
-          {isCompactLayout ? (
-            <label style={styles.platformSelectField}>
-              <span style={styles.labelCaption}>Seccion de presupuestos</span>
-              <select
-                aria-label="Seccion de presupuestos"
-                onChange={(event) => setActiveSection(event.target.value as QuoteSection)}
-                style={styles.select}
-                value={activeSection}
-              >
-                {quoteSections.map((section) => (
-                  <option key={section.id} value={section.id}>
-                    {section.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div style={styles.platformSectionNav} role="tablist" aria-label="Navegacion de presupuestos">
-              {quoteSections.map((section) => (
-                <button
-                  aria-pressed={activeSection === section.id}
-                  key={section.id}
-                  onClick={() => setActiveSection(section.id)}
-                  style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
-                  type="button"
-                >
-                  {section.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="quote-section-nav" data-guide="quote-navigation" role="group" aria-label="Navegacion de presupuestos">
+            {quoteSections.map((section) => (
+              <button aria-pressed={activeSection === section.id} key={section.id}
+                onClick={() => goToSection(section.id)}
+                style={activeSection === section.id ? styles.platformSectionButtonActive : styles.platformSectionButton}
+                type="button">{section.label}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -199,7 +195,7 @@ export function QuotesView({
               <p style={styles.panelSubtitle}>Ordena, filtra y reabre presupuestos desde una lectura mas clara.</p>
             </div>
           </div>
-          <div style={styles.quoteFilterBar}>
+          <div data-guide="quote-filters" style={styles.quoteFilterBar}>
             <label style={styles.compactLabel}>
               Buscar
               <input
@@ -372,7 +368,7 @@ export function QuotesView({
           </div>
 
           {isCreatingNew || !selectedQuote ? (
-            <form onSubmit={handleCreateQuote} style={styles.quoteEditorSection}>
+            <form id="new-quote-form" data-guide="quote-form" onSubmit={handleCreateQuote} style={styles.quoteEditorSection}>
               {isCompactLayout ? (
                 <section style={styles.mobileQuoteAssistant}>
                   <div>
@@ -555,7 +551,7 @@ export function QuotesView({
 
                 {canEditSelected ? (
                   <section
-                    aria-label="Items de cobro"
+                    data-guide="quote-catalog" aria-label="Items de cobro"
                     style={{
                       ...styles.quoteEditorBlock,
                       ...(isCompactLayout ? styles.quoteEditorBlockCompact : null),
@@ -612,7 +608,7 @@ export function QuotesView({
                   </section>
                 ) : null}
 
-                <section
+                <section id="quote-review" data-guide="quote-total"
                   style={{
                     ...styles.quoteEditorBlock,
                     ...(isCompactLayout ? styles.quoteEditorBlockCompact : null),
@@ -772,6 +768,22 @@ export function QuotesView({
             </>
           )}
         </section>
+      ) : null}
+      {isCompactLayout && activeSection === 'editor' && !keyboardOpen ? (
+        <aside className="mobile-quote-actionbar" aria-label="Acciones del presupuesto">
+          <div><span>{selectedQuote ? 'Total guardado' : 'Nuevo presupuesto'}</span>
+            <strong>{selectedQuote ? formatMoney(selectedQuote.total) : 'Creá el borrador para agregar servicios'}</strong></div>
+          {selectedQuote ? (
+            <button type="button" style={styles.primaryButton} disabled={isSaving}
+              onClick={() => document.getElementById('quote-review')?.scrollIntoView({ block: 'start' })}>
+              Revisar detalle
+            </button>
+          ) : (
+            <button type="submit" form="new-quote-form" style={styles.primaryButton} disabled={isSaving || !form.client_id}>
+              Crear borrador
+            </button>
+          )}
+        </aside>
       ) : null}
     </section>
   );

@@ -1,3 +1,4 @@
+import { useWorkspaceState, useListPosition } from '../workspaceExperience';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { History, MapPin, Pencil, Phone, Trash2 } from 'lucide-react';
@@ -40,9 +41,10 @@ export function ClientsView({
   onServiceSubmit,
   onSubmit,
 }: ClientsViewProps) {
-  const [activeSection, setActiveSection] = useState<ClientSection>('list');
-  const [activeRecordSection, setActiveRecordSection] = useState<ClientRecordSection>('data');
-  const [search, setSearch] = useState('');
+  const [activeSection, setActiveSection] = useWorkspaceState<ClientSection>('clients.activeSection', 'list');
+  const [activeRecordSection, setActiveRecordSection] = useWorkspaceState<ClientRecordSection>('clients.activeRecordSection', 'data');
+  const [search, setSearch] = useWorkspaceState('clients.search', '');
+  useListPosition('clients.scroll', activeSection === 'list');
   const clientSections = [
     { id: 'list' as const, label: 'Listado' },
     { id: 'record' as const, label: 'Ficha' },
@@ -148,7 +150,7 @@ export function ClientsView({
           <p style={styles.panelSubtitle}>Alta rapida, seguimiento y relacion completa de cada cliente en una sola ficha.</p>
         </div>
         <div style={styles.actions}>
-          <button disabled={isSaving} onClick={() => void handleQuickCreate()} style={styles.primaryButton} type="button">
+          <button data-guide="new-client" disabled={isSaving} onClick={() => void handleQuickCreate()} style={styles.primaryButton} type="button">
             Nuevo cliente
           </button>
           {isCompactLayout ? (
@@ -195,7 +197,7 @@ export function ClientsView({
               <p style={styles.panelSubtitle}>Busca rapido, abre la ficha y manten a mano las acciones mas usadas.</p>
             </div>
           </div>
-          <div style={styles.filterBar}>
+          <div data-guide="client-search" style={styles.filterBar}>
             <label style={styles.compactLabel}>
               Buscar
               <input

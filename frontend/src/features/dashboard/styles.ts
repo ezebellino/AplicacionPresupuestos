@@ -669,7 +669,7 @@ export const styles = {
     gap: '4px',
     gridTemplateColumns: 'repeat(4, 1fr)',
     left: 0,
-    padding: '8px 8px 10px',
+    padding: '8px 8px calc(10px + env(safe-area-inset-bottom, 0px))',
     position: 'fixed',
     right: 0,
     zIndex: 30,

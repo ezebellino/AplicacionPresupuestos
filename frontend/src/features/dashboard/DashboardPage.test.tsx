@@ -636,7 +636,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('No hay servicios para esa busqueda.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
-    await user.click(screen.getByRole('button', { name: 'Editor' }));
+    await user.click(screen.getByRole('button', { name: 'Presupuesto' }));
 
     expect(screen.getByLabelText('Progreso del presupuesto')).toBeInTheDocument();
     expect(screen.getAllByText('Aceptado').length).toBeGreaterThan(0);
@@ -1265,7 +1265,7 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getAllByText('Q-000001').length).toBeGreaterThan(0));
 
     expect(screen.getByRole('button', { name: 'Listado (3)' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Editor' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Presupuesto' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Crear borrador' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Nuevo presupuesto' }));
@@ -1298,4 +1298,101 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('heading', { name: 'Ficha de Acme Clima' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Datos' })).toBeInTheDocument();
   });
+  it('keeps quote search and status when returning from another workspace', async () => {
+    const user = userEvent.setup();
+    render(<DashboardPage onLogout={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.type(await screen.findByPlaceholderText('Cliente, numero o titulo'), 'Mantenimiento');
+    await user.click(screen.getByRole('button', { name: 'Emitido' }));
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    expect(screen.getByPlaceholderText('Cliente, numero o titulo')).toHaveValue('Mantenimiento');
+    expect(screen.getByRole('button', { name: /Q-000002/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Q-000001/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps client search when returning from another workspace', async () => {
+    const user = userEvent.setup();
+    render(<DashboardPage onLogout={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    await user.type(await screen.findByPlaceholderText('Nombre, documento o contacto'), 'Acme');
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    expect(screen.getByPlaceholderText('Nombre, documento o contacto')).toHaveValue('Acme');
+  });
+
+  it('protects pending quote data on navigation, reload and logout', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const logout = vi.fn();
+    render(<DashboardPage onLogout={logout} />);
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.click(screen.getByRole('button', { name: 'Nuevo presupuesto' }));
+    await user.type(screen.getByLabelText('Titulo'), 'Trabajo pendiente');
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByLabelText('Titulo')).toHaveValue('Trabajo pendiente');
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Salir' }));
+    expect(logout).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: 'Clientes' }));
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    expect(screen.getByLabelText('Titulo')).toHaveValue('Trabajo pendiente');
+    // Creating a fresh draft must not expose actions for the previously selected quote.
+    expect(screen.queryByRole('button', { name: 'Ver cliente' })).not.toBeInTheDocument();
+  });
+
+  it('offers direct mobile quote navigation and a non-mutating total action', async () => {
+    setViewportWidth(390);
+    const user = userEvent.setup();
+    render(<DashboardPage onLogout={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Seguir a la app' }));
+    await user.click(screen.getByRole('button', { name: 'Presup.' }));
+    await user.click(await screen.findByRole('button', { name: /Q-000001/ }));
+    expect(screen.queryByRole('combobox', { name: 'Seccion de presupuestos' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Presupuesto' })).toHaveAttribute('aria-pressed', 'true');
+    const review = vi.fn();
+    document.getElementById('quote-review')!.scrollIntoView = review;
+    const callsBefore = vi.mocked(fetch).mock.calls.length;
+    await user.click(within(screen.getByRole('complementary', { name: 'Acciones del presupuesto' })).getByRole('button', { name: 'Revisar detalle' }));
+    expect(review).toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('opens the manual on demand without sending requests and restores focus', async () => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
+    const user = userEvent.setup();
+    render(<DashboardPage onLogout={vi.fn()} />);
+    await waitFor(() => expect(screen.getAllByText('Acme Clima').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('dialog', { name: 'Guía de FacturEasy' })).not.toBeInTheDocument();
+    const callsBefore = vi.mocked(fetch).mock.calls.length;
+    await user.click(screen.getByRole('button', { name: 'Ayuda' }));
+    const guide = screen.getByRole('dialog', { name: 'Guía de FacturEasy' });
+    expect(within(guide).getByText('3. Crear y enviar un presupuesto')).toBeInTheDocument();
+    await user.click(within(guide).getByText('3. Crear y enviar un presupuesto'));
+    expect(within(guide).getByText(/abrir WhatsApp no confirma la entrega/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Cerrar ayuda' }));
+    expect(screen.getByRole('button', { name: 'Ayuda' })).toHaveFocus();
+    expect(vi.mocked(fetch).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('clears a discarded new draft when opening a saved quote', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<DashboardPage onLogout={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Presupuestos' }));
+    await user.click(screen.getByRole('button', { name: 'Nuevo presupuesto' }));
+    await user.type(screen.getByLabelText('Titulo'), 'Borrador a descartar');
+    await user.click(screen.getByRole('button', { name: 'Listado (3)' }));
+    await user.click(screen.getByRole('button', { name: /Q-000001/ }));
+    expect(screen.getByRole('heading', { name: 'Q-000001' })).toBeInTheDocument();
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+  });
+
 });
